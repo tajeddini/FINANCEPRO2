@@ -2,27 +2,29 @@
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="فایننس‌پرو — دفترکل دیجیتال شخصی برای فارسی‌زبانان؛ PWA با تقویم شمسی، اعداد فارسی و ربات تلگرام. سند تحویل پروژه."
-    />
-    <title>فایننس‌پرو — دفترکل دیجیتال فارسی‌زبان‌ها | سند تحویل پروژه</title>
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230d2c24'/%3E%3Cpath d='M4.5 8.2h12.6a2 2 0 0 1 2 2v5.6a2 2 0 0 1-2 2H4.5z' fill='%23e8b04b'/%3E%3Ccircle cx='15.2' cy='14' r='1.5' fill='%230d2c24'/%3E%3Cpath d='M7 5.4h8.8a2 2 0 0 1 2 2v.8H7z' fill='%2357d9a3'/%3E%3C/svg%3E"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>فایننس‌پرو — دفترکل دیجیتال شخصی</title>
+    <meta name="description" content="دفترکل دیجیتال شخصی برای کاربران فارسی‌زبان — تقویم شمسی، اعداد فارسی، ربات تلگرام" />
+    <meta name="theme-color" content="#0a241d" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Lalezar&family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap"
       rel="stylesheet"
     />
-    <style>
-      html {
-        background: #071b16;
-      }
-    </style>
+    <script>
+      // اعمال تم پیش از رندر React برای جلوگیری از فلش
+      (function () {
+        try {
+          var t = localStorage.getItem("fp_theme") || "dark";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
