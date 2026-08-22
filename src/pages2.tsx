@@ -930,6 +930,18 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                 پس از اتصال، تغییرات با ۳ ثانیه تأخیر خودکار به ابر فرستاده و هر ۹۰ ثانیه بررسی می‌شود —
                 در مرورگر دیگر با همان شناسهٔ سینک، همین دفترکل را دارید.
               </p>
+
+              <div className="rounded-xl p-3.5 border mt-1"
+                style={{ borderColor: "color-mix(in srgb, var(--fp-mint) 40%, transparent)", background: "color-mix(in srgb, var(--fp-mint) 6%, transparent)" }}>
+                <p className="text-[11.5px] font-black flex items-center gap-1.5" style={{ color: "var(--fp-mint)" }}>
+                  <Check className="w-3.5 h-3.5" strokeWidth={3} /> خیالتان راحت — دیپلویِ جدید، داده را پاک نمی‌کند
+                </p>
+                <p className="text-[10.5px] font-bold leading-5 mt-1.5" style={{ color: "var(--fp-text2)" }}>
+                  داده‌های شما در مرورگر خودتان و در Supabase ذخیره می‌شود، نه روی سرور Vercel.
+                  هر دیپلوی جدید فقط فایل‌های برنامه را عوض می‌کند و به اطلاعات دست نمی‌زند؛
+                  حتی اگر کش مرورگر پاک شود، با سینکِ فعال همه‌چیز از ابر برمی‌گردد.
+                </p>
+              </div>
             </div>
           </div>
 

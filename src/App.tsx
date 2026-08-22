@@ -198,6 +198,29 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     return () => clearInterval(id);
   }, [syncOn, mutate]);
 
+  /* سینک خودکار هنگام شروع برنامه — داده را از ابر تازه و ابر را از دادهٔ محلی به‌روز می‌کند */
+  const bootSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!syncOn || bootSyncedRef.current) return;
+    bootSyncedRef.current = true;
+    (async () => {
+      const s = stateRef.current;
+      try {
+        const pull = await pullFromCloud(s.prefs);
+        if (pull.ok && pull.state && pull.updatedAt) {
+          const localTime = new Date(s.lastSync).toISOString();
+          if (pull.updatedAt > localTime) {
+            mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "بازیابی خودکار از ابر هنگام شروع");
+          }
+        }
+      } catch { /* شبکه قطع است — از دادهٔ محلی استفاده می‌شود */ }
+      try {
+        await pushToCloud(stateRef.current, stateRef.current.prefs);
+        pushedRef.current = JSON.stringify(stateRef.current);
+      } catch { /* بعداً با دیباونس دوباره تلاش می‌شود */ }
+    })();
+  }, [syncOn, mutate]);
+
   /* شناسهٔ سینک — یک‌بار برای هر کاربر ساخته می‌شود */
   useEffect(() => {
     if (!state.prefs.syncId) {
