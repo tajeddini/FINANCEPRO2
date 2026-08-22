@@ -33,6 +33,7 @@ export interface TrashEntry { key: string; table: string; item: any; until: numb
 export interface Prefs {
   theme: "dark" | "light";
   accent?: string;
+  notifyEnabled?: boolean;
   pin?: string;
   pinEnabled?: boolean;
   botToken?: string;
@@ -215,19 +216,76 @@ const CAT_HINTS: [string, string[]][] = [
   ["هدیه", ["هدیه", "عیدی", "تولد"]],
 ];
 
-export function detectSmart(text: string, categories: Category[]): { amount: number; categoryId?: ID } {
+const AMOUNT_HINTS: [string, string[]][] = [
+  ["خوراک", ["سوپر", "رستوران", "کافه", "قهوه", "میوه", "نان", "غذا", "فست‌فود", "پیتزا", "کباب", "شیرینی"]],
+  ["رفت‌وآمد", ["اسنپ", "تاکسی", "مترو", "اتوبوس", "بنزین", "پمپ بنزین", "پارکینگ", "قطار", "هواپیما"]],
+  ["خانه و اجاره", ["اجاره", "قبض", "برق", "گاز", "آب", "شارژ", "اینترنت"]],
+  ["سلامت", ["دارو", "داروخانه", "دکتر", "ویزیت", "بیمارستان", "باشگاه", "ورزش", "دندان"]],
+  ["تفریح", ["سینما", "کنسرت", "بازی", "سفر", "تئاتر", "شهربازی"]],
+  ["پوشاک", ["لباس", "کفش", "پیراهن", "مانتو", "پوشاک"]],
+  ["آموزش", ["کتاب", "کلاس", "دوره", "آموزش", "زبان", "شهریه"]],
+  ["اشتراک", ["اشتراک", "فیلم", "موزیک", "اسپاتیفای", "فیلیمو", "فیلم‌نت"]],
+  ["حقوق", ["حقوق", "دستمزد", "واریز شرکت"]],
+  ["پروژه", ["پروژه", "فریلنس", "طراحی سایت", "قرارداد"]],
+  ["هدیه", ["هدیه", "عیدی", "تولد"]],
+];
+
+export interface SmartDetect {
+  amount: number;
+  categoryId?: ID;
+  accountId?: ID;
+  income?: boolean;
+}
+
+/**
+ * تشخیص هوشمند مبلغ، دسته و حساب از متن توضیح
+ * مثال: «اسنپ ۵۰ هزار از کارت ملت» → مبلغ ۵۰٬۰۰۰، دسته رفت‌وآمد، حساب ملت
+ */
+export function detectSmart(text: string, categories: Category[], accounts?: Account[]): SmartDetect {
   const en = toEnDigits(text);
-  const m = en.match(/([\d,،٬]+(?:\.\d+)?)/);
-  let amount = 0;
-  if (m) amount = parseFloat(m[1].replace(/[,،٬]/g, "")) || 0;
   const lower = text.toLowerCase();
-  for (const [name, hints] of CAT_HINTS) {
+
+  /* مبلغ: عدد + واحد (هزار، میلیون، میلیارد) */
+  let amount = 0;
+  const m = en.match(/([\d,،٬]+(?:\.\d+)?)\s*(میلیارد|میلیون|هزار|هزارت|تومن|تومان|توم|ت)?/);
+  if (m) {
+    const base = parseFloat(m[1].replace(/[,،٬]/g, "")) || 0;
+    const unit = m[2] ?? "";
+    if (unit.startsWith("میلیارد")) amount = base * 1_000_000_000;
+    else if (unit.startsWith("میلیون")) amount = base * 1_000_000;
+    else if (unit.startsWith("هزار")) amount = base * 1_000;
+    else amount = base;
+  }
+
+  /* دسته */
+  let categoryId: ID | undefined;
+  for (const [name, hints] of AMOUNT_HINTS) {
     if (hints.some((h) => lower.includes(h))) {
-      const c = categories.find((c) => c.name === name);
-      if (c) return { amount, categoryId: c.id };
+      const c = categories.find((x) => x.name === name);
+      if (c) { categoryId = c.id; break; }
     }
   }
-  return { amount };
+
+  /* نوع: درآمد یا هزینه */
+  const income = /(درآمد|واریز|حقوق|دریافت|طلب|فروش)/.test(lower);
+
+  /* حساب بانکی */
+  let accountId: ID | undefined;
+  if (accounts?.length) {
+    for (const a of accounts) {
+      const name = a.name.toLowerCase();
+      if (lower.includes(name)) { accountId = a.id; break; }
+      /* کلمات کلیدی بانک‌ها */
+      const bankHints = name.replace(/بانک|کارت/g, "").trim();
+      if (bankHints.length > 1 && lower.includes(bankHints)) { accountId = a.id; break; }
+    }
+    if (!accountId && /نقد/.test(lower)) {
+      const cash = accounts.find((a) => /نقد/.test(a.name));
+      if (cash) accountId = cash.id;
+    }
+  }
+
+  return { amount, categoryId, accountId, income: income || undefined };
 }
 
 /* ---------- اجرای تراکنش‌های دوره‌ای سررسیدشده ---------- */

@@ -234,11 +234,18 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 /* ---------- تم‌های رنگی ترکیبی ---------- */
 html[data-accent="emerald"] { --fp-accent: #e8b04b; --fp-mint: #2fb98a; }
+html[data-accent="emerald-dark"] { --fp-accent: #34d399; --fp-mint: #5eead4; }
 html[data-accent="saffron"] { --fp-accent: #ff8f45; --fp-mint: #14c4a8; }
 html[data-accent="ruby"] { --fp-accent: #ff5e7e; --fp-mint: #ff9db4; }
 html[data-accent="royal"] { --fp-accent: #7aa2f7; --fp-mint: #54d6e8; }
 html[data-accent="copper"] { --fp-accent: #dd9460; --fp-mint: #b3c968; }
+
+/* تم زمردی دارک — پس‌زمینهٔ عمیق‌تر و سبزتر */
+html[data-accent="emerald-dark"] { --fp-bg: #04110d; --fp-bg2: #071a14; --fp-pine: #03100c; }
+html[data-accent="emerald-dark"].light { --fp-bg: #eef8f2; --fp-bg2: #e2f2e9; --fp-pine: #0a3b2a; }
+
 html[data-accent="emerald"] .brand-swatch { background: linear-gradient(135deg, #e8b04b 0 52%, #2fb98a 52%); }
+html[data-accent="emerald-dark"] .brand-swatch { background: linear-gradient(135deg, #34d399 0 52%, #5eead4 52%); }
 html[data-accent="saffron"] .brand-swatch { background: linear-gradient(135deg, #ff8f45 0 52%, #14c4a8 52%); }
 html[data-accent="ruby"] .brand-swatch { background: linear-gradient(135deg, #ff5e7e 0 52%, #ff9db4 52%); }
 html[data-accent="royal"] .brand-swatch { background: linear-gradient(135deg, #7aa2f7 0 52%, #54d6e8 52%); }

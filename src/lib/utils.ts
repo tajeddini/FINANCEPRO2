@@ -268,6 +268,54 @@ export function useInView<T extends HTMLElement>(threshold = 0.12): [React.Mutab
   return [ref, inView];
 }
 
+/** پخش زنگ یادآور — سه نُت با تکرار */
+export function playChime(times = 3) {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const notes = [880, 1174.7, 1567.98]; // لا، ر، سل
+    for (let r = 0; r < times; r++) {
+      notes.forEach((f, i) => {
+        const t = ctx.currentTime + r * 0.9 + i * 0.16;
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.28, t + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+        o.connect(g).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.32);
+      });
+    }
+    window.setTimeout(() => ctx.close(), times * 900 + 600);
+  } catch { /* بدون صدا */ }
+}
+
+/** اعلان سیستمی — از Service Worker تا حتی وقتی تب در پس‌زمینه است */
+export async function fireNotification(title: string, body: string) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const opts: NotificationOptions = {
+    body,
+    icon: "/icon.svg",
+    badge: "/icon.svg",
+    tag: title,
+    requireInteraction: true,
+  };
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.showNotification(title, { ...opts, vibrate: [220, 120, 220] } as NotificationOptions & { vibrate: number[] });
+      return;
+    }
+  } catch { /* fallback */ }
+  try {
+    new Notification(title, opts);
+  } catch { /* ignore */ }
+}
+
 /** کپی در کلیپ‌بورد با fallback */
 export async function copyText(s: string): Promise<boolean> {
   try {

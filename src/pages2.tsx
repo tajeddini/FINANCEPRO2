@@ -1,17 +1,17 @@
 /* ---------- صفحه‌های اصلی برنامه (بخش دوم) ---------- */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bot, CalendarDays, Check, Cloud, Clock3, Copy, Download, FileDown,
+  BarChart3, Bell, Bot, CalendarDays, Check, Cloud, Clock3, Copy, Download, FileDown,
   KeyRound, Lock, Moon, Palette, PencilLine, Plus, Printer, RefreshCw, Shield,
   Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useStore, type AppState, type ID, type Appointment } from "./lib/data";
 import {
-  addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
+  addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
-  copyText, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA, relTime,
-  todayISO, useNow, WEEKDAYS_MIN,
+  copyText, fireNotification, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA,
+  playChime, relTime, todayISO, useNow, WEEKDAYS_MIN,
 } from "./lib/utils";
 import { THEMES, applyAccent } from "./lib/themes";
 import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs } from "./lib/cloud";
@@ -68,6 +68,41 @@ export function AppointmentsPage() {
         <button className="btn btn-gold" onClick={() => { setEditing(null); setOpenForm(true); }}>
           <Plus className="w-4 h-4" strokeWidth={3} /> قرار جدید
         </button>
+      </div>
+
+      {/* یادآور صوتی */}
+      <div className="card p-4 flex flex-wrap items-center gap-3 rise-in" style={{ ["--d" as string]: "40ms" }}>
+        <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0"
+          style={{ background: state.prefs.notifyEnabled ? "color-mix(in srgb, var(--fp-mint) 14%, transparent)" : "var(--fp-bg3)", color: state.prefs.notifyEnabled ? "var(--fp-mint)" : "var(--fp-text3)" }}>
+          <Bell className="w-5 h-5" />
+        </span>
+        <div className="flex-1 min-w-[180px]">
+          <p className="text-[13px] font-black">یادآور صوتی قرارها</p>
+          <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
+            {state.prefs.notifyEnabled
+              ? "فعال — سرِ ساعت، زنگ می‌خورد و اعلان می‌آید (حتی اگر برنامه در پس‌زمینه باشد)"
+              : "وقتی وقت قرار برسد، زنگ صوتی + اعلان سیستم می‌گیرید"}
+          </p>
+        </div>
+        {state.prefs.notifyEnabled ? (
+          <div className="flex gap-2">
+            <button className="btn btn-ghost btn-sm" onClick={() => { playChime(1); void fireNotification("فایننس‌پرو", "یادآور صوتی کار می‌کند 🔔"); }}>تست زنگ</button>
+            <button className="btn btn-danger btn-sm" onClick={() => { mutate((d) => { d.prefs.notifyEnabled = false; }, "یادآور صوتی غیرفعال شد"); toast("ok", "یادآور صوتی خاموش شد."); }}>غیرفعال</button>
+          </div>
+        ) : (
+          <button className="btn btn-mint btn-sm" onClick={async () => {
+            let granted = true;
+            if ("Notification" in window && Notification.permission === "default") {
+              granted = (await Notification.requestPermission()) === "granted";
+            } else if ("Notification" in window && Notification.permission === "denied") {
+              granted = false;
+            }
+            if (!granted) return toast("warn", "اجازهٔ اعلان داده نشد — از تنظیمات مرورگر اجازه بدهید.");
+            mutate((d) => { d.prefs.notifyEnabled = true; }, "یادآور صوتی فعال شد");
+            playChime(1);
+            toast("ok", "یادآور صوتی فعال شد — سرِ ساعتِ قرارها زنگ می‌خورد.");
+          }}>فعال‌سازی</button>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-5">
@@ -191,6 +226,97 @@ const nextHourTime = () => {
   return `${String(d.getHours()).padStart(2, "0")}:00`;
 };
 
+/* ---------- چرخ انتخاب ساعت و دقیقه ---------- */
+function TimeWheel({ value, onChange, onPresetDate }: {
+  value: string;
+  onChange: (t: string) => void;
+  onPresetDate?: (iso: string) => void;
+}) {
+  const hh = value.split(":")[0] ?? "18";
+  const mm = value.split(":")[1] ?? "00";
+  const hourRef = useRef<HTMLDivElement>(null);
+  const minRef = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
+
+  const center = (el: HTMLDivElement | null, idx: number) => {
+    if (!el) return;
+    el.scrollTo({ left: idx * 48 - el.clientWidth / 2 + 20, behavior: mounted.current ? "smooth" : "auto" });
+  };
+  useEffect(() => { center(hourRef.current, Number(hh)); }, [hh]);
+  useEffect(() => { center(minRef.current, Number(mm)); }, [mm]);
+  useEffect(() => { mounted.current = true; }, []);
+
+  const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+  const MINS = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+
+  const now = new Date();
+  const p = (n: number) => String(n).padStart(2, "0");
+  const presets = [
+    {
+      label: "الان",
+      time: `${p(now.getHours())}:${p(now.getMinutes())}`,
+      date: todayISO(),
+    },
+    {
+      label: "۳۰ دقیقه دیگر",
+      time: (() => { const d = new Date(Date.now() + 30 * 60000); return `${p(d.getHours())}:${p(d.getMinutes())}`; })(),
+      date: Date.now() + 30 * 60000 > new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59).getTime() ? addDaysISO(todayISO(), 1) : todayISO(),
+    },
+    {
+      label: "۱ ساعت دیگر",
+      time: (() => { const d = new Date(Date.now() + 60 * 60000); return `${p(d.getHours())}:${p(d.getMinutes())}`; })(),
+      date: Date.now() + 60 * 60000 > new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59).getTime() ? addDaysISO(todayISO(), 1) : todayISO(),
+    },
+    { label: "فردا ۹ صبح", time: "09:00", date: addDaysISO(todayISO(), 1) },
+  ];
+
+  const row = (items: string[], sel: string, onSel: (v: string) => void, ref: React.MutableRefObject<HTMLDivElement | null>, color: string) => (
+    <div ref={ref} dir="ltr"
+      className="flex gap-1.5 overflow-x-auto py-1.5 px-1 snap-x"
+      style={{ scrollbarWidth: "none" }}>
+      {items.map((it) => {
+        const on = it === sel;
+        return (
+          <button key={it} onClick={() => onSel(it)}
+            className="snap-center shrink-0 w-10 h-10 rounded-xl grid place-items-center text-[13px] font-black tabular transition-all duration-150 cursor-pointer"
+            style={{
+              background: on ? color : "var(--fp-bg)",
+              color: on ? "#071b16" : "var(--fp-text2)",
+              border: on ? "none" : "1px solid var(--fp-border)",
+              transform: on ? "scale(1.12)" : "scale(1)",
+              boxShadow: on ? "0 6px 16px -6px color-mix(in srgb, " + color + " 70%, transparent)" : "none",
+            }}>
+            {faNum(it)}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl border p-3.5" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[11.5px] font-black flex items-center gap-1.5" style={{ color: "var(--fp-text3)" }}>
+          <Clock3 className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> ساعت (۲۴ ساعته)
+        </span>
+        <span dir="ltr" className="font-display text-3xl leading-none tabular" style={{ color: "var(--fp-accent)" }}>
+          {faNum(hh)}<span className="opacity-50">:</span>{faNum(mm)}
+        </span>
+      </div>
+      {row(HOURS, hh, (h) => onChange(`${h}:${mm}`), hourRef, "var(--fp-accent)")}
+      {row(MINS, mm, (m) => onChange(`${hh}:${m}`), minRef, "var(--fp-mint)")}
+      <div className="flex gap-1.5 flex-wrap mt-2">
+        {presets.map((pr) => (
+          <button key={pr.label} onClick={() => { onChange(pr.time); onPresetDate?.(pr.date); }}
+            className="chip !py-1 !text-[10.5px]">
+            {pr.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => void; editing: Appointment | null }) {
   const { mutate } = useStore();
   const toast = useToast();
@@ -212,25 +338,12 @@ function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => vo
             <MicButton onText={setTitle} />
           </div>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="ساعت و دقیقه (۲۴ ساعته)">
-            <div className="grid grid-cols-2 gap-2">
-              <TSelect aria-label="ساعت" value={time.split(":")[0] ?? "18"}
-                onChange={(e) => setTime(`${e.target.value}:${time.split(":")[1] ?? "00"}`)}>
-                {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
-                  <option key={h} value={h}>{faNum(h)} — ساعت</option>
-                ))}
-              </TSelect>
-              <TSelect aria-label="دقیقه" value={time.split(":")[1] ?? "00"}
-                onChange={(e) => setTime(`${time.split(":")[0] ?? "18"}:${e.target.value}`)}>
-                {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0")).map((m) => (
-                  <option key={m} value={m}>{faNum(m)} — دقیقه</option>
-                ))}
-              </TSelect>
-            </div>
-          </Field>
-          <Field label="یادداشت"><TInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-        </div>
+        <Field label="یادداشت"><TInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
+        <TimeWheel
+          value={time}
+          onChange={setTime}
+          onPresetDate={(iso) => setDate(iso)}
+        />
         <Field label="تاریخ (شمسی)"><JalaliPicker value={date} onChange={setDate} /></Field>
         <div className="flex justify-end gap-2 mt-1">
           <button className="btn btn-ghost" onClick={onClose}>انصراف</button>

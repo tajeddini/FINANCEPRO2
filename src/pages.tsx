@@ -29,22 +29,26 @@ export function TxModal({
   const { state, mutate } = useStore();
   const toast = useToast();
   const [type, setType] = useState<"income" | "expense">("expense");
-  const [title, setTitle] = useState("");
+  const [note, setNote] = useState("");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [pay, setPay] = useState("کارت");
   const [touchedCat, setTouchedCat] = useState(false);
+  const [smart, setSmart] = useState(() => localStorage.getItem("fp_smart") === "1");
+  const [detected, setDetected] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
+    setDetected([]);
     if (editing) {
-      setType(editing.type); setTitle(editing.title); setAmount(String(editing.amount));
+      setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
+      setAmount(String(editing.amount));
       setCategoryId(editing.categoryId); setAccountId(editing.accountId);
       setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTouchedCat(true);
     } else {
-      setType("expense"); setTitle(""); setAmount(""); setDate(todayISO()); setPay("کارت");
+      setType("expense"); setNote(""); setAmount(""); setDate(todayISO()); setPay("کارت");
       setTouchedCat(false);
       setAccountId(state.accounts[0]?.id ?? "");
       setCategoryId(state.categories.find((c) => c.type === "expense")?.id ?? "");
@@ -56,33 +60,57 @@ export function TxModal({
     setCategoryId(state.categories.find((c) => c.type === type)?.id ?? "");
   }, [type, open]);
 
-  const onTitle = (v: string) => {
-    setTitle(v);
-    if (v.length > 2) {
-      const hint = detectSmart(v, state.categories);
-      if (hint.categoryId && !touchedCat) setCategoryId(hint.categoryId);
+  /* تشخیص هوشمند — با تغییر توضیح */
+  const runDetect = (text: string) => {
+    if (!text.trim() || text.trim().length < 3) { setDetected([]); return; }
+    const r = detectSmart(text, state.categories, state.accounts);
+    const found: string[] = [];
+    if (r.amount > 0) { setAmount(String(Math.round(r.amount))); found.push(`مبلغ: ${faMoney(r.amount)}`); }
+    if (r.categoryId) {
+      setCategoryId(r.categoryId); setTouchedCat(true);
+      const c = state.categories.find((x) => x.id === r.categoryId);
+      if (c) { setType(c.type); found.push(`دسته: ${c.name}`); }
     }
+    if (r.accountId) {
+      setAccountId(r.accountId);
+      const a = state.accounts.find((x) => x.id === r.accountId);
+      if (a) found.push(`حساب: ${a.name}`);
+    }
+    if (r.income && !r.categoryId) { setType("income"); found.push("نوع: درآمد"); }
+    setDetected(found);
+  };
+
+  const onNote = (v: string) => {
+    setNote(v);
+    if (smart) runDetect(v);
+  };
+
+  const toggleSmart = (v: boolean) => {
+    setSmart(v);
+    try { localStorage.setItem("fp_smart", v ? "1" : "0"); } catch { /* ignore */ }
+    if (v && note.trim()) runDetect(note);
   };
 
   const submit = () => {
     const amt = Number(amount) || 0;
-    if (!title.trim()) return toast("warn", "عنوان تراکنش را بنویسید.");
     if (amt <= 0) return toast("warn", "مبلغ باید بزرگ‌تر از صفر باشد.");
+    const cat = state.categories.find((c) => c.id === categoryId);
+    const label = cat?.name ?? "تراکنش";
     if (editing) {
       mutate((d) => {
         const t = d.transactions.find((x) => x.id === editing.id);
-        if (t) Object.assign(t, { title: title.trim(), amount: amt, type, categoryId, accountId, date, payMethod: pay });
-      }, `تراکنش «${title.trim()}» ویرایش شد`);
+        if (t) Object.assign(t, { title: label, note: note.trim() || undefined, amount: amt, type, categoryId, accountId, date, payMethod: pay });
+      }, `تراکنش «${label}» ویرایش شد`);
       toast("ok", "تراکنش ویرایش شد.");
     } else {
       mutate((d) => {
         d.transactions.unshift({
           id: Math.random().toString(36).slice(2, 10), date, type, amount: amt,
-          title: title.trim(), categoryId, accountId, payMethod: pay,
+          title: label, note: note.trim() || undefined, categoryId, accountId, payMethod: pay,
           createdAt: Date.now(), source: "app",
         });
-      }, `تراکنش «${title.trim()}» ثبت شد`);
-      toast("ok", `«${title.trim()}» ثبت شد.`);
+      }, `تراکنش «${label}» ثبت شد`);
+      toast("ok", `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
     }
     onClose();
   };
@@ -106,13 +134,58 @@ export function TxModal({
           </button>
         ))}
       </div>
+
+      {/* کلید تشخیص هوشمند */}
+      <button
+        onClick={() => toggleSmart(!smart)}
+        className="w-full flex items-center gap-3 rounded-xl border px-4 py-3 mb-4 transition-all duration-200 cursor-pointer"
+        style={{
+          borderColor: smart ? "color-mix(in srgb, var(--fp-accent) 60%, transparent)" : "var(--fp-border)",
+          background: smart ? "color-mix(in srgb, var(--fp-accent) 9%, transparent)" : "var(--fp-bg)",
+        }}
+      >
+        <Sparkles className="w-5 h-5 shrink-0" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text3)" }} />
+        <span className="text-[13px] font-black" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text2)" }}>
+          تشخیص هوشمند
+        </span>
+        <span className="text-[10.5px] font-bold flex-1" style={{ color: "var(--fp-text3)" }}>
+          مبلغ، دسته و کارت بانکی را از توضیحات حدس می‌زند
+        </span>
+        <span
+          className="w-11 h-6 rounded-full p-1 flex transition-all duration-250 shrink-0"
+          style={{ background: smart ? "var(--fp-accent)" : "var(--fp-border2)", justifyContent: smart ? "flex-end" : "flex-start" }}
+        >
+          <span className="w-4 h-4 rounded-full bg-white shadow transition-transform" />
+        </span>
+      </button>
+
+      {detected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4 rise-in">
+          {detected.map((d) => (
+            <span key={d} className="text-[10.5px] font-black px-2.5 py-1 rounded-full flex items-center gap-1"
+              style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)" }}>
+              <Sparkles className="w-3 h-3" /> {d}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 gap-4">
-        <Field label="عنوان">
-          <div className="flex gap-2">
-            <TInput value={title} onChange={(e) => onTitle(e.target.value)} placeholder="مثلاً: خرید سوپرمارکت" autoFocus />
-            <MicButton onText={(t) => { setTitle(t); onTitle(t); }} />
-          </div>
-        </Field>
+        <div className="sm:col-span-2">
+          <Field label="توضیحات (اختیاری — تراکنش با نام دسته ثبت می‌شود)">
+            <div className="flex gap-2 items-start">
+              <textarea
+                value={note}
+                onChange={(e) => onNote(e.target.value)}
+                placeholder={smart ? "مثلاً: اسنپ ۵۰ هزار از کارت ملت" : "مثلاً: خرید از سوپرمارکت یاس"}
+                rows={2}
+                className="input resize-none !text-[13.5px] !leading-6 flex-1"
+                autoFocus
+              />
+              <MicButton onText={(t) => onNote(t)} />
+            </div>
+          </Field>
+        </div>
         <Field label="مبلغ (تومان)">
           <AmountInput value={amount} onChange={setAmount} />
         </Field>
@@ -435,7 +508,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative grow max-w-xs">
             <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3" style={{ color: "var(--fp-text3)" }} />
-            <TInput className="!ps-9" placeholder="جست‌وجو در عنوان…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <TInput className="!ps-9" placeholder="جست‌وجو در توضیحات و دسته‌ها…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           {([["all", "همه"], ["income", "درآمدها"], ["expense", "هزینه‌ها"]] as const).map(([k, l]) => (
             <button key={k} className={`chip ${type === k ? "chip-on" : ""}`} onClick={() => setType(k)}>
@@ -480,21 +553,29 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-[13.5px] font-black truncate flex items-center gap-1.5">
-                          {tx.title}
-                          {tx.source === "bot" && <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "color-mix(in srgb, var(--fp-sky) 15%, transparent)", color: "var(--fp-sky)" }}>ربات</span>}
+                          <span className="px-1.5 py-0.5 rounded-md text-[10.5px]" style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>{c?.name ?? tx.title}</span>
+                          {tx.note && <span className="truncate">{tx.note}</span>}
+                          {tx.source === "bot" && <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "color-mix(in srgb, var(--fp-sky) 15%, transparent)", color: "var(--fp-sky)" }}>ربات</span>}
                         </p>
                         <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
-                          {c?.name} · {accById(state, tx.accountId)?.name} · {tx.payMethod ?? "—"}
+                          {accById(state, tx.accountId)?.name} · {tx.payMethod ?? "—"}
                         </p>
                       </div>
                       <span className="text-[13.5px] font-black tabular" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                         {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
                       </span>
-                      <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="icon-btn" title="ویرایش" onClick={() => { setEditing(tx); setOpenEdit(true); }}><PencilLine className="w-4 h-4" /></button>
-                        <button className="icon-btn hover:!text-[var(--fp-coral)]" title="حذف (۳۰ ثانیه بازگشت)"
-                          onClick={() => trashItem("transactions", tx.id, tx.title)}>
-                          <Trash2 className="w-4 h-4" />
+                      <div className="flex gap-1.5">
+                        <button
+                          className="flex items-center gap-1 text-[11px] font-black px-2.5 py-2 rounded-lg transition-all duration-150 cursor-pointer hover:scale-105"
+                          style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 35%, transparent)" }}
+                          onClick={() => { setEditing(tx); setOpenEdit(true); }}>
+                          <PencilLine className="w-3.5 h-3.5" /><span className="hidden sm:inline">ویرایش</span>
+                        </button>
+                        <button
+                          className="flex items-center gap-1 text-[11px] font-black px-2.5 py-2 rounded-lg transition-all duration-150 cursor-pointer hover:scale-105"
+                          style={{ background: "color-mix(in srgb, var(--fp-coral) 14%, transparent)", color: "var(--fp-coral)", border: "1px solid color-mix(in srgb, var(--fp-coral) 35%, transparent)" }}
+                          onClick={() => trashItem("transactions", tx.id, tx.note || tx.title)}>
+                          <Trash2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">حذف</span>
                         </button>
                       </div>
                     </div>
@@ -645,13 +726,14 @@ export function CategoriesPage({ onDrill }: { onDrill: (catId: string, period: P
 
 /* ================= ۴) بدهی‌ها ================= */
 export function DebtsPage() {
-  const { state, mutate } = useStore();
+  const { state, mutate, trashItem } = useStore();
   const toast = useToast();
   const [tab, setTab] = useState<"debt" | "credit" | "inst">("debt");
   const [payFor, setPayFor] = useState<{ id: string; person: string; remaining: number } | null>(null);
   const [payAmt, setPayAmt] = useState("");
   const [loan, setLoan] = useState({ p: "10000000", r: "23", n: "12" });
   const [qr, setQr] = useState<string | null>(null);
+  const [editDebt, setEditDebt] = useState<{ id: string; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string } | null>(null);
 
   const debts = state.debts.filter((d) => d.kind === tab);
   const emi = calcEMI(Number(loan.p) || 0, Number(loan.r) || 0, Number(loan.n) || 0);
@@ -703,6 +785,20 @@ export function DebtsPage() {
                     </div>
                   </div>
                   <div className="mt-3"><Bar pct={(d.paid / d.amount) * 100} color={tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)"} /></div>
+                  <div className="flex gap-1.5 mt-3 pt-3 border-t" style={{ borderColor: "var(--fp-border)" }}>
+                    <button
+                      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105"
+                      style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 35%, transparent)" }}
+                      onClick={() => setEditDebt({ id: d.id, kind: d.kind, person: d.person, amount: d.amount, paid: d.paid, due: d.due, note: d.note })}>
+                      <PencilLine className="w-3.5 h-3.5" /> ویرایش
+                    </button>
+                    <button
+                      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105"
+                      style={{ background: "color-mix(in srgb, var(--fp-coral) 13%, transparent)", color: "var(--fp-coral)", border: "1px solid color-mix(in srgb, var(--fp-coral) 35%, transparent)" }}
+                      onClick={() => trashItem("debts", d.id, `${tab === "debt" ? "بدهی" : "طلب"} ${d.person}`)}>
+                      <Trash2 className="w-3.5 h-3.5" /> حذف
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -774,9 +870,38 @@ export function DebtsPage() {
               const x = d.debts.find((y) => y.id === payFor!.id);
               if (x) x.paid = Math.min(x.amount, x.paid + v);
             }, `پرداخت ${faMoney(v)} به ${payFor?.person}`);
-            toast("ok", "ثبت شد."); setPayFor(null);
+            toast("ok", "ثبت شد.");
+            setPayFor(null); setPayAmt("");
           }}>ثبت</button>
         </div>
+      </Modal>
+
+      {/* مودال ویرایش بدهی/طلب */}
+      <Modal open={!!editDebt} onClose={() => setEditDebt(null)} title={editDebt?.kind === "debt" ? "ویرایش بدهی" : "ویرایش طلب"}>
+        {editDebt && (
+          <div className="grid gap-3.5">
+            <Field label="شخص"><TInput value={editDebt.person} onChange={(e) => setEditDebt({ ...editDebt, person: e.target.value })} /></Field>
+            <Field label="مبلغ کل (تومان)"><AmountInput value={String(editDebt.amount)} onChange={(v) => setEditDebt({ ...editDebt, amount: Number(v) || 0 })} /></Field>
+            <Field label="پرداخت‌شده تاکنون (تومان)"><AmountInput value={String(editDebt.paid)} onChange={(v) => setEditDebt({ ...editDebt, paid: Number(v) || 0 })} /></Field>
+            <Field label="سررسید (شمسی)"><JalaliPicker value={editDebt.due ?? todayISO()} onChange={(v) => setEditDebt({ ...editDebt, due: v })} /></Field>
+            <Field label="یادداشت"><TInput value={editDebt.note ?? ""} onChange={(e) => setEditDebt({ ...editDebt, note: e.target.value })} /></Field>
+            <div className="flex justify-end gap-2 mt-1">
+              <button className="btn btn-ghost" onClick={() => setEditDebt(null)}>انصراف</button>
+              <button className="btn btn-gold" onClick={() => {
+                if (!editDebt.person.trim() || editDebt.amount <= 0) return toast("warn", "شخص و مبلغ را کامل کنید.");
+                mutate((d) => {
+                  const x = d.debts.find((y) => y.id === editDebt.id);
+                  if (x) Object.assign(x, {
+                    person: editDebt.person.trim(), amount: editDebt.amount,
+                    paid: Math.min(editDebt.paid, editDebt.amount), due: editDebt.due, note: editDebt.note?.trim() || undefined,
+                  });
+                }, `ویرایش ${editDebt.kind === "debt" ? "بدهی" : "طلب"} «${editDebt.person.trim()}»`);
+                toast("ok", "ویرایش ذخیره شد.");
+                setEditDebt(null);
+              }}>ذخیرهٔ تغییرات</button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Modal open={!!qr} onClose={() => setQr(null)} title="QR درخواست وجه">

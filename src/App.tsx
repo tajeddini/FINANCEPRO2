@@ -1,7 +1,7 @@
 /* ---------- پوسته: مسیریابی، ورود/ثبت‌نام، جستجو، یادآوری، نوار بازگشت ---------- */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, CalendarDays, Coins, LayoutDashboard, List, LogOut, Moon,
+  BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Moon,
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Sun, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
@@ -10,7 +10,7 @@ import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
-import { faNum, faTime, jalaliDateStr, relTime, useNow } from "./lib/utils";
+import { faNum, faTime, fireNotification, jalaliDateStr, playChime, relTime, useNow } from "./lib/utils";
 import { ToastProvider, useToast, Modal, TInput, Field } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
 import { AppointmentsPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
@@ -235,6 +235,26 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const [searchQ, setSearchQ] = useState("");
   const remindedRef = useRef(false);
 
+  /* ---------- نصب PWA ---------- */
+  const [installEvt, setInstallEvt] = useState<Event | null>(null);
+  const [installed, setInstalled] = useState(false);
+  useEffect(() => {
+    const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvt(e); };
+    const onInstalled = () => { setInstalled(true); setInstallEvt(null); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+  const doInstall = async () => {
+    if (!installEvt) return;
+    (installEvt as Event & { prompt: () => void }).prompt();
+    await (installEvt as Event & { userChoice: Promise<{ outcome: string }> }).userChoice;
+    setInstallEvt(null);
+  };
+
   /* تم */
   useEffect(() => {
     const t = state.prefs.theme ?? "dark";
@@ -323,7 +343,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     if (state.prefs.pinEnabled && state.prefs.pin) setLocked(true);
   }, []);
 
-  /* یادآوری قرارها */
+  /* یادآوری قرارها — اعلان یک‌ساعت‌قبل */
   useEffect(() => {
     if (remindedRef.current) return;
     const today = now.toISOString().slice(0, 10);
@@ -338,6 +358,27 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       toast("warn", `یادآوری: «${soon.title}» ساعت ${faNum(soon.time)} — تا یک ساعت دیگر`);
     }
   }, [state.appointments, now, toast]);
+
+  /* ---------- زنگِ سرِ ساعت ----------
+     هر ۱۵ ثانیه بررسی می‌شود؛ وقتی وقتِ یک قرار برسد، زنگ صوتی + اعلان سیستم
+     پخش می‌شود (از Service Worker تا حتی وقتی برنامه در پس‌زمینه است). */
+  useEffect(() => {
+    if (!state.prefs.notifyEnabled) return;
+    const today = now.toISOString().slice(0, 10);
+    const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    for (const a of state.appointments) {
+      if (a.date !== today || a.done) continue;
+      const [h, m] = a.time.split(":").map(Number);
+      const at = h * 3600 + m * 60;
+      const key = `fp_ring_${a.id}_${a.date}`;
+      if (nowSec >= at && nowSec < at + 60 && !sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, "1");
+        playChime(3);
+        toast("warn", `🔔 وقتِ «${a.title}» رسید — ساعت ${faNum(a.time)}`);
+        void fireNotification(`وقتِ «${a.title}» رسید`, `ساعت ${faNum(a.time)} — فایننس‌پرو`);
+      }
+    }
+  }, [now, state.appointments, state.prefs.notifyEnabled, toast]);
 
   /* پاکسازی سطل */
   useEffect(() => {
@@ -442,6 +483,11 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               </div>
 
               <SyncBadge />
+              {installEvt && !installed && (
+                <button className="btn btn-mint btn-sm" onClick={doInstall} title="نصب روی دستگاه">
+                  <Download className="w-4 h-4" /> <span className="hidden sm:inline">نصب اپ</span>
+                </button>
+              )}
               <ThemeToggle />
               <AccentCycle />
               <button className="btn btn-gold btn-sm" onClick={() => setQuickAdd(true)}>

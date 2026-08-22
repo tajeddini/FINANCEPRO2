@@ -8,6 +8,7 @@ export interface ThemeDef {
 
 export const THEMES: ThemeDef[] = [
   { id: "emerald", name: "زمرد و طلا", accent: "#e8b04b", mint: "#2fb98a" },
+  { id: "emerald-dark", name: "زمردی دارک", accent: "#34d399", mint: "#5eead4" },
   { id: "saffron", name: "زعفرانی و فیروزه", accent: "#ff8f45", mint: "#14c4a8" },
   { id: "ruby", name: "یاقوتی و صورتی", accent: "#ff5e7e", mint: "#ff9db4" },
   { id: "royal", name: "آبی سلطنتی و آسمان", accent: "#7aa2f7", mint: "#54d6e8" },
