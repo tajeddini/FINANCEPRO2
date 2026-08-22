@@ -91,3 +91,6 @@ export function deleteAccount(userId: string) {
   localStorage.removeItem(`fp_data_${userId}`);
   setSession(null);
 }
+
+/** فهرست کاربران ثبت‌شدهٔ این دستگاه — برای نمایش چندکاربره */
+export const listUsers = (): User[] => loadUsers();

@@ -1,18 +1,21 @@
 /* ---------- صفحه‌های اصلی برنامه (بخش دوم) ---------- */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bot, CalendarDays, Cloud, Clock3, Download, FileDown, KeyRound,
-  Lock, Moon, PencilLine, Plus, Printer, Shield, Sun, Target, Trash2,
-  TrendingUp, Upload, X,
+  BarChart3, Bot, CalendarDays, Check, Cloud, Clock3, Copy, Download, FileDown,
+  KeyRound, Lock, Moon, Palette, PencilLine, Plus, Printer, RefreshCw, Shield,
+  Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { useStore, type AppState, type ID, type Appointment } from "./lib/data";
 import {
   addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
-  jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA, relTime, todayISO,
-  useNow, WEEKDAYS_MIN,
+  copyText, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA, relTime,
+  todayISO, useNow, WEEKDAYS_MIN,
 } from "./lib/utils";
+import { THEMES, applyAccent } from "./lib/themes";
+import { encodeState, decodeState, pushToCloud, pullFromCloud } from "./lib/cloud";
+import { listUsers } from "./lib/auth";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
   TInput, TSelect, useToast,
@@ -181,6 +184,13 @@ export function AppointmentsPage() {
 function ChevL() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>; }
 function ChevR() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>; }
 
+/** ساعتِ رندِ بعدی — برای پیش‌فرض قرار جدید */
+const nextHourTime = () => {
+  const d = new Date();
+  d.setHours(d.getHours() + 1, 0, 0, 0);
+  return `${String(d.getHours()).padStart(2, "0")}:00`;
+};
+
 function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => void; editing: Appointment | null }) {
   const { mutate } = useStore();
   const toast = useToast();
@@ -191,7 +201,7 @@ function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (!open) return;
     setTitle(editing?.title ?? ""); setDate(editing?.date ?? todayISO());
-    setTime(editing?.time ?? "18:00"); setNote(editing?.note ?? "");
+    setTime(editing?.time ?? nextHourTime()); setNote(editing?.note ?? "");
   }, [open, editing]);
   return (
     <Modal open={open} onClose={onClose} title={editing ? "ویرایش قرار" : "قرار جدید"}>
@@ -203,7 +213,22 @@ function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => vo
           </div>
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="ساعت (۲۴ ساعته)"><TInput dir="ltr" value={time} onChange={(e) => setTime(e.target.value)} placeholder="18:00" /></Field>
+          <Field label="ساعت و دقیقه (۲۴ ساعته)">
+            <div className="grid grid-cols-2 gap-2">
+              <TSelect aria-label="ساعت" value={time.split(":")[0] ?? "18"}
+                onChange={(e) => setTime(`${e.target.value}:${time.split(":")[1] ?? "00"}`)}>
+                {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                  <option key={h} value={h}>{faNum(h)} — ساعت</option>
+                ))}
+              </TSelect>
+              <TSelect aria-label="دقیقه" value={time.split(":")[1] ?? "00"}
+                onChange={(e) => setTime(`${time.split(":")[0] ?? "18"}:${e.target.value}`)}>
+                {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0")).map((m) => (
+                  <option key={m} value={m}>{faNum(m)} — دقیقه</option>
+                ))}
+              </TSelect>
+            </div>
+          </Field>
           <Field label="یادداشت"><TInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         </div>
         <Field label="تاریخ (شمسی)"><JalaliPicker value={date} onChange={setDate} /></Field>
@@ -749,12 +774,31 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const toast = useToast();
   const [pin, setPin] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [transferOut, setTransferOut] = useState("");
+  const [transferIn, setTransferIn] = useState("");
+  const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const p = state.prefs;
   const syncOn = !!p.syncUrl && !!p.syncKey;
+  const users = listUsers();
 
   const setPrefs = (patch: Partial<typeof p>, log?: string) =>
     mutate((d) => { d.prefs = { ...d.prefs, ...patch }; }, log);
+
+  const doSync = async () => {
+    if (!p.syncUrl || !p.syncKey) return toast("warn", "ابتدا آدرس پروژه و کلید anon را پر کنید.");
+    setSyncing(true);
+    const pull = await pullFromCloud(p);
+    if (pull.ok && pull.state && pull.updatedAt && pull.updatedAt > new Date(state.lastSync).toISOString()) {
+      mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "دریافت داده از ابر");
+      toast("ok", "نسخهٔ جدیدتر از Supabase دریافت شد.");
+    } else {
+      const push = await pushToCloud(state, p);
+      toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد — در هر مرورگری همین داده را می‌بینید." : push.message);
+    }
+    setSyncing(false);
+  };
 
   return (
     <div className="grid gap-5">
@@ -775,6 +819,41 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                   style={{ background: p.theme === "light" ? "var(--fp-accent)" : "transparent", color: p.theme === "light" ? "#071b16" : "var(--fp-text3)" }}
                   onClick={() => setPrefs({ theme: "light" }, "تم روشن شد")}><Sun className="w-3.5 h-3.5" /> روشن</button>
               </div>
+            </div>
+
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--fp-border)" }}>
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-[13px] font-bold flex items-center gap-1.5" style={{ color: "var(--fp-text2)" }}>
+                  <Palette className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> تم رنگی ترکیبی
+                </span>
+                <span className="text-[10.5px] font-black" style={{ color: "var(--fp-text3)" }}>
+                  {THEMES.find((t) => t.id === (p.accent ?? "emerald"))?.name}
+                </span>
+              </div>
+              <div className="flex gap-2.5 flex-wrap">
+                {THEMES.map((th) => {
+                  const active = (p.accent ?? "emerald") === th.id;
+                  return (
+                    <button key={th.id} title={th.name}
+                      onClick={() => { applyAccent(th.id); setPrefs({ accent: th.id }, `تم رنگی «${th.name}» فعال شد`); }}
+                      className="relative w-11 h-11 rounded-xl cursor-pointer transition-transform duration-150 hover:scale-110"
+                      style={{
+                        background: `linear-gradient(135deg, ${th.accent} 0 52%, ${th.mint} 52% 100%)`,
+                        outline: active ? "2.5px solid var(--fp-text)" : "2px solid var(--fp-border)",
+                        outlineOffset: 2,
+                      }}>
+                      {active && (
+                        <span className="absolute inset-0 grid place-items-center">
+                          <Check className="w-5 h-5" strokeWidth={3.5} style={{ color: "#071b16" }} />
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10.5px] font-bold mt-2.5" style={{ color: "var(--fp-text3)" }}>
+                دکمهٔ پالت در بالای برنامه هم تم را سریع عوض می‌کند.
+              </p>
             </div>
           </div>
 
@@ -843,12 +922,58 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
               <Field label="کلید anon (SUPABASE_KEY)"><TInput dir="ltr" type="password" placeholder="eyJhbGciOi…" value={p.syncKey ?? ""} onChange={(e) => setPrefs({ syncKey: e.target.value })} /></Field>
               <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
                 <span className="text-[12px] font-black" style={{ color: "var(--fp-text2)" }}>آخرین سینک: {relTime(state.lastSync)}</span>
-                <button className="btn btn-mint btn-sm" onClick={() => {
-                  if (!p.syncUrl || !p.syncKey) return toast("warn", "ابتدا آدرس و کلید را پر کنید.");
-                  mutate(() => { }, "سینک ابری دستی انجام شد");
-                  toast("ok", "داده‌ها با Supabase همگام شد (Realtime + پولینگ).");
-                }}>سینک دستی</button>
+                <button className="btn btn-mint btn-sm" disabled={syncing} onClick={doSync}>
+                  <RefreshCw className={`w-4 h-4 ${syncing ? "spin-slow" : ""}`} /> {syncing ? "در حال سینک…" : "سینک اکنون"}
+                </button>
               </div>
+              <p className="text-[11px] font-bold leading-6" style={{ color: "var(--fp-text3)" }}>
+                پس از اتصال، تغییرات با ۳ ثانیه تأخیر خودکار به ابر فرستاده و هر ۹۰ ثانیه بررسی می‌شود —
+                در مرورگر دیگر با همان شناسهٔ سینک، همین دفترکل را دارید.
+              </p>
+            </div>
+          </div>
+
+          {/* انتقال بین مرورگرها */}
+          <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
+            <h3 className="text-[14px] font-black flex items-center gap-2">
+              <KeyRound className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> انتقال اطلاعات به مرورگر دیگر
+            </h3>
+            <p className="text-[12px] font-bold leading-6 mt-2" style={{ color: "var(--fp-text2)" }}>
+              بدون Supabase هم می‌توانید داده‌ها را جابه‌جا کنید: کد بسازید، در مرورگر/دستگاه دیگر جای‌گذاری و وارد کنید.
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button className="btn btn-mint btn-sm" onClick={() => { setTransferOut(encodeState(state)); toast("ok", "کد انتقال ساخته شد — کپی کنید."); }}>
+                <KeyRound className="w-4 h-4" /> ساخت کد انتقال
+              </button>
+              {transferOut && (
+                <button className="btn btn-ghost btn-sm" onClick={async () => {
+                  const ok = await copyText(transferOut);
+                  setCopied(ok); setTimeout(() => setCopied(false), 1600);
+                  toast(ok ? "ok" : "err", ok ? "کد کپی شد." : "کپی ناموفق بود — دستی انتخاب و کپی کنید.");
+                }}>
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />} {copied ? "کپی شد" : "کپی کد"}
+                </button>
+              )}
+            </div>
+            {transferOut && (
+              <textarea readOnly value={transferOut} dir="ltr"
+                onFocus={(e) => e.target.select()}
+                className="input mt-3 !text-[10.5px] !leading-5 h-24 resize-none" style={{ fontFamily: "ui-monospace, monospace" }} />
+            )}
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--fp-border)" }}>
+              <Field label="کد دریافتی را اینجا بچسبانید">
+                <textarea value={transferIn} onChange={(e) => setTransferIn(e.target.value)} dir="ltr" rows={3}
+                  placeholder="eyJhY2NvdW50cyI6…"
+                  className="input !text-[10.5px] !leading-5 resize-none" style={{ fontFamily: "ui-monospace, monospace" }} />
+              </Field>
+              <button className="btn btn-gold btn-sm mt-2.5" onClick={() => {
+                if (!transferIn.trim()) return toast("warn", "کدی وارد نشده است.");
+                const d = decodeState(transferIn);
+                if (!d) return toast("err", "کد معتبر نیست — دوباره از ابتدا کپی کنید.");
+                mutate((s) => { Object.assign(s, d, { prefs: s.prefs }); }, "انتقال داده از مرورگر دیگر");
+                setTransferIn(""); setTransferOut("");
+                toast("ok", "اطلاعات با موفقیت منتقل شد.");
+              }}>وارد کردن اطلاعات</button>
             </div>
           </div>
 
@@ -864,6 +989,33 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                 <p className="text-[11px] font-bold" style={{ color: "var(--fp-text3)" }} dir="ltr">@{user.username}</p>
               </div>
             </div>
+
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--fp-border)" }}>
+              <p className="text-[11px] font-black mb-2" style={{ color: "var(--fp-text3)" }}>
+                کاربران این دستگاه — {faNum(users.length)} کاربر · دادهٔ هرکدام کاملاً جداست
+              </p>
+              <div className="grid gap-1.5">
+                {users.map((u) => (
+                  <div key={u.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors"
+                    style={{
+                      background: u.id === user.id ? "color-mix(in srgb, var(--fp-mint) 8%, transparent)" : "var(--fp-bg)",
+                      border: `1px solid ${u.id === user.id ? "var(--fp-mint)" : "var(--fp-border)"}`,
+                    }}>
+                    <span className="w-7 h-7 rounded-lg grid place-items-center font-display text-[13px] shrink-0"
+                      style={{ background: "color-mix(in srgb, var(--fp-mint) 15%, transparent)", color: "var(--fp-mint)" }}>
+                      {u.name.slice(0, 1)}
+                    </span>
+                    <span className="text-[12px] font-black flex-1 truncate">{u.name}</span>
+                    <span className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }} dir="ltr">@{u.username}</span>
+                    {u.id === user.id && <span className="chip !cursor-default !py-0.5" style={{ color: "var(--fp-mint)", borderColor: "var(--fp-mint)" }}>فعال</span>}
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10.5px] font-bold mt-2 leading-5" style={{ color: "var(--fp-text3)" }}>
+                برای کار با کاربر دیگر، خارج شوید و از صفحهٔ ورود وارد شوید — دفترکل هر کاربر حفظ می‌شود.
+              </p>
+            </div>
+
             <div className="flex flex-wrap gap-2 mt-4">
               <button className="btn btn-ghost btn-sm" onClick={() => {
                 dl(new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }), `financepro-backup-${todayISO()}.json`);

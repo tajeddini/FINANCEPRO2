@@ -267,3 +267,25 @@ export function useInView<T extends HTMLElement>(threshold = 0.12): [React.Mutab
   }, [threshold]);
   return [ref, inView];
 }
+
+/** کپی در کلیپ‌بورد با fallback */
+export async function copyText(s: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(s);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = s;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      ta.remove();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}

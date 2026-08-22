@@ -5,7 +5,7 @@ import {
 } from "react";
 import { ChevronRight, ChevronLeft, Mic, MicOff, Check, AlertTriangle, X } from "lucide-react";
 import {
-  faNum, jalaliFirstOffset, jalaliMonthLen, jalaliToday, jalaliToISO,
+  faNum, groupInt, jalaliFirstOffset, jalaliMonthLen, jalaliToday, jalaliToISO,
   isoToJalali, MONTHS_FA, todayISO, toEnDigits,
 } from "./lib/utils";
 
@@ -116,8 +116,8 @@ export function AmountInput({
       dir="ltr"
       inputMode="numeric"
       placeholder={placeholder ?? "مثلاً ۲۵۰٬۰۰۰"}
-      value={value ? faNum(value).replace(/,/g, "٬") : ""}
-      onChange={(e) => onChange(toEnDigits(e.target.value).replace(/[^\d]/g, ""))}
+      value={value ? faNum(groupInt(parseInt(value || "0", 10))) : ""}
+      onChange={(e) => onChange(toEnDigits(e.target.value).replace(/[^\d]/g, "").slice(0, 15))}
     />
   );
 }

@@ -231,3 +231,22 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
   }
   .tick-down { animation-duration: 30s !important; animation-iteration-count: 1 !important; }
 }
+
+/* ---------- تم‌های رنگی ترکیبی ---------- */
+html[data-accent="emerald"] { --fp-accent: #e8b04b; --fp-mint: #2fb98a; }
+html[data-accent="saffron"] { --fp-accent: #ff8f45; --fp-mint: #14c4a8; }
+html[data-accent="ruby"] { --fp-accent: #ff5e7e; --fp-mint: #ff9db4; }
+html[data-accent="royal"] { --fp-accent: #7aa2f7; --fp-mint: #54d6e8; }
+html[data-accent="copper"] { --fp-accent: #dd9460; --fp-mint: #b3c968; }
+html[data-accent="emerald"] .brand-swatch { background: linear-gradient(135deg, #e8b04b 0 52%, #2fb98a 52%); }
+html[data-accent="saffron"] .brand-swatch { background: linear-gradient(135deg, #ff8f45 0 52%, #14c4a8 52%); }
+html[data-accent="ruby"] .brand-swatch { background: linear-gradient(135deg, #ff5e7e 0 52%, #ff9db4 52%); }
+html[data-accent="royal"] .brand-swatch { background: linear-gradient(135deg, #7aa2f7 0 52%, #54d6e8 52%); }
+html[data-accent="copper"] .brand-swatch { background: linear-gradient(135deg, #dd9460 0 52%, #b3c968 52%); }
+
+@media (prefers-reduced-motion: no-preference) {
+  body { transition: background-color 0.35s ease; }
+}
+
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.spin-slow { animation: spin-slow 1s linear infinite; }

@@ -1,9 +1,11 @@
 /* ---------- پوسته: مسیریابی، ورود/ثبت‌نام، جستجو، یادآوری، نوار بازگشت ---------- */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bell, CalendarDays, Coins, LayoutDashboard, List, LogOut, Moon,
+  BarChart3, CalendarDays, Coins, LayoutDashboard, List, LogOut, Moon,
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Sun, X,
 } from "lucide-react";
+import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
+import { pushToCloud, pullFromCloud } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
@@ -44,6 +46,7 @@ export default function App() {
 /* ================= صفحهٔ ورود ================= */
 function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
   const toast = useToast();
+  useEffect(() => { applyAccent(readAccent()); }, []);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -159,6 +162,41 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     document.documentElement.classList.toggle("light", t === "light");
     try { localStorage.setItem("fp_theme", t); } catch { /* ignore */ }
   }, [state.prefs.theme]);
+
+  /* تم رنگی ترکیبی */
+  useEffect(() => {
+    applyAccent(state.prefs.accent ?? readAccent());
+  }, [state.prefs.accent]);
+
+  /* ماندگاری بین مرورگرها: ارسال خودکار با دیباونس + پولینگ ۹۰ ثانیه */
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const pushedRef = useRef("");
+  const syncOn = !!(state.prefs.syncUrl && state.prefs.syncKey && state.prefs.syncId);
+
+  useEffect(() => {
+    if (!syncOn) return;
+    const id = setTimeout(async () => {
+      const s = stateRef.current;
+      const json = JSON.stringify(s);
+      if (json === pushedRef.current) return;
+      pushedRef.current = json;
+      await pushToCloud(s, s.prefs);
+    }, 3500);
+    return () => clearTimeout(id);
+  }, [state, syncOn]);
+
+  useEffect(() => {
+    if (!syncOn) return;
+    const id = setInterval(async () => {
+      const s = stateRef.current;
+      const pull = await pullFromCloud(s.prefs);
+      if (pull.ok && pull.state && pull.updatedAt && pull.updatedAt > new Date(s.lastSync).toISOString()) {
+        mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "دریافت خودکار از ابر");
+      }
+    }, 90000);
+    return () => clearInterval(id);
+  }, [syncOn, mutate]);
 
   /* شناسهٔ سینک — یک‌بار برای هر کاربر ساخته می‌شود */
   useEffect(() => {
@@ -293,6 +331,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
 
               <SyncBadge />
               <ThemeToggle />
+              <AccentCycle />
               <button className="btn btn-gold btn-sm" onClick={() => setQuickAdd(true)}>
                 <Plus className="w-4 h-4" strokeWidth={3} /> <span className="hidden sm:inline">ثبت</span>
               </button>
@@ -362,6 +401,26 @@ function ThemeToggle() {
       onClick={() => mutate((d) => { d.prefs.theme = dark ? "light" : "dark"; }, dark ? "تم روشن شد" : "تم تیره شد")}
     >
       {dark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+    </button>
+  );
+}
+
+/* دکمهٔ چرخش تم‌های رنگی ترکیبی */
+function AccentCycle() {
+  const { state, mutate } = useStore();
+  const cur = themeById(state.prefs.accent);
+  const next = THEMES[(THEMES.findIndex((t) => t.id === cur.id) + 1) % THEMES.length];
+  return (
+    <button
+      className="icon-btn"
+      title={`تم رنگی: ${cur.name} — تغییر به ${next.name}`}
+      onClick={() => {
+        applyAccent(next.id);
+        mutate((d) => { d.prefs.accent = next.id; }, `تم رنگی «${next.name}» فعال شد`);
+      }}
+    >
+      <span className="brand-swatch w-5 h-5 rounded-full block transition-transform duration-200 hover:scale-110"
+        style={{ boxShadow: "inset 0 0 0 1.5px rgba(0,0,0,0.3)" }} />
     </button>
   );
 }

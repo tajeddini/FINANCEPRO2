@@ -32,6 +32,7 @@ export interface TrashEntry { key: string; table: string; item: any; until: numb
 
 export interface Prefs {
   theme: "dark" | "light";
+  accent?: string;
   pin?: string;
   pinEnabled?: boolean;
   botToken?: string;
