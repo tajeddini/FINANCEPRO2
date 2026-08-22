@@ -232,6 +232,7 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
   const [hideBal, setHideBal] = useState(false);
   const [hideInc, setHideInc] = useState(false);
   const [hideExp, setHideExp] = useState(false);
+  const [hideAcc, setHideAcc] = useState(false);
 
   const bal = useCountUp(total);
   const inc = useCountUp(income);
@@ -295,7 +296,12 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
       <div className="grid lg:grid-cols-3 gap-5">
         {/* حساب‌ها */}
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
-          <Head icon={<Landmark className="w-4.5 h-4.5" />} title="موجودی حساب‌ها" />
+          <div className="flex items-center justify-between">
+            <Head icon={<Landmark className="w-4.5 h-4.5" />} title="موجودی حساب‌ها" />
+            <button className="icon-btn !w-8 !h-8" onClick={() => setHideAcc(!hideAcc)} title={hideAcc ? "نمایش موجودی حساب‌ها" : "مخفی کردن موجودی حساب‌ها"}>
+              {hideAcc ? <EyeOff /> : <EyeOn />}
+            </button>
+          </div>
           <div className="grid gap-3.5 mt-4">
             {state.accounts.map((a) => {
               const share = total > 0 ? (a.balance / total) * 100 : 0;
@@ -308,7 +314,7 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
                       <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</span>
                     </span>
                     <span className="text-[13px] font-black tabular" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-text)" }}>
-                      {hideBal ? hiddenMoney : `${faMoney(a.balance)} ﷼`}
+                      {hideAcc ? hiddenMoney : `${faMoney(a.balance)} ﷼`}
                     </span>
                   </div>
                   <Bar pct={share} color={a.color} />
@@ -622,10 +628,11 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
 }
 
 /* ================= ۳) گزارش دسته‌ها ================= */
-export function CategoriesPage({ onDrill }: { onDrill: (catId: string, period: PeriodKey) => void }) {
+export function CategoriesPage() {
   const { state } = useStore();
   const [period, setPeriod] = useState<PeriodKey>("thisMonth");
   const [type, setType] = useState<"expense" | "income">("expense");
+  const [selected, setSelected] = useState<string>("");
 
   const range = periodRange(period);
   const txs = state.transactions.filter((t) => t.type === type && inRange(t.date, range));
@@ -697,9 +704,13 @@ export function CategoriesPage({ onDrill }: { onDrill: (catId: string, period: P
               const pct = total > 0 ? (r.sum / total) * 100 : 0;
               const count = txs.filter((t) => t.categoryId === r.cat!.id).length;
               return (
-                <button key={r.cat!.id} onClick={() => onDrill(r.cat!.id, period)}
+                <button key={r.cat!.id} onClick={() => setSelected((s) => (s === r.cat!.id ? "" : r.cat!.id))}
                   className="group text-start rounded-xl border p-3.5 transition-all cursor-pointer hover:-translate-y-0.5"
-                  style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                  style={{
+                    borderColor: selected === r.cat!.id ? r.cat!.color : "var(--fp-border)",
+                    background: selected === r.cat!.id ? `color-mix(in srgb, ${r.cat!.color} 10%, var(--fp-bg))` : "var(--fp-bg)",
+                    boxShadow: selected === r.cat!.id ? `0 8px 24px -12px color-mix(in srgb, ${r.cat!.color} 55%, transparent)` : "none",
+                  }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-2 text-[13px] font-black">
                       <i className="w-3 h-3 rounded-full not-italic" style={{ background: r.cat!.color }} />
@@ -712,7 +723,7 @@ export function CategoriesPage({ onDrill }: { onDrill: (catId: string, period: P
                   </div>
                   <Bar pct={pct} color={r.cat!.color} delay={i * 90} />
                   <p className="text-[10px] font-bold mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--fp-accent)" }}>
-                    برای دیدن تراکنش‌های این دسته کلیک کنید ←
+                    کلیک: نمایش تراکنش‌های این دسته در همین صفحه
                   </p>
                 </button>
               );
@@ -720,8 +731,61 @@ export function CategoriesPage({ onDrill }: { onDrill: (catId: string, period: P
           </div>
         </div>
       </div>
+
+      {/* تراکنش‌های دستهٔ انتخابی — با همان فیلتر زمانی */}
+      {selected && (() => {
+        const cat = catById(state, selected);
+        const list = txs
+          .filter((t) => t.categoryId === selected)
+          .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
+        const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
+        return (
+          <div key={selected + period + type} className="card overflow-hidden rise-in">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b"
+              style={{ borderColor: "var(--fp-border)", background: `color-mix(in srgb, ${cat?.color ?? "#888"} 9%, var(--fp-bg))` }}>
+              <span className="flex items-center gap-2.5 text-[14px] font-black">
+                <i className="w-3.5 h-3.5 rounded-full not-italic" style={{ background: cat?.color }} />
+                تراکنش‌های «{cat?.name}»
+                <span className="chip !cursor-default !py-0.5 !px-2.5 !text-[10.5px]">{periodLabel}</span>
+              </span>
+              <span className="flex items-center gap-3">
+                <span className="text-[12px] font-black tabular" style={{ color: type === "expense" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                  {faMoney(sumTx(list))} تومان
+                </span>
+                <button className="icon-btn !w-8 !h-8" title="بستن" onClick={() => setSelected("")}>
+                  <XIcon />
+                </button>
+              </span>
+            </div>
+            {list.length === 0 && <Empty text="در این بازه تراکنشی برای این دسته نیست." />}
+            <div>
+              {list.map((t) => (
+                <div key={t.id} className="feed-in flex items-center gap-3 px-5 py-3 border-b last:border-b-0" style={{ borderColor: "var(--fp-border)" }}>
+                  <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0"
+                    style={{ background: `color-mix(in srgb, ${cat?.color ?? "#888"} 15%, transparent)`, color: cat?.color }}>
+                    {t.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-black truncate">{t.note || t.title || cat?.name}</p>
+                    <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
+                      {faDate(t.date)} · {accById(state, t.accountId)?.name ?? "—"} · {t.payMethod ?? "—"}
+                    </p>
+                  </div>
+                  <span className="text-[13px] font-black tabular" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {t.type === "income" ? "+" : "−"}{faMoney(t.amount)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
+}
+
+function XIcon() {
+  return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>;
 }
 
 /* ================= ۴) بدهی‌ها ================= */

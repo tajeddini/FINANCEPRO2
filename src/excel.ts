@@ -1,7 +1,7 @@
-/* ---------- خروجی اکسل چندبرگی با ExcelJS + CSV + ICS ---------- */
+/* ---------- خروجی اکسل حرفه‌ای چندبرگی با ExcelJS + CSV + ICS ---------- */
 import ExcelJS from "exceljs";
-import type { AppState } from "./lib/data";
-import { faDate } from "./lib/utils";
+import type { AppState, Tx } from "./lib/data";
+import { faDate, jalaliDateStr } from "./lib/utils";
 
 function download(blob: Blob, name: string) {
   const a = document.createElement("a");
@@ -11,76 +11,276 @@ function download(blob: Blob, name: string) {
   URL.revokeObjectURL(a.href);
 }
 
-export async function exportExcel(s: AppState) {
+/* ---------- پالت و سبک‌ها ---------- */
+const PINE = "FF0D2C24";
+const GRAY = "FF87A496";
+const ROW_A = "FFF4F9F5";
+const ROW_B = "FFFFFFFF";
+const BORDER = "FFD7E4DB";
+const NUM_FMT = "#,##0";
+
+const thinBorder: Partial<ExcelJS.Borders> = {
+  top: { style: "thin", color: { argb: BORDER } },
+  bottom: { style: "thin", color: { argb: BORDER } },
+  right: { style: "thin", color: { argb: BORDER } },
+  left: { style: "thin", color: { argb: BORDER } },
+};
+
+function makeSheet(wb: ExcelJS.Workbook, name: string, headers: { h: string; w: number }[]) {
+  const ws = wb.addWorksheet(name, { views: [{ rightToLeft: true, showGridLines: false }] });
+  ws.columns = headers.map((c, i) => ({ header: c.h, key: `c${i}`, width: c.w }));
+  const hr = ws.getRow(1);
+  hr.height = 26;
+  hr.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11, name: "Vazirmatn" };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: PINE } };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+    cell.border = thinBorder;
+  });
+  ws.views = [{ rightToLeft: true, showGridLines: false, state: "frozen", ySplit: 1 }];
+  return ws;
+}
+
+function zebra(ws: ExcelJS.Worksheet, fromRow: number, toRow: number, numCols: number[], moneyCols: number[] = []) {
+  for (let r = fromRow; r <= toRow; r++) {
+    const row = ws.getRow(r);
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      if (col > ws.columnCount) return;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: r % 2 ? ROW_A : ROW_B } };
+      cell.border = thinBorder;
+      cell.font = { size: 10.5, name: "Vazirmatn" };
+      cell.alignment = { vertical: "middle", horizontal: numCols.includes(col) ? "center" : "right" };
+      if (moneyCols.includes(col) && typeof cell.value === "number") cell.numFmt = NUM_FMT;
+    });
+    row.height = 20;
+  }
+}
+
+function totalRow(ws: ExcelJS.Worksheet, label: string, value: number, col: number, color = PINE) {
+  const r = ws.addRow([]);
+  r.height = 24;
+  const lc = r.getCell(1);
+  lc.value = label;
+  lc.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11, name: "Vazirmatn" };
+  lc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+  lc.alignment = { horizontal: "right", vertical: "middle" };
+  for (let i = 2; i < col; i++) {
+    const c = r.getCell(i);
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+  }
+  const vc = r.getCell(col);
+  vc.value = value;
+  vc.numFmt = NUM_FMT;
+  vc.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11, name: "Vazirmatn" };
+  vc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+  vc.alignment = { horizontal: "center", vertical: "middle" };
+  r.eachCell({ includeEmpty: true }, (c) => { c.border = thinBorder; });
+}
+
+/* ---------- برگهٔ خلاصه ---------- */
+function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel: string) {
+  const ws = wb.addWorksheet("خلاصه", { views: [{ rightToLeft: true, showGridLines: false }] });
+  ws.getColumn(1).width = 4;
+  ws.getColumn(2).width = 30;
+  ws.getColumn(3).width = 22;
+  ws.getColumn(4).width = 22;
+
+  const title = ws.getRow(2);
+  title.getCell(2).value = "گزارش مدیریت مالی — فایننس‌پرو";
+  title.getCell(2).font = { bold: true, size: 18, color: { argb: PINE }, name: "Lalezar" };
+  title.height = 34;
+
+  const sub = ws.getRow(3);
+  sub.getCell(2).value = `بازهٔ گزارش: ${periodLabel} · تاریخ تولید: ${jalaliDateStr()}`;
+  sub.getCell(2).font = { size: 10.5, color: { argb: GRAY }, name: "Vazirmatn" };
+
+  const income = txs.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0);
+  const expense = txs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
+  const netWorth = s.accounts.reduce((a, x) => a + x.balance, 0)
+    + s.assets.reduce((a, x) => a + x.nowPrice * x.qty, 0)
+    + s.currencies.reduce((a, x) => a + x.rate * x.qty, 0)
+    - s.debts.filter((d) => d.kind === "debt").reduce((a, d) => a + (d.amount - d.paid), 0)
+    + s.debts.filter((d) => d.kind === "credit").reduce((a, d) => a + (d.amount - d.paid), 0);
+
+  /* بلوک شاخص‌ها */
+  let r = 5;
+  const kpi = (label: string, value: number, color: string) => {
+    const row = ws.getRow(r++);
+    row.height = 24;
+    const lc = row.getCell(2);
+    lc.value = label;
+    lc.font = { bold: true, size: 11.5, name: "Vazirmatn", color: { argb: PINE } };
+    lc.border = thinBorder;
+    lc.alignment = { vertical: "middle" };
+    const vc = row.getCell(3);
+    vc.value = value;
+    vc.numFmt = NUM_FMT + " [$تومان]";
+    vc.font = { bold: true, size: 12, name: "Vazirmatn", color: { argb: color } };
+    vc.border = thinBorder;
+    vc.alignment = { horizontal: "center", vertical: "middle" };
+  };
+  kpi("جمع درآمد بازه", income, "FF1F7A56");
+  kpi("جمع هزینهٔ بازه", expense, "FFC24A3D");
+  kpi("تراز بازه (درآمد − هزینه)", income - expense, income - expense >= 0 ? "FF1F7A56" : "FFC24A3D");
+  kpi("ارزش خالص دارایی‌ها", netWorth, PINE);
+
+  /* برترین دسته‌ها */
+  r += 1;
+  const h1 = ws.getRow(r++);
+  h1.getCell(2).value = "برترین دسته‌های هزینه";
+  h1.getCell(2).font = { bold: true, size: 13, color: { argb: PINE }, name: "Lalezar" };
+  const map = new Map<string, number>();
+  for (const t of txs.filter((x) => x.type === "expense")) map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount);
+  const top = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  for (const [catId, sum] of top) {
+    const row = ws.getRow(r++);
+    row.getCell(2).value = s.categories.find((c) => c.id === catId)?.name ?? "—";
+    row.getCell(2).font = { size: 10.5, name: "Vazirmatn" };
+    row.getCell(3).value = sum;
+    row.getCell(3).numFmt = NUM_FMT;
+    row.getCell(3).font = { size: 10.5, name: "Vazirmatn" };
+    row.getCell(3).alignment = { horizontal: "center" };
+    const pc = row.getCell(4);
+    pc.value = expense > 0 ? sum / expense : 0;
+    pc.numFmt = "0.0%";
+    pc.font = { size: 10.5, name: "Vazirmatn", color: { argb: GRAY } };
+    pc.alignment = { horizontal: "center" };
+  }
+
+  /* موجودی حساب‌ها */
+  r += 1;
+  const h2 = ws.getRow(r++);
+  h2.getCell(2).value = "موجودی حساب‌ها";
+  h2.getCell(2).font = { bold: true, size: 13, color: { argb: PINE }, name: "Lalezar" };
+  for (const a of s.accounts) {
+    const row = ws.getRow(r++);
+    row.getCell(2).value = `${a.name} (${a.type})`;
+    row.getCell(2).font = { size: 10.5, name: "Vazirmatn" };
+    row.getCell(3).value = a.balance;
+    row.getCell(3).numFmt = NUM_FMT;
+    row.getCell(3).font = { bold: true, size: 10.5, name: "Vazirmatn", color: { argb: a.balance < 0 ? "FFC24A3D" : PINE } };
+    row.getCell(3).alignment = { horizontal: "center" };
+  }
+}
+
+/* ---------- خروجی اصلی ---------- */
+export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?: string }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "FinancePro";
+  wb.lastModifiedBy = "FinancePro";
+  const txs = [...(opts?.txs ?? s.transactions)].sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
+  const periodLabel = opts?.periodLabel ?? "همهٔ دوره‌ها";
+  const income = txs.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0);
+  const expense = txs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
 
-  const styleHead = (ws: ExcelJS.Worksheet) => {
-    const row = ws.getRow(1);
-    row.font = { bold: true, color: { argb: "FF071B16" } };
-    row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8B04B" } };
-  };
+  /* ۱) خلاصه */
+  summarySheet(wb, s, txs, periodLabel);
 
-  // برگهٔ تراکنش‌ها
-  const w1 = wb.addWorksheet("تراکنش‌ها", { views: [{ rightToLeft: true }] });
-  w1.columns = [
-    { header: "تاریخ", key: "date", width: 18 },
-    { header: "نوع", key: "type", width: 10 },
-    { header: "عنوان", key: "title", width: 30 },
-    { header: "دسته", key: "cat", width: 16 },
-    { header: "حساب", key: "acc", width: 16 },
-    { header: "مبلغ (تومان)", key: "amount", width: 16 },
-    { header: "روش پرداخت", key: "pay", width: 14 },
-  ];
-  for (const t of [...s.transactions].sort((a, b) => b.date.localeCompare(a.date))) {
+  /* ۲) تراکنش‌ها */
+  const w1 = makeSheet(wb, "تراکنش‌ها", [
+    { h: "ردیف", w: 7 }, { h: "تاریخ شمسی", w: 17 }, { h: "نوع", w: 10 }, { h: "دسته", w: 17 },
+    { h: "حساب", w: 17 }, { h: "توضیحات", w: 34 }, { h: "روش پرداخت", w: 13 }, { h: "مبلغ (تومان)", w: 17 }, { h: "منبع", w: 10 },
+  ]);
+  txs.forEach((t, i) => {
     w1.addRow({
-      date: faDate(t.date),
-      type: t.type === "income" ? "درآمد" : "هزینه",
-      title: t.title,
-      cat: s.categories.find((c) => c.id === t.categoryId)?.name ?? "—",
-      acc: s.accounts.find((a) => a.id === t.accountId)?.name ?? "—",
-      amount: t.amount,
-      pay: t.payMethod ?? "—",
+      c0: i + 1, c1: faDate(t.date), c2: t.type === "income" ? "درآمد" : "هزینه",
+      c3: s.categories.find((c) => c.id === t.categoryId)?.name ?? "—",
+      c4: s.accounts.find((a) => a.id === t.accountId)?.name ?? "—",
+      c5: t.note || t.title || "—", c6: t.payMethod ?? "—",
+      c7: t.type === "income" ? t.amount : -t.amount,
+      c8: t.source === "bot" ? "ربات" : "برنامه",
     });
+    const row = w1.getRow(i + 2);
+    const typeCell = row.getCell(3);
+    typeCell.font = { bold: true, size: 10.5, name: "Vazirmatn", color: { argb: t.type === "income" ? "FF1F7A56" : "FFC24A3D" } };
+    const amtCell = row.getCell(8);
+    amtCell.font = { bold: true, size: 10.5, name: "Vazirmatn", color: { argb: t.type === "income" ? "FF1F7A56" : "FFC24A3D" } };
+  });
+  zebra(w1, 2, txs.length + 1, [1, 3, 8], [8]);
+  totalRow(w1, `جمع درآمد بازهٔ «${periodLabel}»`, income, 8, "FF1F7A56");
+  totalRow(w1, `جمع هزینهٔ بازهٔ «${periodLabel}»`, expense, 8, "FFC24A3D");
+  totalRow(w1, "تراز نهایی", income - expense, 8, PINE);
+  w1.autoFilter = { from: "A1", to: `I${txs.length + 1}` };
+
+  /* ۳) دسته‌ها */
+  const w2 = makeSheet(wb, "گزارش دسته‌ها", [
+    { h: "دسته", w: 22 }, { h: "نوع", w: 10 }, { h: "تعداد تراکنش", w: 14 }, { h: "جمع (تومان)", w: 18 }, { h: "سهم از کل", w: 12 },
+  ]);
+  const catMap = new Map<string, { sum: number; n: number; type: string }>();
+  for (const t of txs) {
+    const e = catMap.get(t.categoryId) ?? { sum: 0, n: 0, type: t.type === "income" ? "درآمد" : "هزینه" };
+    e.sum += t.amount; e.n++;
+    catMap.set(t.categoryId, e);
   }
-  styleHead(w1);
+  const totalAll = income + expense;
+  let i2 = 2;
+  for (const [catId, e] of [...catMap.entries()].sort((a, b) => b[1].sum - a[1].sum)) {
+    w2.addRow({
+      c0: s.categories.find((c) => c.id === catId)?.name ?? "—", c1: e.type, c2: e.n, c3: e.sum,
+      c4: totalAll > 0 ? e.sum / totalAll : 0,
+    });
+    w2.getRow(i2).getCell(5).numFmt = "0.0%";
+    i2++;
+  }
+  zebra(w2, 2, i2 - 1, [2, 3, 5], [4]);
 
-  // برگهٔ حساب‌ها
-  const w2 = wb.addWorksheet("حساب‌ها", { views: [{ rightToLeft: true }] });
-  w2.columns = [
-    { header: "نام حساب", key: "name", width: 22 },
-    { header: "نوع", key: "type", width: 16 },
-    { header: "مانده (تومان)", key: "balance", width: 18 },
-  ];
-  for (const a of s.accounts) w2.addRow({ name: a.name, type: a.type, balance: a.balance });
-  styleHead(w2);
+  /* ۴) حساب‌ها */
+  const w3 = makeSheet(wb, "حساب‌ها", [
+    { h: "نام حساب", w: 24 }, { h: "نوع", w: 18 }, { h: "موجودی اولیه", w: 18 }, { h: "ماندهٔ فعلی", w: 18 },
+  ]);
+  s.accounts.forEach((a) => w3.addRow({ c0: a.name, c1: a.type, c2: a.initial, c3: a.balance }));
+  zebra(w3, 2, s.accounts.length + 1, [2], [3, 4]);
+  totalRow(w3, "جمع ماندهٔ حساب‌ها", s.accounts.reduce((x, a) => x + a.balance, 0), 4);
 
-  // برگهٔ بودجه‌ها
-  const w3 = wb.addWorksheet("بودجه‌ها", { views: [{ rightToLeft: true }] });
-  w3.columns = [
-    { header: "دسته", key: "cat", width: 22 },
-    { header: "سقف ماهانه", key: "limit", width: 18 },
-  ];
-  for (const b of s.budgets)
-    w3.addRow({ cat: s.categories.find((c) => c.id === b.categoryId)?.name ?? "—", limit: b.limit });
-  styleHead(w3);
+  /* ۵) بدهی‌ها و طلب‌ها */
+  const w4 = makeSheet(wb, "بدهی‌ها و طلب‌ها", [
+    { h: "نوع", w: 10 }, { h: "طرف حساب", w: 22 }, { h: "مبلغ کل", w: 16 }, { h: "پرداخت‌شده", w: 16 },
+    { h: "باقی‌مانده", w: 16 }, { h: "سررسید", w: 15 }, { h: "یادداشت", w: 26 },
+  ]);
+  s.debts.forEach((d) => w4.addRow({
+    c0: d.kind === "debt" ? "بدهی" : "طلب", c1: d.person, c2: d.amount, c3: d.paid,
+    c4: d.amount - d.paid, c5: d.due ? faDate(d.due) : "—", c6: d.note ?? "—",
+  }));
+  zebra(w4, 2, s.debts.length + 1, [1], [3, 4, 5]);
 
-  // برگهٔ بدهی‌ها و اقساط
-  const w4 = wb.addWorksheet("بدهی‌ها و اقساط", { views: [{ rightToLeft: true }] });
-  w4.columns = [
-    { header: "نوع", key: "kind", width: 12 },
-    { header: "طرف حساب", key: "who", width: 22 },
-    { header: "مبلغ", key: "amount", width: 16 },
-    { header: "پرداخت‌شده", key: "paid", width: 16 },
-  ];
-  for (const d of s.debts)
-    w4.addRow({ kind: d.kind === "debt" ? "بدهی" : "طلب", who: d.person, amount: d.amount, paid: d.paid });
-  for (const i of s.installments)
-    w4.addRow({ kind: "قسط", who: i.title, amount: i.total, paid: i.paidCount * i.amountPerMonth });
-  styleHead(w4);
+  /* ۶) اقساط */
+  const w5 = makeSheet(wb, "اقساط", [
+    { h: "عنوان", w: 26 }, { h: "مبلغ کل", w: 16 }, { h: "قسط ماهانه", w: 15 }, { h: "تعداد ماه", w: 11 },
+    { h: "پرداخت‌شده", w: 12 }, { h: "پیشرفت", w: 10 },
+  ]);
+  s.installments.forEach((x, idx) => {
+    w5.addRow({ c0: x.title, c1: x.total, c2: x.amountPerMonth, c3: x.months, c4: x.paidCount, c5: x.months > 0 ? x.paidCount / x.months : 0 });
+    w5.getRow(idx + 2).getCell(6).numFmt = "0%";
+  });
+  zebra(w5, 2, s.installments.length + 1, [4, 5, 6], [1, 2]);
+
+  /* ۷) بودجه‌ها */
+  const w6 = makeSheet(wb, "بودجه‌ها", [
+    { h: "دسته", w: 22 }, { h: "سقف ماهانه", w: 17 }, { h: "خرجِ بازه", w: 17 }, { h: "باقی‌مانده", w: 17 }, { h: "وضعیت", w: 13 },
+  ]);
+  s.budgets.forEach((b, idx) => {
+    const spent = txs.filter((t) => t.categoryId === b.categoryId && t.type === "expense").reduce((x, t) => x + t.amount, 0);
+    w6.addRow({
+      c0: s.categories.find((c) => c.id === b.categoryId)?.name ?? "—", c1: b.limit, c2: spent,
+      c3: b.limit - spent, c4: spent > b.limit ? "مازاد بر سقف" : "در محدوده",
+    });
+    const st = w6.getRow(idx + 2).getCell(5);
+    st.font = { bold: true, size: 10.5, name: "Vazirmatn", color: { argb: spent > b.limit ? "FFC24A3D" : "FF1F7A56" } };
+  });
+  zebra(w6, 2, s.budgets.length + 1, [5], [2, 3, 4]);
+
+  /* ۸) اهداف، دارایی‌ها و اشتراک‌ها */
+  const w7 = makeSheet(wb, "دارایی‌ها و اهداف", [
+    { h: "بخش", w: 16 }, { h: "عنوان", w: 26 }, { h: "ارزش ۱", w: 18 }, { h: "ارزش ۲", w: 18 }, { h: "توضیح", w: 22 },
+  ]);
+  s.savings_goals.forEach((g) => w7.addRow({ c0: "هدف پس‌انداز", c1: g.title, c2: g.saved, c3: g.target, c4: g.deadline ? `مهلت: ${faDate(g.deadline)}` : "—" }));
+  s.assets.forEach((a) => w7.addRow({ c0: "دارایی", c1: a.name, c2: a.buyPrice * a.qty, c3: a.nowPrice * a.qty, c4: `تعداد: ${a.qty}` }));
+  s.currencies.forEach((c) => w7.addRow({ c0: "ارز", c1: `${c.name} (${c.symbol})`, c2: c.qty, c3: c.rate * c.qty, c4: `نرخ: ${c.rate.toLocaleString("fa-IR")}` }));
+  s.subscriptions.forEach((x) => w7.addRow({ c0: "اشتراک", c1: x.name, c2: x.amount, c3: x.cycle === "monthly" ? x.amount * 12 : x.amount, c4: `تمدید: ${faDate(x.renew)}` }));
+  zebra(w7, 2, s.savings_goals.length + s.assets.length + s.currencies.length + s.subscriptions.length + 1, [1], [3, 4]);
 
   const buf = await wb.xlsx.writeBuffer();
-  download(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "financepro-report.xlsx");
+  download(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `financepro-${periodLabel.replace(/\s+/g, "-")}.xlsx`);
 }
 
 /* ---------- CSV ---------- */
@@ -90,7 +290,7 @@ export function exportCSV(s: AppState) {
     rows.push([
       t.date,
       t.type,
-      `"${t.title.replace(/"/g, '""')}"`,
+      `"${(t.note || t.title).replace(/"/g, '""')}"`,
       s.categories.find((c) => c.id === t.categoryId)?.name ?? "",
       String(t.amount),
     ]);

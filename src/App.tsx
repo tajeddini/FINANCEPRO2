@@ -501,7 +501,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
             <div key={page + drill.key}>
               {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} />}
               {page === "transactions" && <TransactionsPage initQuery={drill.query} initCat={drill.cat} />}
-              {page === "categories" && <CategoriesPage onDrill={(cat) => { setDrill({ cat, key: Date.now() }); setPage("transactions"); }} />}
+              {page === "categories" && <CategoriesPage />}
               {page === "debts" && <DebtsPage />}
               {page === "appointments" && <AppointmentsPage />}
               {page === "reports" && <ReportsPage />}

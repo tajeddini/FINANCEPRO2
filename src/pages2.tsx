@@ -6,12 +6,13 @@ import {
   Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { useStore, type AppState, type ID, type Appointment } from "./lib/data";
+import { clearData, sampleFill, useStore, type AppState, type ID, type Appointment } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
   copyText, fireNotification, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA,
-  playChime, relTime, todayISO, useNow, WEEKDAYS_MIN,
+  PERIODS, periodRange, playChime, relTime, todayISO, useNow, WEEKDAYS_MIN,
+  type PeriodKey,
 } from "./lib/utils";
 import { THEMES, applyAccent } from "./lib/themes";
 import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs } from "./lib/cloud";
@@ -226,7 +227,7 @@ const nextHourTime = () => {
   return `${String(d.getHours()).padStart(2, "0")}:00`;
 };
 
-/* ---------- چرخ انتخاب ساعت و دقیقه ---------- */
+/* ---------- انتخابگر ساعت و دقیقه ---------- */
 function TimeWheel({ value, onChange, onPresetDate }: {
   value: string;
   onChange: (t: string) => void;
@@ -234,81 +235,76 @@ function TimeWheel({ value, onChange, onPresetDate }: {
 }) {
   const hh = value.split(":")[0] ?? "18";
   const mm = value.split(":")[1] ?? "00";
-  const hourRef = useRef<HTMLDivElement>(null);
-  const minRef = useRef<HTMLDivElement>(null);
-  const mounted = useRef(false);
-
-  const center = (el: HTMLDivElement | null, idx: number) => {
-    if (!el) return;
-    el.scrollTo({ left: idx * 48 - el.clientWidth / 2 + 20, behavior: mounted.current ? "smooth" : "auto" });
-  };
-  useEffect(() => { center(hourRef.current, Number(hh)); }, [hh]);
-  useEffect(() => { center(minRef.current, Number(mm)); }, [mm]);
-  useEffect(() => { mounted.current = true; }, []);
+  const now = useNow();
+  const live = faTime(now);
 
   const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-  const MINS = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+  const MINS = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
 
-  const now = new Date();
   const p = (n: number) => String(n).padStart(2, "0");
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59).getTime();
   const presets = [
-    {
-      label: "الان",
-      time: `${p(now.getHours())}:${p(now.getMinutes())}`,
-      date: todayISO(),
-    },
+    { label: "الان", time: `${p(now.getHours())}:${p(now.getMinutes())}`, date: todayISO() },
     {
       label: "۳۰ دقیقه دیگر",
       time: (() => { const d = new Date(Date.now() + 30 * 60000); return `${p(d.getHours())}:${p(d.getMinutes())}`; })(),
-      date: Date.now() + 30 * 60000 > new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59).getTime() ? addDaysISO(todayISO(), 1) : todayISO(),
+      date: Date.now() + 30 * 60000 > endOfDay ? addDaysISO(todayISO(), 1) : todayISO(),
     },
     {
       label: "۱ ساعت دیگر",
       time: (() => { const d = new Date(Date.now() + 60 * 60000); return `${p(d.getHours())}:${p(d.getMinutes())}`; })(),
-      date: Date.now() + 60 * 60000 > new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59).getTime() ? addDaysISO(todayISO(), 1) : todayISO(),
+      date: Date.now() + 60 * 60000 > endOfDay ? addDaysISO(todayISO(), 1) : todayISO(),
     },
     { label: "فردا ۹ صبح", time: "09:00", date: addDaysISO(todayISO(), 1) },
+    { label: "امشب ۲۱", time: "21:00", date: todayISO() },
   ];
 
-  const row = (items: string[], sel: string, onSel: (v: string) => void, ref: React.MutableRefObject<HTMLDivElement | null>, color: string) => (
-    <div ref={ref} dir="ltr"
-      className="flex gap-1.5 overflow-x-auto py-1.5 px-1 snap-x"
-      style={{ scrollbarWidth: "none" }}>
-      {items.map((it) => {
-        const on = it === sel;
-        return (
-          <button key={it} onClick={() => onSel(it)}
-            className="snap-center shrink-0 w-10 h-10 rounded-xl grid place-items-center text-[13px] font-black tabular transition-all duration-150 cursor-pointer"
-            style={{
-              background: on ? color : "var(--fp-bg)",
-              color: on ? "#071b16" : "var(--fp-text2)",
-              border: on ? "none" : "1px solid var(--fp-border)",
-              transform: on ? "scale(1.12)" : "scale(1)",
-              boxShadow: on ? "0 6px 16px -6px color-mix(in srgb, " + color + " 70%, transparent)" : "none",
-            }}>
-            {faNum(it)}
-          </button>
-        );
-      })}
-    </div>
-  );
+  const cell = (it: string, sel: string, onSel: (v: string) => void, color: string) => {
+    const on = it === sel;
+    return (
+      <button key={it} onClick={() => onSel(it)}
+        className="rounded-lg py-1.5 text-[12.5px] font-black tabular transition-all duration-150 cursor-pointer hover:scale-105"
+        style={{
+          background: on ? color : "transparent",
+          color: on ? "#071b16" : "var(--fp-text2)",
+          border: on ? "none" : "1px solid var(--fp-border)",
+          boxShadow: on ? `0 6px 14px -6px color-mix(in srgb, ${color} 75%, transparent)` : "none",
+        }}>
+        {faNum(it)}
+      </button>
+    );
+  };
 
   return (
-    <div className="rounded-xl border p-3.5" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-      <div className="flex items-center justify-between mb-2">
+    <div className="rounded-xl border p-4" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+      <div className="flex items-center justify-between mb-3">
         <span className="text-[11.5px] font-black flex items-center gap-1.5" style={{ color: "var(--fp-text3)" }}>
           <Clock3 className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> ساعت (۲۴ ساعته)
         </span>
-        <span dir="ltr" className="font-display text-3xl leading-none tabular" style={{ color: "var(--fp-accent)" }}>
-          {faNum(hh)}<span className="opacity-50">:</span>{faNum(mm)}
+        <span className="flex items-center gap-2.5">
+          <span className="text-[10px] font-bold tabular flex items-center gap-1" style={{ color: "var(--fp-text3)" }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--fp-mint)] pulse-soft" /> الان: {live}
+          </span>
+          <span dir="ltr" className="font-display text-3xl leading-none tabular" style={{ color: "var(--fp-accent)" }}>
+            {faNum(hh)}<span className="opacity-40">:</span>{faNum(mm)}
+          </span>
         </span>
       </div>
-      {row(HOURS, hh, (h) => onChange(`${h}:${mm}`), hourRef, "var(--fp-accent)")}
-      {row(MINS, mm, (m) => onChange(`${hh}:${m}`), minRef, "var(--fp-mint)")}
-      <div className="flex gap-1.5 flex-wrap mt-2">
+
+      <p className="text-[10.5px] font-black mb-1.5" style={{ color: "var(--fp-text3)" }}>ساعت:</p>
+      <div className="grid grid-cols-8 gap-1.5">
+        {HOURS.map((h) => cell(h, hh, (v) => onChange(`${v}:${mm}`), "var(--fp-accent)"))}
+      </div>
+
+      <p className="text-[10.5px] font-black mb-1.5 mt-3" style={{ color: "var(--fp-text3)" }}>دقیقه:</p>
+      <div className="grid grid-cols-6 gap-1.5">
+        {MINS.map((m) => cell(m, mm, (v) => onChange(`${hh}:${v}`), "var(--fp-mint)"))}
+      </div>
+
+      <div className="flex gap-1.5 flex-wrap mt-3.5 pt-3 border-t" style={{ borderColor: "var(--fp-border)" }}>
         {presets.map((pr) => (
           <button key={pr.label} onClick={() => { onChange(pr.time); onPresetDate?.(pr.date); }}
-            className="chip !py-1 !text-[10.5px]">
+            className="chip !py-1.5 !text-[11px]">
             {pr.label}
           </button>
         ))}
@@ -369,15 +365,9 @@ export function ReportsPage() {
   const { state } = useStore();
   const toast = useToast();
   const t = jalaliToday();
-  const monthOptions = useMemo(() => {
-    return Array.from({ length: 6 }, (_, i) => {
-      const m = addJalaliMonths(t.jy, t.jm, -i);
-      return { jy: m.jy, jm: m.jm, label: `${MONTHS_FA[m.jm - 1]} ${faNum(m.jy)}`, key: `${m.jy}-${m.jm}` };
-    });
-  }, [t.jy, t.jm]);
-  const [mk, setMk] = useState(monthOptions[0].key);
-  const sel = monthOptions.find((m) => m.key === mk)!;
-  const range = jalaliMonthRange(sel.jy, sel.jm);
+  const [period, setPeriod] = useState<PeriodKey>("thisMonth");
+  const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
+  const range = periodRange(period);
   const monthTxs = state.transactions.filter((x) => inRange(x.date, range));
 
   const { months, forecast } = Forecast({ s: state });
@@ -398,15 +388,25 @@ export function ReportsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in no-print">
         <h1 className="font-display text-3xl md:text-4xl">گزارش‌ها و تحلیل</h1>
         <div className="flex flex-wrap gap-2">
-          <TSelect className="!w-auto" value={mk} onChange={(e) => setMk(e.target.value)}>
-            {monthOptions.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-          </TSelect>
-          <button className="btn btn-ghost btn-sm" onClick={() => { exportExcel(state).then(() => toast("ok", "فایل اکسل چندبرگی دانلود شد.")); }}>
-            <Download className="w-4 h-4" /> اکسل
+          <button className="btn btn-gold btn-sm" onClick={() => { exportExcel(state, { txs: monthTxs, periodLabel }).then(() => toast("ok", `اکسل حرفه‌ای بازهٔ «${periodLabel}» دانلود شد.`)); }}>
+            <Download className="w-4 h-4" /> خروجی اکسل
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => exportCSV(state)}><FileDown className="w-4 h-4" /> CSV</button>
           <button className="btn btn-ghost btn-sm" onClick={() => window.print()}><Printer className="w-4 h-4" /> چاپ / PDF</button>
         </div>
+      </div>
+
+      {/* فیلترهای زمانی — همان فیلترهای صفحهٔ تراکنش‌ها */}
+      <div className="card p-3.5 flex flex-wrap items-center gap-1.5 rise-in no-print" style={{ ["--d" as string]: "40ms" }}>
+        <span className="text-[11.5px] font-black me-2 flex items-center gap-1.5" style={{ color: "var(--fp-text3)" }}>
+          <CalendarDays className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> بازهٔ گزارش:
+        </span>
+        {PERIODS.map((p) => (
+          <button key={p.key} className={`chip ${period === p.key ? "chip-on" : ""}`} onClick={() => setPeriod(p.key)}>{p.label}</button>
+        ))}
+        <span className="text-[11px] font-bold ms-auto tabular" style={{ color: "var(--fp-text3)" }}>
+          {faNum(monthTxs.length)} تراکنش در این بازه
+        </span>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5">
@@ -469,7 +469,7 @@ export function ReportsPage() {
 
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
-          <h3 className="text-[14px] font-black mb-4">خلاصهٔ {monthOptions.find((m) => m.key === mk)?.label}</h3>
+          <h3 className="text-[14px] font-black mb-4">خلاصهٔ {periodLabel}</h3>
           <div className="grid gap-2.5">
             {[
               ["درآمد ماه", income, "var(--fp-mint)"],
@@ -510,7 +510,7 @@ export function ReportsPage() {
       </div>
 
       <div id="print-area" className="hidden">
-        <h1 style={{ fontFamily: "Lalezar", fontSize: 26 }}>گزارش فایننس‌پرو — {monthOptions.find((m) => m.key === mk)?.label}</h1>
+        <h1 style={{ fontFamily: "Lalezar", fontSize: 26 }}>گزارش فایننس‌پرو — {periodLabel}</h1>
         <p>درآمد: {faMoney(income)} تومان · هزینه: {faMoney(expense)} تومان · تراز: {faMoney(income - expense)} تومان</p>
         <p>امتیاز سلامت مالی: {faNum(health.score)} از ۱۰۰</p>
         <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 12 }}>
@@ -549,6 +549,9 @@ export function ManagePage() {
   const [editing, setEditing] = useState<any>(null);
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const txCount = state.transactions.length;
 
   const tools: ToolDef[] = [
     {
@@ -805,6 +808,34 @@ export function ManagePage() {
         <button className="btn btn-gold" onClick={startNew}><Plus className="w-4 h-4" strokeWidth={3} /> افزودن به {active.title}</button>
       </div>
 
+      {/* داده‌های نمونه */}
+      <div className="card p-4 flex flex-wrap items-center gap-3 rise-in" style={{ ["--d" as string]: "70ms" }}>
+        <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0"
+          style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)" }}>
+          <SparklesI />
+        </span>
+        <div className="flex-1 min-w-[220px]">
+          <p className="text-[13px] font-black">داده‌های نمونه</p>
+          <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
+            {txCount === 0
+              ? "برنامه خالی شروع شده — برای آشنایی، یک دفترکل نمونه (تراکنش، بدهی، بودجه و…) وارد کنید."
+              : `الان ${faNum(txCount)} تراکنش دارید — می‌توانید دادهٔ نمونه را هم اضافه یا همهٔ داده‌ها را پاک کنید.`}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button className="btn btn-mint btn-sm" onClick={() => {
+            mutate((d) => { sampleFill(d); }, "بارگذاری دادهٔ نمونه");
+            toast("ok", "دادهٔ نمونه وارد شد — چند ماه تراکنش، بدهی، بودجه و هدف دارید.");
+          }}>
+            <Plus className="w-4 h-4" strokeWidth={3} /> ورود دادهٔ نمونه
+          </button>
+          <button className="btn btn-ghost btn-sm !text-[var(--fp-coral)] !border-[color-mix(in_srgb,var(--fp-coral)_40%,transparent)]"
+            onClick={() => setConfirmClear(true)}>
+            <Trash2 className="w-4 h-4" /> پاک‌سازی همهٔ داده‌ها
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-1.5 rise-in" style={{ ["--d" as string]: "50ms" }}>
         {tools.map((tl) => (
           <button key={tl.id} className={`chip ${tab === tl.id ? "chip-on" : ""}`} onClick={() => setTab(tl.id)}>
@@ -865,6 +896,17 @@ export function ManagePage() {
           </div>
         </div>
       </Modal>
+
+      <Confirm
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        onYes={() => {
+          mutate((d) => { clearData(d); }, "پاک‌سازی همهٔ داده‌ها");
+          toast("ok", "همهٔ داده‌ها پاک شد — ساختار حساب‌ها و دسته‌ها باقی مانده است.");
+        }}
+        title="پاک‌سازی همهٔ داده‌ها"
+        desc="همهٔ تراکنش‌ها، بدهی‌ها، قرارها، بودجه‌ها، اهداف و بقیهٔ داده‌ها حذف می‌شوند و موجودی حساب‌ها صفر می‌شود. دسته‌ها و حساب‌ها باقی می‌مانند. این کار قابل‌بازگشت نیست — مطمئنید؟"
+      />
     </div>
   );
 }
@@ -877,6 +919,7 @@ function FileI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="non
 function GemI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12l4 6-10 13L2 9Z" /><path d="M11 3 8 9l4 13 4-13-3-6" /><path d="M2 9h20" /></svg>; }
 function FlameI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3 1.072-2.143 .224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z" /></svg>; }
 function CoinI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5c.5-1 1.5-1.5 2.5-1.5 1.5 0 2.5 1 2.5 2s-1 1.7-2.5 2-2.5 1-2.5 2 1 2 2.5 2c1 0 2-.5 2.5-1.5M12 6.5v11" strokeLinecap="round" /></svg>; }
+function SparklesI() { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" /><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" /></svg>; }
 
 /* ================= ۸) تنظیمات ================= */
 export function SettingsPage({ user, onLogout, onDelete, onLock }: {
