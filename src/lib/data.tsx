@@ -49,6 +49,8 @@ export interface AppState {
   challenges: Challenge[]; currencies: Currency[]; assets: Asset[]; subscriptions: Subscription[];
   activity_logs: ActivityLog[]; telegram_users: TelegramUser[];
   trash: TrashEntry[]; prefs: Prefs; lastSync: number;
+  /** شمارندهٔ نسخه — با هر تغییر بالا می‌رود تا سینک چنددستگاهه «آخرین نوشتن برنده» درست کار کند */
+  rev: number;
 }
 
 /* ---------- دادهٔ اولیه ---------- */
@@ -179,6 +181,7 @@ function seed(): AppState {
     trash: [],
     prefs: { theme: "dark" },
     lastSync: Date.now(),
+    rev: 0,
   };
   recomputeBalances(state);
   return state;
@@ -272,6 +275,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw) as AppState;
+        if (typeof parsed.rev !== "number") parsed.rev = 0;
         applyRecurring(parsed);
         recomputeBalances(parsed);
         return parsed;
@@ -293,6 +297,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       const draft: AppState = JSON.parse(JSON.stringify(prev));
       fn(draft);
       recomputeBalances(draft);
+      draft.rev = (draft.rev ?? 0) + 1;
       if (log) {
         draft.activity_logs.unshift({ id: uid(), at: Date.now(), text: log });
         draft.activity_logs = draft.activity_logs.slice(0, 80);

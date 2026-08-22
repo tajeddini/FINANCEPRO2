@@ -1,5 +1,6 @@
 /* ---------- احراز هویت چندکاربره (ثبت‌نام، ورود، هش رمز، مهمان) ---------- */
 import { uid } from "./utils";
+import { getCloud, pushUser, pullUser } from "./cloud";
 
 export interface User {
   id: string;
@@ -58,15 +59,34 @@ export function signup(name: string, username: string, pass: string): { user?: U
   users.push(user);
   saveUsers(users);
   setSession(user);
+  // حساب را در ابر هم ثبت کن تا در دستگاه‌های دیگر قابل ورود باشد
+  const cfg = getCloud();
+  if (cfg) void pushUser({ username: un, name: user.name, hash: user.hash, created: user.created }, cfg);
   return { user };
 }
 
-export function login(username: string, pass: string): { user?: User; error?: string } {
+export async function login(username: string, pass: string): Promise<{ user?: User; error?: string }> {
   const un = username.trim().toLowerCase();
-  const user = loadUsers().find((u) => u.username === un);
+  let user = loadUsers().find((u) => u.username === un);
+  // اگر این دستگاه حساب را نمی‌شناسد، از ابر (Supabase) پیدایش کن
+  if (!user) {
+    const cfg = getCloud();
+    if (cfg) {
+      const cu = await pullUser(un, cfg);
+      if (cu) {
+        user = { id: uid(), name: cu.name, username: cu.username, hash: cu.hash, created: cu.created };
+        const users = loadUsers();
+        users.push(user);
+        saveUsers(users);
+      }
+    }
+  }
   if (!user) return { error: "کاربری با این نام کاربری پیدا نشد." };
   if (user.hash !== hashPass(pass)) return { error: "رمز عبور اشتباه است." };
   setSession(user);
+  // حساب‌های قدیمی را هم در ابر تازه کن تا در بقیهٔ دستگاه‌ها قابل ورود باشند
+  const backfill = getCloud();
+  if (backfill) void pushUser({ username: user.username, name: user.name, hash: user.hash, created: user.created }, backfill);
   return { user };
 }
 

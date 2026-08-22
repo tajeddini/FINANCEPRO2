@@ -14,7 +14,7 @@ import {
   todayISO, useNow, WEEKDAYS_MIN,
 } from "./lib/utils";
 import { THEMES, applyAccent } from "./lib/themes";
-import { encodeState, decodeState, pushToCloud, pullFromCloud } from "./lib/cloud";
+import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs } from "./lib/cloud";
 import { listUsers } from "./lib/auth";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
@@ -780,22 +780,34 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const [copied, setCopied] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const p = state.prefs;
-  const syncOn = !!p.syncUrl && !!p.syncKey;
+  const ep = effectivePrefs(p);
+  const syncOn = !!ep.syncUrl && !!ep.syncKey;
+  const fromEnv = !p.syncUrl && !!ep.syncUrl;
   const users = listUsers();
 
-  const setPrefs = (patch: Partial<typeof p>, log?: string) =>
+  const setPrefs = (patch: Partial<typeof p>, log?: string) => {
     mutate((d) => { d.prefs = { ...d.prefs, ...patch }; }, log);
+    // اگر آدرس/کلید تغییر کرد، برای ورودِ دستگاه‌های تازه هم نگهش دار
+    if (patch.syncUrl !== undefined || patch.syncKey !== undefined) {
+      const next = { ...p, ...patch };
+      if (next.syncUrl && next.syncKey) saveCloud({ url: next.syncUrl, key: next.syncKey });
+    }
+  };
 
+  const cloudSyncId = "fp-user-" + user.username;
   const doSync = async () => {
-    if (!p.syncUrl || !p.syncKey) return toast("warn", "ابتدا آدرس پروژه و کلید anon را پر کنید.");
+    const ep = effectivePrefs(p);
+    if (!ep.syncUrl || !ep.syncKey) return toast("warn", "ابتدا آدرس پروژه و کلید anon را پر کنید (یا متغیرهای محیطی Vercel را تنظیم کنید).");
     setSyncing(true);
-    const pull = await pullFromCloud(p);
-    if (pull.ok && pull.state && pull.updatedAt && pull.updatedAt > new Date(state.lastSync).toISOString()) {
+    const pull = await pullFromCloud(ep, cloudSyncId);
+    if (!pull.ok) {
+      toast("err", pull.message);
+    } else if (pull.state && (pull.state.rev ?? 0) > (state.rev ?? 0)) {
       mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "دریافت داده از ابر");
-      toast("ok", "نسخهٔ جدیدتر از Supabase دریافت شد.");
+      toast("ok", "تراکنش‌های شما از ابر بازیابی شد — این دستگاه همگام است.");
     } else {
-      const push = await pushToCloud(state, p);
-      toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد — در هر مرورگری همین داده را می‌بینید." : push.message);
+      const push = await pushToCloud(state, ep, cloudSyncId);
+      toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد — در هر دستگاهی با همین نام کاربری همین داده را می‌بینید." : push.message);
     }
     setSyncing(false);
   };
@@ -918,8 +930,13 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
               </span>
             </h3>
             <div className="grid gap-3 mt-4">
-              <Field label="آدرس پروژه (SUPABASE_URL)"><TInput dir="ltr" placeholder="https://xxx.supabase.co" value={p.syncUrl ?? ""} onChange={(e) => setPrefs({ syncUrl: e.target.value })} /></Field>
-              <Field label="کلید anon (SUPABASE_KEY)"><TInput dir="ltr" type="password" placeholder="eyJhbGciOi…" value={p.syncKey ?? ""} onChange={(e) => setPrefs({ syncKey: e.target.value })} /></Field>
+              <Field label="آدرس پروژه (SUPABASE_URL)"><TInput dir="ltr" placeholder="https://xxx.supabase.co" value={ep.syncUrl ?? ""} onChange={(e) => setPrefs({ syncUrl: e.target.value })} /></Field>
+              <Field label="کلید anon (SUPABASE_KEY)"><TInput dir="ltr" type="password" placeholder="eyJhbGciOi…" value={ep.syncKey ?? ""} onChange={(e) => setPrefs({ syncKey: e.target.value })} /></Field>
+              {fromEnv && (
+                <p className="text-[11px] font-black flex items-center gap-1.5" style={{ color: "var(--fp-mint)" }}>
+                  <Check className="w-3.5 h-3.5" strokeWidth={3} /> اتصال از متغیرهای محیطی Vercel خوانده شده — نیازی به پر کردن دستی نیست
+                </p>
+              )}
               <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
                 <span className="text-[12px] font-black" style={{ color: "var(--fp-text2)" }}>آخرین سینک: {relTime(state.lastSync)}</span>
                 <button className="btn btn-mint btn-sm" disabled={syncing} onClick={doSync}>

@@ -1,11 +1,11 @@
 /* ---------- پوسته: مسیریابی، ورود/ثبت‌نام، جستجو، یادآوری، نوار بازگشت ---------- */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, CalendarDays, Coins, LayoutDashboard, List, LogOut, Moon,
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Sun, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
-import { pushToCloud, pullFromCloud } from "./lib/cloud";
+import { pushToCloud, pullFromCloud, effectivePrefs } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
@@ -52,8 +52,11 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
   const [username, setUsername] = useState("");
   const [pass, setPass] = useState("");
 
-  const submit = () => {
-    const r = mode === "login" ? login(username, pass) : signup(name, username, pass);
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    const r = mode === "login" ? await login(username, pass) : signup(name, username, pass);
+    setBusy(false);
     if (r.error) return toast("err", r.error);
     toast("ok", mode === "login" ? `خوش آمدید، ${r.user!.name}!` : "حساب ساخته شد — دفترکل نمونه برایتان آماده است.");
     onAuthed(r.user!);
@@ -115,8 +118,8 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
             )}
             <Field label="نام کاربری"><TInput dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="sara" /></Field>
             <Field label="رمز عبور"><TInput dir="ltr" type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="••••••" onKeyDown={(e) => e.key === "Enter" && submit()} /></Field>
-            <button className="btn btn-gold !py-3 !text-[14px]" onClick={submit}>
-              {mode === "login" ? "ورود به دفترکل" : "ساخت حساب و شروع"}
+            <button className="btn btn-gold !py-3 !text-[14px]" onClick={submit} disabled={busy}>
+              {busy ? "در حال بررسی…" : mode === "login" ? "ورود به دفترکل" : "ساخت حساب و شروع"}
             </button>
             <button className="btn btn-ghost" onClick={() => onAuthed(guestLogin())}>
               ادامه به‌صورت مهمان — بدون ثبت‌نام
@@ -168,66 +171,76 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     applyAccent(state.prefs.accent ?? readAccent());
   }, [state.prefs.accent]);
 
-  /* ماندگاری بین مرورگرها: ارسال خودکار با دیباونس + پولینگ ۹۰ ثانیه */
+  /* ---------- همگام‌سازی ابریِ چنددستگاهه ----------
+     کلید سینک از «نام کاربری» ساخته می‌شود تا همهٔ دستگاه‌های یک کاربر به یک ردیف
+     مشترک در Supabase وصل باشند. شمارندهٔ نسخه (rev) تعیین می‌کند کدام داده جدیدتر
+     است؛ دستگاه تازه‌وارد به‌جای پاک کردن، دادهٔ دستگاه اصلی را از ابر بازیابی می‌کند. */
   const stateRef = useRef(state);
   stateRef.current = state;
   const pushedRef = useRef("");
-  const syncOn = !!(state.prefs.syncUrl && state.prefs.syncKey && state.prefs.syncId);
+  const reconciledRef = useRef(false);
+  const mutateRef = useRef(mutate);
+  mutateRef.current = mutate;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
+  const cloudSyncId = "fp-user-" + user.username;
+  const syncOn = (() => {
+    const e = effectivePrefs(state.prefs);
+    return !!(e.syncUrl && e.syncKey);
+  })();
+
+  /* شناسهٔ نمایشی سینک را هم‌نام کلید ابری نگه می‌داریم */
+  useEffect(() => {
+    if (state.prefs.syncId !== cloudSyncId) {
+      mutate((d) => { d.prefs.syncId = cloudSyncId; });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudSyncId]);
+
+  /* سازش‌گیری: اول از ابر بخوان؛ اگر ابر جدیدتر بود جایگزین کن، وگرنه محلی را بفرست */
+  const reconcile = useCallback(async () => {
+    const s = stateRef.current;
+    const ep = effectivePrefs(s.prefs);
+    if (!ep.syncUrl || !ep.syncKey) return;
+    try {
+      const pull = await pullFromCloud(ep, cloudSyncId);
+      if (!pull.ok) {
+        /* خطای واقعی (شبکه/کلید) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
+      } else if (pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
+        /* ابر جدیدتر است — دادهٔ دستگاه اصلی را بازیابی کن */
+        mutateRef.current((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "بازیابی داده‌ها از ابر");
+        toastRef.current("ok", "تراکنش‌های شما از ابر بازیابی شد.");
+      } else {
+        /* ابر خالی یا قدیمی‌تر است — فرستادن محلی امن است */
+        await pushToCloud(s, ep, cloudSyncId);
+      }
+    } catch { /* شبکه قطع است — از دادهٔ محلی استفاده می‌شود */ }
+    reconciledRef.current = true;
+    pushedRef.current = JSON.stringify(stateRef.current);
+  }, [cloudSyncId]);
+
+  /* هنگام فعال شدن سینک و هر ۹۰ ثانیه، سازش‌گیری کن */
   useEffect(() => {
     if (!syncOn) return;
+    reconciledRef.current = false;
+    reconcile();
+    const id = setInterval(reconcile, 90000);
+    return () => clearInterval(id);
+  }, [syncOn, reconcile]);
+
+  /* بعد از سازش‌گیری اولیه، هر تغییر محلی با دیباونس به ابر فرستاده می‌شود */
+  useEffect(() => {
+    if (!syncOn || !reconciledRef.current) return;
     const id = setTimeout(async () => {
       const s = stateRef.current;
       const json = JSON.stringify(s);
       if (json === pushedRef.current) return;
       pushedRef.current = json;
-      await pushToCloud(s, s.prefs);
+      await pushToCloud(s, effectivePrefs(s.prefs), cloudSyncId);
     }, 3500);
     return () => clearTimeout(id);
-  }, [state, syncOn]);
-
-  useEffect(() => {
-    if (!syncOn) return;
-    const id = setInterval(async () => {
-      const s = stateRef.current;
-      const pull = await pullFromCloud(s.prefs);
-      if (pull.ok && pull.state && pull.updatedAt && pull.updatedAt > new Date(s.lastSync).toISOString()) {
-        mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "دریافت خودکار از ابر");
-      }
-    }, 90000);
-    return () => clearInterval(id);
-  }, [syncOn, mutate]);
-
-  /* سینک خودکار هنگام شروع برنامه — داده را از ابر تازه و ابر را از دادهٔ محلی به‌روز می‌کند */
-  const bootSyncedRef = useRef(false);
-  useEffect(() => {
-    if (!syncOn || bootSyncedRef.current) return;
-    bootSyncedRef.current = true;
-    (async () => {
-      const s = stateRef.current;
-      try {
-        const pull = await pullFromCloud(s.prefs);
-        if (pull.ok && pull.state && pull.updatedAt) {
-          const localTime = new Date(s.lastSync).toISOString();
-          if (pull.updatedAt > localTime) {
-            mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "بازیابی خودکار از ابر هنگام شروع");
-          }
-        }
-      } catch { /* شبکه قطع است — از دادهٔ محلی استفاده می‌شود */ }
-      try {
-        await pushToCloud(stateRef.current, stateRef.current.prefs);
-        pushedRef.current = JSON.stringify(stateRef.current);
-      } catch { /* بعداً با دیباونس دوباره تلاش می‌شود */ }
-    })();
-  }, [syncOn, mutate]);
-
-  /* شناسهٔ سینک — یک‌بار برای هر کاربر ساخته می‌شود */
-  useEffect(() => {
-    if (!state.prefs.syncId) {
-      mutate((d) => { d.prefs.syncId = "sync-" + Math.random().toString(36).slice(2, 10); });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [state, syncOn, cloudSyncId]);
 
   /* قفل پین */
   useEffect(() => {
@@ -403,7 +416,8 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
 /* تگ سینک */
 function SyncBadge() {
   const { state } = useStore();
-  const on = !!state.prefs.syncUrl && !!state.prefs.syncKey;
+  const e = effectivePrefs(state.prefs);
+  const on = !!e.syncUrl && !!e.syncKey;
   return (
     <span className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border"
       style={{ borderColor: "var(--fp-border)", color: on ? "var(--fp-mint)" : "var(--fp-text3)" }}

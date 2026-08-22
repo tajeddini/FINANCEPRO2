@@ -34,16 +34,18 @@ const authHeaders = (key: string, extra: Record<string, string> = {}) => ({
 /** فرستادن دفترکل — جدول financepro_state (id, data, updated_at) */
 export async function pushToCloud(
   s: AppState,
-  p: Prefs
+  p: Prefs,
+  syncId?: string
 ): Promise<{ ok: boolean; message: string }> {
-  if (!p.syncUrl || !p.syncKey || !p.syncId)
+  const id = syncId ?? p.syncId;
+  if (!p.syncUrl || !p.syncKey || !id)
     return { ok: false, message: "آدرس، کلید و شناسهٔ سینک کامل نیست." };
   try {
     const res = await fetch(`${restBase(p.syncUrl)}/financepro_state`, {
       method: "POST",
       headers: authHeaders(p.syncKey, { Prefer: "resolution=merge-duplicates" }),
       body: JSON.stringify({
-        id: p.syncId,
+        id,
         data: encodeState(s),
         updated_at: new Date().toISOString(),
       }),
@@ -61,22 +63,77 @@ export async function pushToCloud(
 
 /** خواندن دفترکل از ابر */
 export async function pullFromCloud(
-  p: Prefs
+  p: Prefs,
+  syncId?: string
 ): Promise<{ ok: boolean; message: string; state?: AppState; updatedAt?: string }> {
-  if (!p.syncUrl || !p.syncKey || !p.syncId)
+  const id = syncId ?? p.syncId;
+  if (!p.syncUrl || !p.syncKey || !id)
     return { ok: false, message: "آدرس، کلید و شناسهٔ سینک کامل نیست." };
   try {
     const res = await fetch(
-      `${restBase(p.syncUrl)}/financepro_state?id=eq.${encodeURIComponent(p.syncId)}&select=data,updated_at`,
+      `${restBase(p.syncUrl)}/financepro_state?id=eq.${encodeURIComponent(id)}&select=data,updated_at`,
       { headers: authHeaders(p.syncKey) }
     );
     if (!res.ok) return { ok: false, message: `خطای ${res.status} از Supabase.` };
     const rows = (await res.json()) as { data: string; updated_at?: string }[];
-    if (!rows.length) return { ok: false, message: "هنوز داده‌ای در ابر نیست." };
+    // ردیفی نیست = خواندن موفق بوده ولی ابر خالی است (با خطای شبکه فرق دارد)
+    if (!rows.length) return { ok: true, message: "هنوز داده‌ای در ابر نیست.", state: undefined };
     const st = decodeState(rows[0].data);
     if (!st) return { ok: false, message: "دادهٔ ابر قابل‌خواندن نیست." };
     return { ok: true, message: "داده از ابر خوانده شد.", state: st, updatedAt: rows[0].updated_at };
   } catch {
     return { ok: false, message: "اتصال برقرار نشد." };
   }
+}
+
+/* ===== پیکربندی ابری مشترک (برای همهٔ کاربران) =====
+   اولویت: تنظیمات ذخیره‌شده در مرورگر ← متغیرهای محیطی Vercel */
+export interface CloudConfig { url: string; key: string; }
+
+export function getCloud(): CloudConfig | null {
+  try {
+    const g = JSON.parse(localStorage.getItem("fp_cloud") || "null") as CloudConfig | null;
+    if (g && g.url && g.key) return g;
+  } catch { /* ignore */ }
+  const env = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
+  if (env.VITE_SUPABASE_URL && env.VITE_SUPABASE_ANON_KEY)
+    return { url: env.VITE_SUPABASE_URL, key: env.VITE_SUPABASE_ANON_KEY };
+  return null;
+}
+
+export function saveCloud(cfg: CloudConfig) {
+  try { localStorage.setItem("fp_cloud", JSON.stringify(cfg)); } catch { /* ignore */ }
+}
+
+/** تنظیمات مؤثر سینک — ترجیح با ذخیرهٔ کاربر، بعد پیکربندی مشترک */
+export function effectivePrefs(p: Prefs): Prefs {
+  const c = getCloud();
+  return { ...p, syncUrl: p.syncUrl || c?.url || "", syncKey: p.syncKey || c?.key || "" };
+}
+
+/* ===== حساب‌های کاربری مشترک (ورود یکسان در همهٔ دستگاه‌ها) ===== */
+export interface CloudUser { username: string; name: string; hash: string; created: number; }
+
+export async function pushUser(u: CloudUser, cfg: CloudConfig): Promise<boolean> {
+  try {
+    const res = await fetch(`${restBase(cfg.url)}/fp_users`, {
+      method: "POST",
+      headers: authHeaders(cfg.key, { Prefer: "resolution=merge-duplicates" }),
+      body: JSON.stringify({ username: u.username, data: JSON.stringify(u), updated_at: new Date().toISOString() }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function pullUser(username: string, cfg: CloudConfig): Promise<CloudUser | null> {
+  try {
+    const res = await fetch(
+      `${restBase(cfg.url)}/fp_users?username=eq.${encodeURIComponent(username)}&select=data`,
+      { headers: authHeaders(cfg.key) }
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as { data: string }[];
+    if (!rows.length) return null;
+    return JSON.parse(rows[0].data) as CloudUser;
+  } catch { return null; }
 }
