@@ -81,7 +81,12 @@ export async function login(username: string, pass: string): Promise<{ user?: Us
       }
     }
   }
-  if (!user) return { error: "کاربری با این نام کاربری پیدا نشد." };
+  if (!user)
+    return {
+      error: getCloud()
+        ? "کاربری با این نام کاربری پیدا نشد."
+        : "کاربر پیدا نشد — اتصال ابری غیرفعال است. اگر حساب را در دستگاه دیگری ساخته‌اید، اول «اتصال Supabase» را در همین صفحه فعال کنید.",
+    };
   if (user.hash !== hashPass(pass)) return { error: "رمز عبور اشتباه است." };
   setSession(user);
   // حساب‌های قدیمی را هم در ابر تازه کن تا در بقیهٔ دستگاه‌ها قابل ورود باشند

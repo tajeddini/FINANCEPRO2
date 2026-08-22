@@ -5,7 +5,7 @@ import {
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Sun, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
-import { pushToCloud, pullFromCloud, effectivePrefs } from "./lib/cloud";
+import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
@@ -121,6 +121,9 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
             <button className="btn btn-gold !py-3 !text-[14px]" onClick={submit} disabled={busy}>
               {busy ? "در حال بررسی…" : mode === "login" ? "ورود به دفترکل" : "ساخت حساب و شروع"}
             </button>
+
+            <CloudConnectBox />
+
             <button className="btn btn-ghost" onClick={() => onAuthed(guestLogin())}>
               ادامه به‌صورت مهمان — بدون ثبت‌نام
             </button>
@@ -130,6 +133,79 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* باکس فعال‌سازی اتصال ابری — از همان صفحهٔ ورود */
+function CloudConnectBox() {
+  const toast = useToast();
+  const [cfg, setCfg] = useState(() => getCloud());
+  const [open, setOpen] = useState(() => !getCloud());
+  const [url, setUrl] = useState(cfg?.url ?? "");
+  const [key, setKey] = useState(cfg?.key ?? "");
+
+  const save = () => {
+    const u = url.trim();
+    const k = key.trim();
+    if (!u || !k) return toast("warn", "آدرس پروژه و کلید anon را کامل وارد کنید.");
+    saveCloud({ url: u, key: k });
+    setCfg({ url: u, key: k });
+    setOpen(false);
+    toast("ok", "اتصال Supabase فعال شد — حالا با حساب دستگاه دیگر وارد شوید.");
+  };
+
+  return (
+    <div
+      className="rounded-xl border p-3.5"
+      style={{
+        borderColor: cfg ? "color-mix(in srgb, var(--fp-mint) 45%, transparent)" : "color-mix(in srgb, var(--fp-accent) 45%, transparent)",
+        background: cfg ? "color-mix(in srgb, var(--fp-mint) 7%, transparent)" : "color-mix(in srgb, var(--fp-accent) 6%, transparent)",
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className="text-[11.5px] font-black flex items-center gap-1.5"
+          style={{ color: cfg ? "var(--fp-mint)" : "var(--fp-accent)" }}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${cfg ? "pulse-soft" : "blink-dot"}`} style={{ background: "currentColor" }} />
+          {cfg ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها" : "اتصال Supabase تنظیم نیست"}
+        </span>
+        <button
+          className="text-[10.5px] font-black underline underline-offset-2 cursor-pointer"
+          style={{ color: "var(--fp-text3)" }}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {cfg ? "ویرایش" : "فعال‌سازی"}
+        </button>
+      </div>
+      {!cfg && !open && (
+        <p className="text-[10.5px] font-bold mt-1.5 leading-5" style={{ color: "var(--fp-text3)" }}>
+          بدون اتصال، حساب‌ها فقط در همین مرورگر ذخیره می‌شوند.
+        </p>
+      )}
+      {open && (
+        <div className="grid gap-2 mt-3">
+          <input
+            dir="ltr"
+            className="input !py-2 !text-[11.5px]"
+            placeholder="https://xxx.supabase.co"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <input
+            dir="ltr"
+            type="password"
+            className="input !py-2 !text-[11.5px]"
+            placeholder="anon public key (eyJ…)"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+          />
+          <button className="btn btn-mint btn-sm" onClick={save}>
+            ذخیرهٔ اتصال
+          </button>
+        </div>
+      )}
     </div>
   );
 }

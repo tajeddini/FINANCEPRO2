@@ -930,8 +930,8 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
               </span>
             </h3>
             <div className="grid gap-3 mt-4">
-              <Field label="آدرس پروژه (SUPABASE_URL)"><TInput dir="ltr" placeholder="https://xxx.supabase.co" value={ep.syncUrl ?? ""} onChange={(e) => setPrefs({ syncUrl: e.target.value })} /></Field>
-              <Field label="کلید anon (SUPABASE_KEY)"><TInput dir="ltr" type="password" placeholder="eyJhbGciOi…" value={ep.syncKey ?? ""} onChange={(e) => setPrefs({ syncKey: e.target.value })} /></Field>
+              <Field label="آدرس پروژه (SUPABASE_URL)"><TInput dir="ltr" placeholder="https://xxx.supabase.co" value={ep.syncUrl ?? ""} onChange={(e) => { setPrefs({ syncUrl: e.target.value }); if (e.target.value.trim() && ep.syncKey) saveCloud({ url: e.target.value.trim(), key: ep.syncKey }); }} /></Field>
+              <Field label="کلید anon (SUPABASE_KEY)"><TInput dir="ltr" type="password" placeholder="eyJhbGciOi…" value={ep.syncKey ?? ""} onChange={(e) => { setPrefs({ syncKey: e.target.value }); if (e.target.value.trim() && ep.syncUrl) saveCloud({ url: ep.syncUrl, key: e.target.value.trim() }); }} /></Field>
               {fromEnv && (
                 <p className="text-[11px] font-black flex items-center gap-1.5" style={{ color: "var(--fp-mint)" }}>
                   <Check className="w-3.5 h-3.5" strokeWidth={3} /> اتصال از متغیرهای محیطی Vercel خوانده شده — نیازی به پر کردن دستی نیست
