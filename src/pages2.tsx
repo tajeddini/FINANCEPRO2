@@ -3,15 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, Bell, Bot, CalendarDays, Check, Cloud, Clock3, Copy, Download, FileDown,
   KeyRound, Lock, Moon, Palette, PencilLine, Plus, Printer, RefreshCw, Search, Shield,
-  StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
+  Sparkles, StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { clearData, sampleFill, useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
+import { clearData, sampleFill, useStore, TX_TAGS, type AppState, type ID, type Appointment, type Note } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
   copyText, fireNotification, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA,
-  PERIODS, periodRange, playChime, relTime, todayISO, useNow, WEEKDAYS_MIN,
+  PERIODS, periodRange, playChime, relTime, todayISO, useNow, WEEKDAYS_FA, WEEKDAYS_MIN,
   type PeriodKey,
 } from "./lib/utils";
 import { THEMES, applyAccent } from "./lib/themes";
@@ -522,6 +522,177 @@ function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => vo
   );
 }
 
+/* ---------- گزارش هوشمند (برای تحلیل با هوش مصنوعی) ---------- */
+function buildAiReport(s: AppState): string {
+  const t = jalaliToday();
+  const mr = jalaliMonthRange(t.jy, t.jm);
+  const monthTxs = s.transactions.filter((x) => inRange(x.date, mr));
+  const income = monthTxs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
+  const expense = monthTxs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
+  const balance = s.accounts.reduce((a, x) => a + x.balance, 0);
+  const net = income - expense;
+  const en = (n: number) => Math.round(n).toLocaleString("en-US");
+  const L: string[] = [];
+  const P = (x = "") => L.push(x);
+
+  P("📊 گزارش هوشمند مالی — فایننس‌پرو");
+  P(`تاریخ: ${t.jy}/${t.jm}/${t.jd} (هجری شمسی) | ${new Date().toISOString().slice(0, 10)} (میلادی)`);
+  P("");
+  P("این گزارش، داده‌های واقعی دفترکل مالی شخصی من است (همهٔ مبالغ به تومان). از تو به‌عنوان مشاور مالی می‌خواهم رفتار مالی‌ام را دقیق تحلیل کنی و راهکار عملی بدهی.");
+  P("");
+
+  P("## ۱. نمای کلی");
+  P(`- موجودی کل حساب‌ها: ${en(balance)}`);
+  P(`- درآمد این ماه: ${en(income)}`);
+  P(`- هزینهٔ این ماه: ${en(expense)}`);
+  P(`- تراز این ماه: ${en(net)} (${net >= 0 ? "مثبت" : "منفی"})`);
+  P(`- نرخ پس‌انداز این ماه: ${income > 0 ? Math.max(0, Math.round((net / income) * 100)) : 0}٪`);
+  P("");
+
+  P("## ۲. روند ۶ ماه اخیر (درآمد | هزینه | خالص)");
+  const monthly: { label: string; inc: number; exp: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const m = addJalaliMonths(t.jy, t.jm, -i);
+    const r = jalaliMonthRange(m.jy, m.jm);
+    const txs = s.transactions.filter((x) => inRange(x.date, r));
+    const inc = txs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
+    const exp = txs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
+    monthly.push({ label: `${MONTHS_FA[m.jm - 1]} ${m.jy}`, inc, exp });
+    P(`- ${MONTHS_FA[m.jm - 1]} ${m.jy}: ${en(inc)} | ${en(exp)} | ${en(inc - exp)}`);
+  }
+  P("");
+
+  P("## ۳. تفکیک هزینه‌های این ماه بر اساس دسته");
+  const byCat = new Map<string, { sum: number; count: number }>();
+  for (const x of monthTxs.filter((x) => x.type === "expense")) {
+    const c = s.categories.find((c) => c.id === x.categoryId);
+    const key = c?.name ?? "نامشخص";
+    const cur = byCat.get(key) ?? { sum: 0, count: 0 };
+    cur.sum += x.amount; cur.count++;
+    byCat.set(key, cur);
+  }
+  const cats = [...byCat.entries()].sort((a, b) => b[1].sum - a[1].sum);
+  if (cats.length === 0) P("- هزینه‌ای ثبت نشده.");
+  for (const [name, v] of cats.slice(0, 10)) {
+    P(`- ${name}: ${en(v.sum)} (${v.count} تراکنش) — ${expense > 0 ? Math.round((v.sum / expense) * 100) : 0}٪ از کل هزینه`);
+  }
+  P("");
+
+  P("## ۴. برچسب‌های رفتاری این ماه (روی هزینه‌ها)");
+  let laterSum = 0, funSum = 0;
+  for (const tag of TX_TAGS) {
+    const txs = monthTxs.filter((x) => x.type === "expense" && x.tag === tag.id);
+    const sum = txs.reduce((a, x) => a + x.amount, 0);
+    if (tag.id === "later") laterSum = sum;
+    if (tag.id === "fun") funSum = sum;
+    P(`- ${tag.label}: ${en(sum)} (${txs.length} تراکنش)${expense > 0 ? ` — ${Math.round((sum / expense) * 100)}٪ از کل هزینه` : ""}`);
+  }
+  P(`- 💡 پتانسیل پس‌انداز (تفریحی + «میشد بعدا هم خرید»): ${en(funSum + laterSum)}`);
+  P("");
+
+  P("## ۵. بودجه‌بندی ماهانه");
+  if (s.budgets.length === 0) P("- بودجه‌ای تعریف نشده.");
+  for (const b of s.budgets) {
+    const cat = s.categories.find((c) => c.id === b.categoryId);
+    const spent = byCat.get(cat?.name ?? "")?.sum ?? 0;
+    const diff = b.limit - spent;
+    P(`- ${cat?.name ?? "?"}: سقف ${en(b.limit)} | خرج‌شده ${en(spent)} | ${diff >= 0 ? `باقی‌مانده ${en(diff)}` : `مازاد ${en(-diff)}`}`);
+  }
+  P("");
+
+  P("## ۶. بدهی‌ها و طلب‌ها");
+  const debts = s.debts.filter((d) => d.kind === "debt");
+  const credits = s.debts.filter((d) => d.kind === "credit");
+  P(`- مجموع بدهی باقی‌مانده: ${en(debts.reduce((a, d) => a + (d.amount - d.paid), 0))}`);
+  P(`- مجموع طلب باقی‌مانده: ${en(credits.reduce((a, d) => a + (d.amount - d.paid), 0))}`);
+  for (const d of debts) P(`  - بدهی به ${d.person}: ${en(d.amount - d.paid)} باقی‌مانده${d.due ? ` (سررسید ${d.due})` : ""}`);
+  for (const d of credits) P(`  - طلب از ${d.person}: ${en(d.amount - d.paid)} باقی‌مانده${d.due ? ` (سررسید ${d.due})` : ""}`);
+  P("");
+
+  P("## ۷. اقساط");
+  if (s.installments.length === 0) P("- قسطی ثبت نشده.");
+  for (const i of s.installments) {
+    P(`- ${i.title}: ماهی ${en(i.amountPerMonth)} — قسط ${i.paidCount} از ${i.months} پرداخت شده`);
+  }
+  P("");
+
+  P("## ۸. اهداف پس‌انداز");
+  if (s.savings_goals.length === 0) P("- هدفی ثبت نشده.");
+  for (const g of s.savings_goals) {
+    P(`- ${g.title}: ${en(g.saved)} از ${en(g.target)} (${Math.round((g.saved / g.target) * 100)}٪)`);
+  }
+  P("");
+
+  P("## ۹. هزینه‌های ثابت و اشتراک‌ها");
+  const recSum = s.recurring.reduce((a, r) => a + (r.type === "expense" ? r.amount : 0), 0);
+  P(`- مجموع تراکنش‌های دوره‌ای ماهانه: ${en(recSum)}`);
+  for (const r of s.recurring) P(`  - ${r.title}: ${en(r.amount)} (روز ${r.dayOfMonth} هر ماه)`);
+  for (const sub of s.subscriptions) P(`  - اشتراک ${sub.name}: ${en(sub.amount)} ${sub.cycle === "monthly" ? "ماهانه" : "سالانه"} (تمدید ${sub.renew})`);
+  P("");
+
+  P("## ۱۰. دارایی‌ها و ارز");
+  if (s.assets.length === 0 && s.currencies.length === 0) P("- دارایی یا ارزی ثبت نشده.");
+  for (const a of s.assets) {
+    const pnl = (a.nowPrice - a.buyPrice) * a.qty;
+    P(`- ${a.name}: ارزش امروز ${en(a.nowPrice * a.qty)} | سود/زیان ${en(pnl)}`);
+  }
+  for (const c of s.currencies) {
+    P(`- ${c.name} (${c.symbol}): ${en(c.qty)} واحد × نرخ ${en(c.rate)} = ${en(c.qty * c.rate)}`);
+  }
+  P("");
+
+  P("## ۱۱. بزرگ‌ترین هزینه‌های این ماه");
+  const topExp = [...monthTxs.filter((x) => x.type === "expense")].sort((a, b) => b.amount - a.amount).slice(0, 5);
+  if (topExp.length === 0) P("- هزینه‌ای ثبت نشده.");
+  for (const x of topExp) {
+    const c = s.categories.find((c) => c.id === x.categoryId);
+    P(`- ${en(x.amount)} — ${c?.name ?? "?"}${x.note ? ` (${x.note})` : ""}`);
+  }
+  P("");
+
+  P("## ۱۲. الگوهای رفتاری");
+  const daysPassed = Math.max(1, t.jd);
+  P(`- میانگین خرج روزانه این ماه: ${en(expense / daysPassed)} (در ${daysPassed} روز)`);
+  const wd = new Array(7).fill(0);
+  for (const x of monthTxs.filter((x) => x.type === "expense")) {
+    const d = new Date(x.date + "T12:00:00");
+    wd[(d.getDay() + 1) % 7] += x.amount;
+  }
+  const maxWd = wd.indexOf(Math.max(...wd));
+  if (expense > 0) P(`- پرخرج‌ترین روز هفته: ${WEEKDAYS_FA[maxWd]}`);
+  const incomes = monthTxs.filter((x) => x.type === "income");
+  P(`- تعداد منابع درآمد این ماه: ${new Set(incomes.map((x) => x.categoryId)).size}`);
+  P("");
+
+  P("## ۱۳. امتیاز سلامت مالی و پیش‌بینی");
+  try {
+    const lastMonth = addJalaliMonths(t.jy, t.jm, -1);
+    const lastRange = jalaliMonthRange(lastMonth.jy, lastMonth.jm);
+    const lastTxs = s.transactions.filter((x) => inRange(x.date, lastRange));
+    const h = computeHealthScore(s, monthTxs, lastTxs);
+    P(`- امتیاز سلامت مالی: ${h.score} از 100`);
+    for (const p of h.parts) P(`  - ${p.label}: ${p.pct}٪`);
+  } catch { /* در صورت نبود داده کافی */ }
+  const last3 = monthly.slice(0, 3);
+  const avgInc = last3.reduce((a, m) => a + m.inc, 0) / 3;
+  const avgExp = last3.reduce((a, m) => a + m.exp, 0) / 3;
+  P(`- پیش‌بینی ماه بعد (میانگین ۳ ماه اخیر): درآمد حدود ${en(avgInc)} | هزینه حدود ${en(avgExp)}`);
+  const badges = computeBadges(s).filter((b) => b.earned);
+  if (badges.length > 0) P(`- نشان‌های کسب‌شده: ${badges.map((b) => b.title).join("، ")}`);
+  P("");
+
+  P("## ۱۴. درخواست از هوش مصنوعی");
+  P("لطفاً بر اساس داده‌های بالا:");
+  P("۱) وضعیت کلی مالی‌ام را در ۳ جمله خلاصه کن.");
+  P("۲) ۳ نقطهٔ قوت و ۳ نقطهٔ ضعف رفتار مالی‌ام را مشخص کن.");
+  P("۳) ۵ راهکار عملی و مشخص برای ماه بعد بده (با عدد و رقم پیشنهادی بر اساس داده‌های خودم).");
+  P("۴) یک بودجه‌بندی پیشنهادی برای دسته‌های اصلی‌ام بنویس.");
+  P("۵) یک برنامهٔ پس‌انداز ۳ ماهه با هدف مشخص طراحی کن.");
+  P("پاسخ را به فارسی، ساده و قابل‌اقدام بده.");
+
+  return L.join("\n");
+}
+
 /* ================= ۶) گزارش‌ها ================= */
 export function ReportsPage() {
   const { state } = useStore();
@@ -531,6 +702,9 @@ export function ReportsPage() {
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
   const range = periodRange(period);
   const monthTxs = state.transactions.filter((x) => inRange(x.date, range));
+
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiReport, setAiReport] = useState("");
 
   const { months, forecast } = Forecast({ s: state });
   const lm = addJalaliMonths(t.jy, t.jm, -1);
@@ -550,6 +724,9 @@ export function ReportsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in no-print">
         <h1 className="font-display text-3xl md:text-4xl">گزارش‌ها و تحلیل</h1>
         <div className="flex flex-wrap gap-2">
+          <button className="btn btn-mint btn-sm" onClick={() => { setAiReport(buildAiReport(state)); setAiOpen(true); }}>
+            <Sparkles className="w-4 h-4" /> گزارش هوشمند
+          </button>
           <button className="btn btn-gold btn-sm" onClick={() => { exportExcel(state, { txs: monthTxs, periodLabel }).then(() => toast("ok", `اکسل حرفه‌ای بازهٔ «${periodLabel}» دانلود شد.`)); }}>
             <Download className="w-4 h-4" /> خروجی اکسل
           </button>
@@ -689,6 +866,33 @@ export function ReportsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* مودال گزارش هوشمند */}
+      <Modal open={aiOpen} onClose={() => setAiOpen(false)} title="گزارش هوشمند برای هوش مصنوعی" wide>
+        <div className="rounded-xl p-4 mb-3 flex items-start gap-2.5 text-[12px] font-bold leading-6"
+          style={{ background: "color-mix(in srgb, var(--fp-accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 30%, transparent)", color: "var(--fp-text2)" }}>
+          <Sparkles className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "var(--fp-accent)" }} />
+          <span>
+            این گزارش همهٔ داده‌های مالی‌ات را به‌صورت متنی و ساختاریافته جمع کرده است. آن را کپی کن و به ChatGPT، Claude یا هر هوش مصنوعی دیگری بده تا رفتار مالی‌ات را تحلیل کند و راهکار بدهد.
+          </span>
+        </div>
+        <pre dir="rtl"
+          className="text-[12px] leading-7 font-bold whitespace-pre-wrap rounded-xl border p-4 max-h-[46vh] overflow-y-auto"
+          style={{ background: "var(--fp-bg)", borderColor: "var(--fp-border)", color: "var(--fp-text2)" }}>
+          {aiReport}
+        </pre>
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>
+            {faNum(aiReport.length)} کاراکتر · آمادهٔ ارسال به هوش مصنوعی
+          </span>
+          <button className="btn btn-gold" onClick={async () => {
+            const ok = await copyText(aiReport);
+            toast(ok ? "ok" : "err", ok ? "گزارش کپی شد — حالا به هوش مصنوعی بده." : "کپی ناموفق بود؛ متن را دستی انتخاب و کپی کن.");
+          }}>
+            <Copy className="w-4 h-4" /> کپی گزارش
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

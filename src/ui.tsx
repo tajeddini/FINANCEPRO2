@@ -190,8 +190,9 @@ export function JalaliPicker({
 }
 
 /* ================= تایپ صوتی (fa-IR) — پیشرفته =================
-   متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
-   حالت پیوسته + پیش‌نمایش زندهٔ گفته‌ها + پیام‌های راهنمای خطا. */
+   ۱) متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
+   ۲) متنِ نهایی هر بار از کل نتایج بازسازی می‌شود — تکرار کلمه رخ نمی‌دهد.
+   ۳) گوش دادن پیوسته است؛ حتی بعد از مکث، موتور خودکار ادامه می‌دهد تا دکمهٔ توقف زده شود. */
 export function MicButton({
   onText, baseText = "", disabled,
 }: {
@@ -203,12 +204,85 @@ export function MicButton({
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState("");
   const recRef = useRef<any>(null);
-  const startBaseRef = useRef("");
+  const stopReqRef = useRef(false);
+  /* پایهٔ الحاق — بعد از هر بار باز راه‌اندازی موتور، به آخرین متنِ تحویل‌شده به‌روز می‌شود */
+  const baseRef = useRef("");
+  const latestRef = useRef("");
   const supported = typeof window !== "undefined" &&
     !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   const toast = useToast();
 
-  useEffect(() => () => { try { recRef.current?.abort(); } catch { /* ignore */ } }, []);
+  useEffect(() => () => {
+    stopReqRef.current = true;
+    try { recRef.current?.abort(); } catch { /* ignore */ }
+  }, []);
+
+  const start = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "fa-IR";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (e: any) => {
+      /* بازسازی کامل متن از همهٔ نتایج — جلوی تکرار را می‌گیرد */
+      let fin = "";
+      let interim = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        const txt = (r[0]?.transcript ?? "").trim();
+        if (!txt) continue;
+        if (r.isFinal) fin += txt + " ";
+        else interim += txt + " ";
+      }
+      setHeard((fin + interim).trim());
+      if (fin.trim()) {
+        const merged = ((baseRef.current ? baseRef.current + " " : "") + fin).trim();
+        latestRef.current = merged;
+        onText(merged);
+      }
+    };
+
+    rec.onend = () => {
+      /* اگر کاربر متوقف نکرده، موتور را ادامه بده (حالت پیوستهٔ واقعی) */
+      if (!stopReqRef.current) {
+        baseRef.current = latestRef.current; /* متن تحویل‌شده حفظ شود */
+        window.setTimeout(() => {
+          if (stopReqRef.current) return;
+          try { rec.start(); } catch {
+            setListening(false); setHeard("");
+          }
+        }, 150);
+        return;
+      }
+      setListening(false);
+      setHeard("");
+    };
+
+    rec.onerror = (e: any) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        stopReqRef.current = true;
+        setListening(false); setHeard("");
+        toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس مرورگر اجازه بدهید.");
+      } else if (e.error === "network") {
+        stopReqRef.current = true;
+        setListening(false); setHeard("");
+        toast("err", "خطای شبکه در تشخیص صوت — اینترنت را بررسی کنید.");
+      }
+      /* خطاهای no-speech و aborted خودشان به onend می‌روند و ادامه می‌یابند */
+    };
+
+    recRef.current = rec;
+    try {
+      rec.start();
+      setListening(true);
+      setHeard("");
+    } catch {
+      stopReqRef.current = true;
+      setListening(false);
+    }
+  };
 
   const toggle = () => {
     if (!supported) {
@@ -216,45 +290,14 @@ export function MicButton({
       return;
     }
     if (listening) {
-      recRef.current?.stop();
+      stopReqRef.current = true;
+      try { recRef.current?.stop(); } catch { /* ignore */ }
       return;
     }
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const rec = new SR();
-    rec.lang = "fa-IR";
-    rec.interimResults = true;
-    rec.continuous = true;
-    rec.maxAlternatives = 1;
-    startBaseRef.current = baseText.trim();
-    let final = "";
-    rec.onresult = (e: any) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const txt = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += txt + " ";
-        else interim += txt;
-      }
-      setHeard((final + interim).trim());
-      const merged = (startBaseRef.current + " " + final).trim();
-      if (final.trim()) onText(merged);
-    };
-    rec.onend = () => { setListening(false); setHeard(""); };
-    rec.onerror = (e: any) => {
-      setListening(false); setHeard("");
-      if (e.error === "not-allowed" || e.error === "service-not-allowed")
-        toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس مرورگر اجازه بدهید.");
-      else if (e.error === "no-speech")
-        toast("warn", "صدایی شنیده نشد — نزدیک‌تر صحبت کنید و دوباره بزنید.");
-      else if (e.error === "network")
-        toast("err", "خطای شبکه در تشخیص صوت — اینترنت را بررسی کنید.");
-      else toast("err", "تشخیص صوتی ناموفق بود؛ دوباره تلاش کنید.");
-    };
-    recRef.current = rec;
-    try {
-      rec.start();
-      setListening(true);
-      setHeard("");
-    } catch { /* اگر قبلاً در حال اجرا بود */ }
+    stopReqRef.current = false;
+    baseRef.current = baseText.trim();
+    latestRef.current = baseRef.current;
+    start();
   };
 
   return (

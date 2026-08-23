@@ -174,15 +174,15 @@ export function TxModal({
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
           <Field label="توضیحات (اختیاری — تراکنش با نام دسته ثبت می‌شود)">
-            <div className="flex gap-2 items-start">
-              <textarea
-                value={note}
-                onChange={(e) => onNote(e.target.value)}
-                placeholder={smart ? "مثلاً: اسنپ ۵۰ هزار از کارت ملت" : "مثلاً: خرید از سوپرمارکت یاس"}
-                rows={2}
-                className="input resize-none !text-[13.5px] !leading-6 flex-1"
-                autoFocus
-              />
+            <textarea
+              value={note}
+              onChange={(e) => onNote(e.target.value)}
+              placeholder={smart ? "مثلاً: اسنپ ۵۰ هزار از کارت ملت" : "مثلاً: خرید از سوپرمارکت یاس"}
+              rows={2}
+              className="input resize-none !text-[13.5px] !leading-6"
+              autoFocus
+            />
+            <div className="mt-2">
               <MicButton onText={(t) => onNote(t)} baseText={note} />
             </div>
           </Field>
