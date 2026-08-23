@@ -91,12 +91,14 @@ export function Confirm({
 
 /* ================= فرم ================= */
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  /* ⚠️ div به‌جای label — دکمهٔ داخل <label> در برخی مرورگرها (از جمله کرومِ PWA)
+     رویداد کلیک را دوبار شلیک می‌کند و باعث شروع دوتایی ضبط صدا می‌شد. */
   return (
-    <label className="block">
+    <div className="block">
       <span className="block text-[11.5px] font-black mb-1.5" style={{ color: "var(--fp-text3)" }}>{label}</span>
       {children}
       {hint && <span className="block text-[10.5px] font-semibold mt-1" style={{ color: "var(--fp-text3)" }}>{hint}</span>}
-    </label>
+    </div>
   );
 }
 
@@ -191,8 +193,11 @@ export function JalaliPicker({
 
 /* ================= تایپ صوتی (fa-IR) — پیشرفته =================
    ۱) متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
-   ۲) متنِ نهایی هر بار از کل نتایج بازسازی می‌شود — تکرار کلمه رخ نمی‌دهد.
-   ۳) گوش دادن پیوسته است؛ حتی بعد از مکث، موتور خودکار ادامه می‌دهد تا دکمهٔ توقف زده شود. */
+   ۲) هر «نشست» تشخیص، یک نمونهٔ تازهٔ SpeechRecognition است — نتایج نشست قبل
+      هرگز باقی نمی‌مانند، پس تکرار کلمه رخ نمی‌دهد (باگ اصلی نسخهٔ PWA/اندروید).
+   ۳) متنِ نهایی هر بار از کل نتایجِ همان نشست بازسازی می‌شود (idempotent).
+   ۴) گوش دادن پیوسته است؛ بعد از مکث، نشست جدید خودکار شروع می‌شود تا «توقف ضبط».
+   ۵) گارد شروع دوتایی: کلیک‌های تکراری یا رویدادهای دوبله، نشست دوم نمی‌سازند. */
 export function MicButton({
   onText, baseText = "", disabled,
 }: {
@@ -205,7 +210,8 @@ export function MicButton({
   const [heard, setHeard] = useState("");
   const recRef = useRef<any>(null);
   const stopReqRef = useRef(false);
-  /* پایهٔ الحاق — بعد از هر بار باز راه‌اندازی موتور، به آخرین متنِ تحویل‌شده به‌روز می‌شود */
+  const activeRef = useRef(false); /* گارد همگام — جلوی شروع دوتایی */
+  /* پایهٔ الحاق — بعد از هر نشست، به آخرین متنِ تحویل‌شده به‌روز می‌شود */
   const baseRef = useRef("");
   const latestRef = useRef("");
   const supported = typeof window !== "undefined" &&
@@ -214,10 +220,20 @@ export function MicButton({
 
   useEffect(() => () => {
     stopReqRef.current = true;
+    activeRef.current = false;
     try { recRef.current?.abort(); } catch { /* ignore */ }
   }, []);
 
-  const start = () => {
+  const hardStop = (msg?: string, kind: "err" | "warn" = "err") => {
+    stopReqRef.current = true;
+    activeRef.current = false;
+    setListening(false);
+    setHeard("");
+    if (msg) toast(kind, msg);
+  };
+
+  /* یک نشست تشخیصِ تازه — همیشه نمونهٔ جدید، هرگز start() دوباره روی نمونهٔ قدیم */
+  const beginSession = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const rec = new SR();
     rec.lang = "fa-IR";
@@ -226,7 +242,7 @@ export function MicButton({
     rec.maxAlternatives = 1;
 
     rec.onresult = (e: any) => {
-      /* بازسازی کامل متن از همهٔ نتایج — جلوی تکرار را می‌گیرد */
+      /* بازسازی کامل از نتایج همین نشست — تکرار تحویل، خروجی را عوض نمی‌کند */
       let fin = "";
       let interim = "";
       for (let i = 0; i < e.results.length; i++) {
@@ -238,66 +254,71 @@ export function MicButton({
       }
       setHeard((fin + interim).trim());
       if (fin.trim()) {
-        const merged = ((baseRef.current ? baseRef.current + " " : "") + fin).trim();
+        const merged = ((baseRef.current ? baseRef.current + " " : "") + fin.trim()).trim();
         latestRef.current = merged;
         onText(merged);
       }
     };
 
     rec.onend = () => {
-      /* اگر کاربر متوقف نکرده، موتور را ادامه بده (حالت پیوستهٔ واقعی) */
       if (!stopReqRef.current) {
-        baseRef.current = latestRef.current; /* متن تحویل‌شده حفظ شود */
+        /* نشست بعدی با نمونهٔ تازه — نتایج این نشست دور ریخته می‌شود */
+        baseRef.current = latestRef.current;
         window.setTimeout(() => {
           if (stopReqRef.current) return;
-          try { rec.start(); } catch {
-            setListening(false); setHeard("");
-          }
-        }, 150);
+          beginSession();
+        }, 180);
         return;
       }
+      activeRef.current = false;
       setListening(false);
       setHeard("");
     };
 
-    rec.onerror = (e: any) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        stopReqRef.current = true;
-        setListening(false); setHeard("");
-        toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس مرورگر اجازه بدهید.");
-      } else if (e.error === "network") {
-        stopReqRef.current = true;
-        setListening(false); setHeard("");
-        toast("err", "خطای شبکه در تشخیص صوت — اینترنت را بررسی کنید.");
+    rec.onerror = (ev: any) => {
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+        hardStop("دسترسی به میکروفون رد شد — از نوار آدرس مرورگر اجازه بدهید.");
+      } else if (ev.error === "network") {
+        hardStop("تشخیص صوتی به اینترنت نیاز دارد — در نسخهٔ نصب‌شده (PWA) اتصال را بررسی کنید.");
+      } else if (ev.error === "audio-capture") {
+        hardStop("میکروفون پیدا نشد — اتصال میکروفون را بررسی کنید.");
+      } else if (ev.error === "aborted") {
+        activeRef.current = false;
       }
-      /* خطاهای no-speech و aborted خودشان به onend می‌روند و ادامه می‌یابند */
+      /* no-speech خود به onend می‌رود و نشست بعدی شروع می‌شود */
     };
 
     recRef.current = rec;
     try {
       rec.start();
+      activeRef.current = true;
       setListening(true);
       setHeard("");
     } catch {
-      stopReqRef.current = true;
+      activeRef.current = false;
       setListening(false);
     }
   };
 
-  const toggle = () => {
+  const toggle = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     if (!supported) {
       toast("warn", "مرورگر شما از تایپ صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
       return;
     }
-    if (listening) {
+    if (activeRef.current || listening) {
       stopReqRef.current = true;
+      activeRef.current = false;
       try { recRef.current?.stop(); } catch { /* ignore */ }
+      setListening(false);
+      setHeard("");
       return;
     }
     stopReqRef.current = false;
     baseRef.current = baseText.trim();
     latestRef.current = baseRef.current;
-    start();
+    beginSession();
   };
 
   return (
