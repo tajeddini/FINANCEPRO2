@@ -733,6 +733,13 @@ function buildAiReport(s: AppState): string {
   return L.join("\n");
 }
 
+/* ---------- پیش‌تنظیم‌های ارائه‌دهندهٔ هوش مصنوعی ---------- */
+const AI_PROVIDERS = [
+  { id: "gemini", label: "Google Gemini (رایگان — پیشنهادی)", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model: "gemini-2.0-flash" },
+  { id: "openrouter", label: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", model: "openai/gpt-4o-mini" },
+  { id: "openai", label: "OpenAI", url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
+];
+
 /* ================= ۶) گزارش‌ها ================= */
 export function ReportsPage() {
   const { state, mutate } = useStore();
@@ -747,9 +754,9 @@ export function ReportsPage() {
   const [aiReport, setAiReport] = useState("");
   /* اتصال به API مدل زبانی */
   const [showCfg, setShowCfg] = useState(false);
-  const [cfgUrl, setCfgUrl] = useState(state.prefs.aiApiUrl ?? "https://openrouter.ai/api/v1/chat/completions");
+  const [cfgUrl, setCfgUrl] = useState(state.prefs.aiApiUrl ?? AI_PROVIDERS[0].url);
   const [cfgKey, setCfgKey] = useState(state.prefs.aiApiKey ?? "");
-  const [cfgModel, setCfgModel] = useState(state.prefs.aiModel ?? "openai/gpt-4o-mini");
+  const [cfgModel, setCfgModel] = useState(state.prefs.aiModel ?? AI_PROVIDERS[0].model);
   const [aiAnswer, setAiAnswer] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
 
@@ -762,7 +769,7 @@ export function ReportsPage() {
   const analyzeWithAI = async () => {
     const url = (state.prefs.aiApiUrl ?? cfgUrl).trim();
     const key = (state.prefs.aiApiKey ?? cfgKey).trim();
-    const model = (state.prefs.aiModel ?? cfgModel).trim() || "openai/gpt-4o-mini";
+    const model = (state.prefs.aiModel ?? cfgModel).trim() || AI_PROVIDERS[0].model;
     if (!url || !key) { setShowCfg(true); return toast("warn", "ابتدا آدرس API و کلید را وارد و ذخیره کن."); }
     setAiBusy(true); setAiAnswer("");
     try {
@@ -998,14 +1005,26 @@ export function ReportsPage() {
           </button>
           {showCfg && (
             <div className="grid gap-3 p-4" style={{ background: "var(--fp-bg)" }}>
-              <Field label="آدرس API (OpenRouter / OpenAI / سازگار)"><TInput dir="ltr" value={cfgUrl} onChange={(e) => setCfgUrl(e.target.value)} placeholder="https://openrouter.ai/api/v1/chat/completions" /></Field>
-              <Field label="کلید API"><TInput dir="ltr" type="password" value={cfgKey} onChange={(e) => setCfgKey(e.target.value)} placeholder="sk-…" /></Field>
-              <Field label="مدل"><TInput dir="ltr" value={cfgModel} onChange={(e) => setCfgModel(e.target.value)} placeholder="openai/gpt-4o-mini" /></Field>
+              <Field label="ارائه‌دهنده (پیش‌تنظیم — آدرس و مدل را خودش پر می‌کند)">
+                <TSelect
+                  value={AI_PROVIDERS.find((p) => p.url === cfgUrl)?.id ?? "custom"}
+                  onChange={(e) => {
+                    const p = AI_PROVIDERS.find((x) => x.id === e.target.value);
+                    if (p) { setCfgUrl(p.url); setCfgModel(p.model); }
+                  }}
+                >
+                  {AI_PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  <option value="custom">دلخواه (آدرس و مدل دستی)</option>
+                </TSelect>
+              </Field>
+              <Field label="آدرس API"><TInput dir="ltr" value={cfgUrl} onChange={(e) => setCfgUrl(e.target.value)} placeholder="https://…" /></Field>
+              <Field label="کلید API"><TInput dir="ltr" type="password" value={cfgKey} onChange={(e) => setCfgKey(e.target.value)} placeholder="AIza… یا sk-…" /></Field>
+              <Field label="مدل"><TInput dir="ltr" value={cfgModel} onChange={(e) => setCfgModel(e.target.value)} placeholder="gemini-2.0-flash" /></Field>
               <div className="flex justify-end">
                 <button className="btn btn-mint btn-sm" onClick={saveCfg}>ذخیرهٔ تنظیمات</button>
               </div>
               <p className="text-[10.5px] font-bold leading-5" style={{ color: "var(--fp-text3)" }}>
-                کلید فقط در مرورگر خودت ذخیره می‌شود و هرگز به ابر فرستاده نمی‌شود. آدرس پیش‌فرض OpenRouter است که با مدل‌های رایگان هم کار می‌کند.
+                کلید فقط در مرورگر خودت ذخیره می‌شود و هرگز به ابر فرستاده نمی‌شود. برای استفادهٔ رایگان، ارائه‌دهندهٔ «Google Gemini» را انتخاب کن و کلید رایگانت را از aistudio.google.com بگیر.
               </p>
             </div>
           )}
