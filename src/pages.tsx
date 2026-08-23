@@ -16,7 +16,7 @@ import {
 } from "./lib/utils";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
-  TInput, TSelect, useToast, hiddenMoney,
+  TInput, TSelect, useToast, hiddenMoney, CatGlyph, CatIconInline,
 } from "./ui";
 import { parseCSV, exportCSV } from "./excel";
 import { Sparkline } from "./widgets";
@@ -786,7 +786,10 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="text-[13.5px] font-black truncate flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded-md text-[10.5px]" style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>{c?.name ?? tx.title}</span>
+                          <span className="px-1.5 py-0.5 rounded-md text-[10.5px] inline-flex items-center gap-1" style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>
+                            <CatIconInline icon={c?.icon} className="w-3 h-3" />
+                            {c?.name ?? tx.title}
+                          </span>
                           {(() => {
                             const tg = tagById(state, tx.tag);
                             return tg ? (
@@ -949,7 +952,7 @@ export function CategoriesPage() {
                   }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="flex items-center gap-2 text-[13px] font-black">
-                      <i className="w-3 h-3 rounded-full not-italic" style={{ background: r.cat!.color }} />
+                      <CatGlyph icon={r.cat!.icon} color={r.cat!.color} className="w-8 h-8" iconClass="w-4 h-4" />
                       {r.cat!.name}
                       <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{faNum(count)} تراکنش</span>
                     </span>

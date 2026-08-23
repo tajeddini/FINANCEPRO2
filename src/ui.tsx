@@ -3,7 +3,55 @@ import {
   createContext, useContext, useEffect, useRef, useState,
   type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes,
 } from "react";
-import { ChevronRight, ChevronLeft, Mic, MicOff, Check, AlertTriangle, X, PencilLine, Trash2 } from "lucide-react";
+import {
+  ChevronRight, ChevronLeft, Mic, MicOff, Check, AlertTriangle, X, PencilLine, Trash2,
+  UtensilsCrossed, Car, Home, HeartPulse, Gamepad2, Shirt, GraduationCap, Tv, Gift, Briefcase,
+  Banknote, Wallet, ShoppingCart, Coffee, Plane, Music, Dumbbell, BookOpen, Smartphone,
+  PawPrint, Stethoscope, Fuel, Baby, Pizza, Bus, Wrench, MoreHorizontal,
+  type LucideIcon,
+} from "lucide-react";
+
+/* ---------- آیکون‌های دسته‌ها ---------- */
+export const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  utensils: UtensilsCrossed, car: Car, home: Home, "heart-pulse": HeartPulse,
+  "gamepad-2": Gamepad2, shirt: Shirt, "graduation-cap": GraduationCap, tv: Tv,
+  gift: Gift, briefcase: Briefcase, banknote: Banknote, wallet: Wallet,
+  "shopping-cart": ShoppingCart, coffee: Coffee, plane: Plane, music: Music,
+  dumbbell: Dumbbell, "book-open": BookOpen, smartphone: Smartphone, "paw-print": PawPrint,
+  stethoscope: Stethoscope, fuel: Fuel, baby: Baby, pizza: Pizza, bus: Bus,
+  wrench: Wrench, more: MoreHorizontal,
+};
+
+export const CATEGORY_ICON_LABELS: Record<string, string> = {
+  utensils: "غذا و خوراک", car: "ماشین", home: "خانه", "heart-pulse": "سلامت",
+  "gamepad-2": "بازی و تفریح", shirt: "پوشاک", "graduation-cap": "آموزش", tv: "اشتراک و فیلم",
+  gift: "هدیه", briefcase: "کار و پروژه", banknote: "پول و حقوق", wallet: "کیف پول",
+  "shopping-cart": "خرید", coffee: "کافه", plane: "سفر", music: "موسیقی",
+  dumbbell: "ورزش", "book-open": "کتاب", smartphone: "موبایل", "paw-print": "حیوان خانگی",
+  stethoscope: "پزشکی", fuel: "سوخت", baby: "کودک", pizza: "فست‌فود", bus: "حمل‌ونقل عمومی",
+  wrench: "تعمیرات", more: "سایر",
+};
+
+/* آیکون دسته داخل کاشی رنگی (جایگزین دایرهٔ رنگی) */
+export function CatGlyph({ icon, color, className = "w-9 h-9", iconClass = "w-4.5 h-4.5" }: {
+  icon?: string; color?: string; className?: string; iconClass?: string;
+}) {
+  const I = CATEGORY_ICONS[icon ?? ""] ?? Wallet;
+  return (
+    <span className={`${className} rounded-xl grid place-items-center shrink-0 transition-colors duration-200`}
+      style={{ background: `color-mix(in srgb, ${color ?? "#888"} 16%, transparent)`, color: color ?? "var(--fp-text3)" }}>
+      <I className={iconClass} />
+    </span>
+  );
+}
+
+/* آیکون سادهٔ دسته (بدون پس‌زمینه) برای استفادهٔ درون‌خطی */
+export function CatIconInline({ icon, className = "w-4 h-4", color }: {
+  icon?: string; className?: string; color?: string;
+}) {
+  const I = CATEGORY_ICONS[icon ?? ""] ?? Wallet;
+  return <I className={className} style={color ? { color } : undefined} />;
+}
 import {
   faNum, groupInt, jalaliFirstOffset, jalaliMonthLen, jalaliToday, jalaliToISO,
   isoToJalali, MONTHS_FA, todayISO, toEnDigits,

@@ -8,7 +8,14 @@ import {
 export type ID = string;
 
 export interface Account { id: ID; name: string; type: string; initial: number; color: string; balance: number; }
-export interface Category { id: ID; name: string; type: "income" | "expense"; color: string; }
+export interface Category { id: ID; name: string; type: "income" | "expense"; color: string; icon?: string; }
+
+/* آیکون پیش‌فرض هر دسته — بر اساس نام (مهاجرت داده‌های قدیمی هم از همین استفاده می‌کند) */
+export const CATEGORY_ICON_BY_NAME: Record<string, string> = {
+  "خوراک": "utensils", "رفت‌وآمد": "car", "خانه و اجاره": "home", "سلامت": "heart-pulse",
+  "تفریح": "gamepad-2", "پوشاک": "shirt", "آموزش": "graduation-cap", "اشتراک": "tv",
+  "متفرقه": "wallet", "حقوق": "banknote", "پروژه": "briefcase", "هدیه": "gift",
+};
 /* تگ‌های تراکنش — نوع خرج را مشخص می‌کنند و کاربر می‌تواند تگ دلخواه بسازد */
 export interface TagDef { id: ID; label: string; color: string; desc?: string; builtin?: boolean; }
 export const DEFAULT_TAGS: TagDef[] = [
@@ -71,7 +78,7 @@ export interface AppState {
 /* ---------- دادهٔ اولیه — فقط ساختار پایه، بدون تراکنش ---------- */
 function seed(): AppState {
   const cat = (name: string, type: "income" | "expense", color: string): Category => ({
-    id: uid(), name, type, color,
+    id: uid(), name, type, color, icon: CATEGORY_ICON_BY_NAME[name] ?? "wallet",
   });
   const cFood = cat("خوراک", "expense", "#e8b04b");
   const cTrans = cat("رفت‌وآمد", "expense", "#5ec8de");
@@ -154,7 +161,7 @@ export function sampleFill(d: AppState) {
       ["آموزش", "expense", "#7ab8f2"], ["اشتراک", "expense", "#c0e85e"], ["متفرقه", "expense", "#a3b8ac"],
       ["حقوق", "income", "#57d9a3"], ["پروژه", "income", "#e8b04b"], ["هدیه", "income", "#f28fc0"],
     ];
-    for (const [n, ty, co] of extra) if (!d.categories.some((c) => c.name === n)) d.categories.push({ id: uid(), name: n, type: ty, color: co });
+    for (const [n, ty, co] of extra) if (!d.categories.some((c) => c.name === n)) d.categories.push({ id: uid(), name: n, type: ty, color: co, icon: CATEGORY_ICON_BY_NAME[n] ?? "wallet" });
   }
   const cFood = catN("خوراک")!; const cTrans = catN("رفت‌وآمد")!; const cHome = catN("خانه و اجاره")!;
   const cHealth = catN("سلامت")!; const cFun = catN("تفریح")!; const cCloth = catN("پوشاک")!;
@@ -414,6 +421,8 @@ export function DataProvider({ userId, children }: { userId: string; children: R
         /* مهاجرت: داده‌های قدیمی که جدول‌های جدید ندارند */
         if (!Array.isArray(parsed.notes)) parsed.notes = [];
         if (!Array.isArray(parsed.tags)) parsed.tags = DEFAULT_TAGS.map((t) => ({ ...t }));
+        /* مهاجرت: دسته‌های قدیمی بدون آیکون، آیکون پیش‌فرض می‌گیرند */
+        for (const c of parsed.categories) if (!c.icon) c.icon = CATEGORY_ICON_BY_NAME[c.name] ?? "wallet";
         applyRecurring(parsed);
         recomputeBalances(parsed);
         return parsed;

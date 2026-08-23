@@ -18,8 +18,8 @@ import { THEMES, applyAccent } from "./lib/themes";
 import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs, localOnlyTx, mergePulledState } from "./lib/cloud";
 import { listUsers } from "./lib/auth";
 import {
-  AmountInput, Bar, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, MicButton, Modal,
-  TInput, TSelect, useToast,
+  AmountInput, Bar, CatGlyph, CATEGORY_ICONS, CATEGORY_ICON_LABELS, Confirm, DeleteBtn, EditBtn,
+  Empty, Field, JalaliPicker, MicButton, Modal, TInput, TSelect, useToast,
 } from "./ui";
 import { computeBadges, computeHealthScore, Forecast, Heatmap, ScoreRing } from "./widgets";
 import { exportExcel, exportCSV } from "./excel";
@@ -1355,7 +1355,7 @@ export function DailyPage() {
               const c = state.categories.find((cc) => cc.id === x.categoryId);
               return (
                 <div key={x.id} className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5" style={{ background: "var(--fp-bg)" }}>
-                  <i className="w-2.5 h-2.5 rounded-full not-italic shrink-0" style={{ background: c?.color ?? "#888" }} />
+                  <CatGlyph icon={c?.icon} color={c?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
                   <span className="flex-1 text-[12px] font-black truncate">{x.note || x.title}</span>
                   <span className="text-[12px] font-black tabular shrink-0" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                     {x.type === "income" ? "+" : "−"}{faMoney(x.amount)}
@@ -1373,7 +1373,7 @@ export function DailyPage() {
 function CoinsMini() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="9" r="6" /><path d="M15.5 5.5a6 6 0 1 1-8 8" strokeLinecap="round" /><path d="M7 9h4M9 7v4" strokeLinecap="round" /></svg>; }
 
 /* ================= ۷) مدیریت ================= */
-type FieldType = "text" | "amount" | "date" | "number" | "select";
+type FieldType = "text" | "amount" | "date" | "number" | "select" | "icon";
 interface FieldDef { key: string; label: string; type: FieldType; options?: { v: string; l: string }[]; }
 interface ToolDef {
   id: string; title: string; icon: React.ReactNode; table: string;
@@ -1418,10 +1418,11 @@ export function ManagePage() {
         { key: "name", label: "نام دسته", type: "text" },
         { key: "type", label: "نوع", type: "select", options: [{ v: "expense", l: "هزینه" }, { v: "income", l: "درآمد" }] },
         { key: "color", label: "رنگ", type: "select", options: COLORS.map((c) => ({ v: c, l: c })) },
+        { key: "icon", label: "آیکون دسته", type: "icon" },
       ],
       row: (c, s) => (
         <div className="flex items-center gap-3">
-          <i className="w-3 h-3 rounded-full not-italic shrink-0" style={{ background: c.color }} />
+          <CatGlyph icon={c.icon} color={c.color} className="w-8 h-8" iconClass="w-4 h-4" />
           <span className="flex-1 text-[13px] font-black">{c.name}</span>
           <span className="chip !cursor-default">{c.type === "income" ? "درآمد" : "هزینه"}</span>
           <span className="text-[11px] font-bold tabular" style={{ color: "var(--fp-text3)" }}>{faNum(s.transactions.filter((t) => t.categoryId === c.id).length)} تراکنش</span>
@@ -1639,7 +1640,10 @@ export function ManagePage() {
   const startNew = () => {
     const init: Record<string, string> = {};
     for (const f of active.fields) {
-      init[f.key] = f.type === "date" ? todayISO() : f.type === "select" ? (fillOptions(f).options?.[0]?.v ?? "") : "";
+      init[f.key] = f.type === "date" ? todayISO()
+        : f.type === "icon" ? "wallet"
+        : f.type === "select" ? (fillOptions(f).options?.[0]?.v ?? "")
+        : "";
     }
     setForm(init); setEditing(null); setOpenForm(true);
   };
@@ -1752,6 +1756,31 @@ export function ManagePage() {
                       {(f.options ?? []).map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </TSelect>
                   )
+                )}
+                {f.type === "icon" && (
+                  <div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {Object.entries(CATEGORY_ICONS).map(([key, I]) => {
+                        const on = form[f.key] === key;
+                        return (
+                          <button key={key} type="button" title={CATEGORY_ICON_LABELS[key] ?? key}
+                            onClick={() => setForm({ ...form, [f.key]: key })}
+                            className="w-9 h-9 rounded-lg grid place-items-center cursor-pointer transition-all duration-150 hover:scale-110 active:scale-95"
+                            style={{
+                              background: on ? "var(--fp-accent)" : "var(--fp-bg)",
+                              color: on ? "#071b16" : "var(--fp-text2)",
+                              border: `1px solid ${on ? "var(--fp-accent)" : "var(--fp-border2)"}`,
+                              boxShadow: on ? "0 6px 14px -6px color-mix(in srgb, var(--fp-accent) 70%, transparent)" : "none",
+                            }}>
+                            <I className="w-4 h-4" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] font-bold mt-1.5" style={{ color: "var(--fp-text3)" }}>
+                      انتخاب‌شده: {CATEGORY_ICON_LABELS[form[f.key] ?? ""] ?? "کیف پول"}
+                    </p>
+                  </div>
                 )}
               </Field>
             );

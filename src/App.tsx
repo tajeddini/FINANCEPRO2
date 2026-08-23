@@ -11,7 +11,7 @@ import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
 import { faDate, faMoney, faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
-import { ToastProvider, useToast, Modal, TInput, Field } from "./ui";
+import { ToastProvider, useToast, Modal, TInput, Field, CatGlyph } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
 import { AppointmentsPage, DailyPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
 
@@ -330,7 +330,7 @@ function GlobalSearch({ onNavigate }: {
             return (
               <button key={t.id} onClick={() => go("transactions", { query: t.note || t.title })}
                 className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
-                <i className="w-2 h-2 rounded-full not-italic shrink-0" style={{ background: c?.color ?? "#888" }} />
+                <CatGlyph icon={c?.icon} color={c?.color} className="w-6 h-6 rounded-lg" iconClass="w-3 h-3" />
                 <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{t.note || t.title}</span>
                 <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(t.date)}</span>
                 <span className="text-[11.5px] font-black tabular shrink-0" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
