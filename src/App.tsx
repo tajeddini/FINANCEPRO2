@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Moon,
-  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, Sun, X,
+  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
 import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud } from "./lib/cloud";
@@ -13,9 +13,9 @@ import {
 import { faNum, faTime, fireNotification, jalaliDateStr, playChime, relTime, useNow } from "./lib/utils";
 import { ToastProvider, useToast, Modal, TInput, Field } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
-import { AppointmentsPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
+import { AppointmentsPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
 
-type PageId = "dashboard" | "transactions" | "categories" | "debts" | "appointments" | "reports" | "manage" | "settings";
+type PageId = "dashboard" | "transactions" | "categories" | "debts" | "appointments" | "notes" | "reports" | "manage" | "settings";
 
 const NAV: { id: PageId; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "داشبورد", icon: <LayoutDashboard className="w-[18px] h-[18px]" /> },
@@ -23,6 +23,7 @@ const NAV: { id: PageId; label: string; icon: React.ReactNode }[] = [
   { id: "categories", label: "گزارش دسته‌ها", icon: <PieChart className="w-[18px] h-[18px]" /> },
   { id: "debts", label: "بدهی‌ها", icon: <Coins className="w-[18px] h-[18px]" /> },
   { id: "appointments", label: "قرارها", icon: <CalendarDays className="w-[18px] h-[18px]" /> },
+  { id: "notes", label: "یادداشت‌ها", icon: <StickyNote className="w-[18px] h-[18px]" /> },
   { id: "reports", label: "گزارش‌ها", icon: <BarChart3 className="w-[18px] h-[18px]" /> },
   { id: "manage", label: "مدیریت", icon: <SlidersHorizontal className="w-[18px] h-[18px]" /> },
   { id: "settings", label: "تنظیمات", icon: <Settings className="w-[18px] h-[18px]" /> },
@@ -504,6 +505,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               {page === "categories" && <CategoriesPage />}
               {page === "debts" && <DebtsPage />}
               {page === "appointments" && <AppointmentsPage />}
+              {page === "notes" && <NotesPage />}
               {page === "reports" && <ReportsPage />}
               {page === "manage" && <ManagePage />}
               {page === "settings" && (

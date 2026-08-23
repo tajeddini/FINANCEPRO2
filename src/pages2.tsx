@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, Bell, Bot, CalendarDays, Check, Cloud, Clock3, Copy, Download, FileDown,
-  KeyRound, Lock, Moon, Palette, PencilLine, Plus, Printer, RefreshCw, Shield,
-  Sun, Target, Trash2, TrendingUp, Upload, X,
+  KeyRound, Lock, Moon, Palette, PencilLine, Plus, Printer, RefreshCw, Search, Shield,
+  StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { clearData, sampleFill, useStore, type AppState, type ID, type Appointment } from "./lib/data";
+import { clearData, sampleFill, useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
@@ -213,6 +213,170 @@ export function AppointmentsPage() {
           <ApptForm open={openForm} onClose={() => { setOpenForm(false); setEditing(null); }} editing={editing} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ================= ۵٫۵) یادداشت‌ها ================= */
+const NOTE_COLORS = [
+  { name: "زرد", value: "#ffd76b" },
+  { name: "نعنایی", value: "#7fe0b4" },
+  { name: "آسمانی", value: "#8fd3ff" },
+  { name: "صورتی", value: "#ffb3cd" },
+  { name: "بنفش", value: "#c9b3ff" },
+];
+
+export function NotesPage() {
+  const { state, mutate, trashItem } = useStore();
+  const toast = useToast();
+  const [q, setQ] = useState("");
+  const [editing, setEditing] = useState<Note | null>(null);
+  const [openForm, setOpenForm] = useState(false);
+
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(todayISO());
+  const [body, setBody] = useState("");
+  const [color, setColor] = useState(NOTE_COLORS[0].value);
+
+  const notes = useMemo(() => {
+    const term = q.trim();
+    return [...state.notes]
+      .filter((n) => !term || n.title.includes(term) || n.body.includes(term))
+      .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
+  }, [state.notes, q]);
+
+  const startNew = () => {
+    setEditing(null);
+    setTitle(""); setDate(todayISO()); setBody(""); setColor(NOTE_COLORS[0].value);
+    setOpenForm(true);
+  };
+
+  const startEdit = (n: Note) => {
+    setEditing(n);
+    setTitle(n.title); setDate(n.date); setBody(n.body); setColor(n.color);
+    setOpenForm(true);
+  };
+
+  const save = () => {
+    if (!title.trim()) return toast("warn", "عنوان یادداشت را بنویسید.");
+    if (editing) {
+      mutate((d) => {
+        const x = d.notes.find((y) => y.id === editing.id);
+        if (x) Object.assign(x, { title: title.trim(), date, body: body.trim(), color });
+      }, `یادداشت «${title.trim()}» ویرایش شد`);
+      toast("ok", "یادداشت ویرایش شد.");
+    } else {
+      mutate((d) => {
+        d.notes.unshift({
+          id: Math.random().toString(36).slice(2, 10),
+          title: title.trim(), date, body: body.trim(), color, createdAt: Date.now(),
+        });
+      }, `یادداشت «${title.trim()}» ثبت شد`);
+      toast("ok", "یادداشت ذخیره شد.");
+    }
+    setOpenForm(false);
+  };
+
+  return (
+    <div className="grid gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
+        <div>
+          <h1 className="font-display text-3xl md:text-4xl flex items-center gap-3">
+            <StickyNote className="w-8 h-8" style={{ color: "var(--fp-accent)" }} /> یادداشت‌ها
+          </h1>
+          <p className="text-[12.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>
+            {faNum(state.notes.length)} یادداشت — با صدا بنویس، با تاریخ شمسی نگه دار
+          </p>
+        </div>
+        <button className="btn btn-gold" onClick={startNew}>
+          <Plus className="w-4 h-4" strokeWidth={3} /> یادداشت جدید
+        </button>
+      </div>
+
+      <div className="relative max-w-md rise-in" style={{ ["--d" as string]: "40ms" }}>
+        <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3" style={{ color: "var(--fp-text3)" }} />
+        <TInput className="!ps-9" placeholder="جست‌وجو در عنوان و متن یادداشت‌ها…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+
+      {notes.length === 0 ? (
+        <div className="card rise-in" style={{ ["--d" as string]: "80ms" }}>
+          <Empty text={q.trim() ? "یادداشتی با این عبارت پیدا نشد." : "هنوز یادداشتی ندارید — اولین را بسازید."} />
+        </div>
+      ) : (
+        <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:balance]">
+          {notes.map((n, i) => (
+            <div
+              key={n.id}
+              className="group relative break-inside-avoid mb-4 rounded-xl p-5 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rise-in"
+              style={{
+                background: n.color,
+                color: "#0d2c24",
+                ["--d" as string]: `${Math.min(i, 6) * 60}ms`,
+                transform: `rotate(${(i % 3 - 1) * 0.6}deg)`,
+              }}
+            >
+              <span className="absolute -top-1.5 right-6 w-3.5 h-3.5 rounded-full shadow-inner"
+                style={{ background: "color-mix(in srgb, #0d2c24 22%, transparent)", boxShadow: "inset 0 1px 2px rgba(0,0,0,.35)" }} />
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="font-display text-xl leading-snug">{n.title}</h3>
+              </div>
+              <p className="text-[10.5px] font-black mt-1 flex items-center gap-1.5 opacity-70">
+                <CalendarDays className="w-3.5 h-3.5" /> {faDate(n.date)}
+              </p>
+              {n.body && (
+                <p className="text-[13px] font-bold leading-7 mt-3 whitespace-pre-wrap">{n.body}</p>
+              )}
+              <div className="flex justify-end gap-1.5 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105"
+                  style={{ background: "rgba(13,44,36,0.12)", color: "#0d2c24" }}
+                  onClick={() => startEdit(n)}>
+                  <PencilLine className="w-3.5 h-3.5" /> ویرایش
+                </button>
+                <button
+                  className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105"
+                  style={{ background: "rgba(190,40,40,0.16)", color: "#8f1d1d" }}
+                  onClick={() => trashItem("notes", n.id, n.title)}>
+                  <Trash2 className="w-3.5 h-3.5" /> حذف
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={openForm} onClose={() => setOpenForm(false)} title={editing ? "ویرایش یادداشت" : "یادداشت جدید"}>
+        <div className="grid gap-3.5">
+          <Field label="عنوان"><TInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثلاً: ایدهٔ پس‌انداز" autoFocus /></Field>
+          <Field label="تاریخ (شمسی)"><JalaliPicker value={date} onChange={setDate} /></Field>
+          <Field label="رنگ یادداشت">
+            <div className="flex gap-2">
+              {NOTE_COLORS.map((c) => (
+                <button key={c.value} title={c.name} onClick={() => setColor(c.value)}
+                  className="w-8 h-8 rounded-full cursor-pointer transition-transform hover:scale-110"
+                  style={{ background: c.value, outline: color === c.value ? "2.5px solid var(--fp-text)" : "none", outlineOffset: 2 }} />
+              ))}
+            </div>
+          </Field>
+          <Field label="متن یادداشت" hint="می‌توانید با میکروفون هم بنویسید.">
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={5}
+              placeholder="هر چه در ذهن دارید همین‌جا بنویسید…"
+              className="input !leading-7 resize-y"
+              style={{ background: "var(--fp-bg)", border: "1px solid var(--fp-border)" }}
+            />
+            <div className="flex justify-start mt-2">
+              <MicButton onText={(t) => setBody(t)} />
+            </div>
+          </Field>
+          <div className="flex justify-end gap-2 mt-1">
+            <button className="btn btn-ghost" onClick={() => setOpenForm(false)}>انصراف</button>
+            <button className="btn btn-gold" onClick={save}><Plus className="w-4 h-4" strokeWidth={3} /> ذخیره</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

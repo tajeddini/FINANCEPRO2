@@ -21,6 +21,7 @@ export interface PayMethod { id: ID; name: string; }
 export interface Recurring { id: ID; title: string; type: "income" | "expense"; amount: number; categoryId: ID; accountId: ID; dayOfMonth: number; lastRun?: string; }
 export interface Goal { id: ID; title: string; target: number; saved: number; deadline?: string; }
 export interface Appointment { id: ID; date: string; time: string; title: string; note?: string; done?: boolean; }
+export interface Note { id: ID; title: string; body: string; date: string; color: string; createdAt: number; }
 export interface Cheque { id: ID; kind: "in" | "out"; bank: string; amount: number; date: string; person: string; status: "pending" | "cashed" | "bounced"; }
 export interface Challenge { id: ID; title: string; target: number; saved: number; perDay: number; }
 export interface Currency { id: ID; name: string; symbol: string; rate: number; qty: number; }
@@ -45,7 +46,7 @@ export interface Prefs {
 export interface AppState {
   accounts: Account[]; categories: Category[]; transactions: Tx[]; transfers: Transfer[];
   debts: Debt[]; installments: Installment[]; budgets: Budget[]; payment_methods: PayMethod[];
-  recurring: Recurring[]; savings_goals: Goal[]; appointments: Appointment[]; cheques: Cheque[];
+  recurring: Recurring[]; savings_goals: Goal[]; appointments: Appointment[]; notes: Note[]; cheques: Cheque[];
   splits: { id: ID; title: string; total: number; parts: number }[];
   challenges: Challenge[]; currencies: Currency[]; assets: Asset[]; subscriptions: Subscription[];
   activity_logs: ActivityLog[]; telegram_users: TelegramUser[];
@@ -87,6 +88,7 @@ function seed(): AppState {
     recurring: [],
     savings_goals: [],
     appointments: [],
+    notes: [],
     cheques: [],
     splits: [],
     challenges: [],
@@ -114,6 +116,7 @@ export function clearData(d: AppState) {
   d.recurring = [];
   d.savings_goals = [];
   d.appointments = [];
+  d.notes = [];
   d.cheques = [];
   d.splits = [];
   d.challenges = [];
@@ -216,6 +219,10 @@ export function sampleFill(d: AppState) {
     { id: uid(), date: t, time: "20:00", title: "ورزش — دویدن" },
     { id: uid(), date: addDaysISO(t, 2), time: "10:00", title: "ویزیت دندانپزشکی", note: "کلینیک دکتر راد" },
     { id: uid(), date: addDaysISO(t, 5), time: "18:00", title: "شام با مریم و رضا", note: "رستوران شاندیز" },
+  );
+  d.notes.push(
+    { id: uid(), title: "ایدهٔ پس‌انداز", body: "هر ماه ۱۰٪ از حقوق را همان روز واریز به صندوق طلا منتقل کنم تا قبل از خرج شدن، پس‌انداز شده باشد.", date: dd(3), color: "#e8b04b", createdAt: Date.now() - 3 * 86400000 },
+    { id: uid(), title: "لیست خرید هفته", body: "شیر، نان، میوه، قهوه — خرید بزرگ ماهانه را به اول هفته موکول کنم که تخفیف‌ها تازه هستند.", date: dd(1), color: "#57d9a3", createdAt: Date.now() - 86400000 },
   );
   d.cheques.push(
     { id: uid(), kind: "out", bank: "ملت", amount: 1450000, date: addDaysISO(t, 9), person: "بانک ملت — قسط ۶", status: "pending" },
@@ -365,7 +372,7 @@ function applyRecurring(s: AppState) {
 export type TableName = keyof Pick<
   AppState,
   "accounts" | "categories" | "transactions" | "transfers" | "debts" | "installments" |
-  "budgets" | "payment_methods" | "recurring" | "savings_goals" | "appointments" |
+  "budgets" | "payment_methods" | "recurring" | "savings_goals" | "appointments" | "notes" |
   "cheques" | "challenges" | "currencies" | "assets" | "subscriptions"
 >;
 
@@ -388,6 +395,8 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       if (raw) {
         const parsed = JSON.parse(raw) as AppState;
         if (typeof parsed.rev !== "number") parsed.rev = 0;
+        /* مهاجرت: داده‌های قدیمی که جدول‌های جدید ندارند */
+        if (!Array.isArray(parsed.notes)) parsed.notes = [];
         applyRecurring(parsed);
         recomputeBalances(parsed);
         return parsed;
