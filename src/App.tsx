@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Moon,
-  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, X,
+  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Target, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
 import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState } from "./lib/cloud";
@@ -10,7 +10,7 @@ import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
-import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
+import { faDate, faMoney, faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
 import { ToastProvider, useToast, Modal, TInput, Field } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
 import { AppointmentsPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
@@ -222,6 +222,114 @@ export function BrandMark() {
   );
 }
 
+/* ---------- جست‌وجوی سراسری (تراکنش + یادداشت + قرار + دسته) ---------- */
+function GlobalSearch({ onNavigate }: {
+  onNavigate: (page: PageId, drill?: { cat?: string; query?: string }) => void;
+}) {
+  const { state } = useStore();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const term = q.trim().toLowerCase();
+  const has = term.length >= 2;
+  const match = (s?: string) => !!s && s.toLowerCase().includes(term);
+
+  const txs = has ? state.transactions.filter((t) =>
+    match(t.note) || match(t.title) ||
+    match(state.categories.find((c) => c.id === t.categoryId)?.name) ||
+    match(state.accounts.find((a) => a.id === t.accountId)?.name)
+  ).slice(0, 5) : [];
+  const notes = has ? state.notes.filter((n) => match(n.title) || match(n.body) || match(n.cat)).slice(0, 4) : [];
+  const appts = has ? state.appointments.filter((a) => match(a.title) || match(a.note)).slice(0, 4) : [];
+  const cats = has ? state.categories.filter((c) => match(c.name)).slice(0, 3) : [];
+  const empty = has && txs.length + notes.length + appts.length + cats.length === 0;
+
+  const go = (page: PageId, drill?: { cat?: string; query?: string }) => {
+    onNavigate(page, drill);
+    setQ(""); setOpen(false);
+  };
+
+  const groupTitle = (icon: React.ReactNode, label: string, count: number) => (
+    <p className="flex items-center gap-1.5 text-[10.5px] font-black px-3 pt-2.5 pb-1" style={{ color: "var(--fp-text3)" }}>
+      <span style={{ color: "var(--fp-accent)" }}>{icon}</span>{label}
+      <span className="tabular">({faNum(count)})</span>
+    </p>
+  );
+
+  return (
+    <div ref={boxRef} className="relative flex-1 max-w-sm mx-auto">
+      <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" style={{ color: "var(--fp-text3)" }} />
+      <input
+        className="input !py-2 !ps-9 !text-[12.5px]"
+        placeholder="جست‌وجوی سراسری… (تراکنش، یادداشت، قرار)"
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === "Enter" && has) go("transactions", { query: q }); }}
+      />
+      {open && has && (
+        <div className="absolute top-full inset-x-0 mt-2 rounded-xl border shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto"
+          style={{ background: "var(--fp-bg)", borderColor: "var(--fp-border2)" }}>
+          {empty && (
+            <p className="text-[12px] font-bold p-4 text-center" style={{ color: "var(--fp-text3)" }}>چیزی با «{q}» پیدا نشد.</p>
+          )}
+          {txs.length > 0 && groupTitle(<List className="w-3.5 h-3.5" />, "تراکنش‌ها", txs.length)}
+          {txs.map((t) => {
+            const c = state.categories.find((x) => x.id === t.categoryId);
+            return (
+              <button key={t.id} onClick={() => go("transactions", { query: t.note || t.title })}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
+                <i className="w-2 h-2 rounded-full not-italic shrink-0" style={{ background: c?.color ?? "#888" }} />
+                <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{t.note || t.title}</span>
+                <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(t.date)}</span>
+                <span className="text-[11.5px] font-black tabular shrink-0" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                  {t.type === "income" ? "+" : "−"}{faMoney(t.amount)}
+                </span>
+              </button>
+            );
+          })}
+          {notes.length > 0 && groupTitle(<StickyNote className="w-3.5 h-3.5" />, "یادداشت‌ها", notes.length)}
+          {notes.map((n) => (
+            <button key={n.id} onClick={() => go("notes")}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
+              <i className="w-2 h-2 rounded-full not-italic shrink-0" style={{ background: n.color }} />
+              <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{n.title}</span>
+              <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(n.date)}</span>
+            </button>
+          ))}
+          {appts.length > 0 && groupTitle(<CalendarDays className="w-3.5 h-3.5" />, "قرارها", appts.length)}
+          {appts.map((a) => (
+            <button key={a.id} onClick={() => go("appointments")}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
+              <CalendarDays className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-accent)" }} />
+              <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{a.title}</span>
+              <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(a.date)} · {faNum(a.time)}</span>
+            </button>
+          ))}
+          {cats.length > 0 && groupTitle(<Target className="w-3.5 h-3.5" />, "دسته‌ها", cats.length)}
+          {cats.map((c) => (
+            <button key={c.id} onClick={() => go("transactions", { cat: c.id })}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
+              <i className="w-2 h-2 rounded-full not-italic shrink-0" style={{ background: c.color }} />
+              <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{c.name}</span>
+              <span className="text-[10.5px] font-bold shrink-0" style={{ color: "var(--fp-text3)" }}>{c.type === "income" ? "درآمد" : "هزینه"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ================= پوستهٔ اصلی ================= */
 function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => void }) {
   const { state, mutate, purgeTrash } = useStore();
@@ -233,7 +341,6 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinErr, setPinErr] = useState(false);
-  const [searchQ, setSearchQ] = useState("");
   const remindedRef = useRef(false);
 
   /* ---------- نصب PWA ---------- */
@@ -472,21 +579,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               <span className="lg:hidden"><BrandMark /></span>
               <p className="font-display text-xl hidden sm:block">{NAV.find((n) => n.id === page)?.label}</p>
 
-              <div className="relative flex-1 max-w-sm mx-auto">
-                <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" style={{ color: "var(--fp-text3)" }} />
-                <input
-                  className="input !py-2 !ps-9 !text-[12.5px]"
-                  placeholder="جست‌وجوی تراکنش…"
-                  value={searchQ}
-                  onChange={(e) => setSearchQ(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      setDrill({ query: searchQ, key: Date.now() });
-                      setPage("transactions");
-                    }
-                  }}
-                />
-              </div>
+              <GlobalSearch onNavigate={(p, drill) => { setDrill({ ...drill, key: Date.now() }); setPage(p); }} />
 
               <SyncBadge />
               {installEvt && !installed && (

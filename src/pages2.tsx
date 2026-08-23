@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, Bell, Bot, CalendarDays, Check, Cloud, Clock3, Copy, Download, FileDown,
-  KeyRound, Lock, Moon, Palette, PencilLine, Plus, Printer, RefreshCw, Search, Shield,
+  KeyRound, Lock, Moon, Palette, PencilLine, Pin, PinOff, Plus, Printer, RefreshCw, Search, Shield,
   Sparkles, StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -235,39 +235,56 @@ export function NotesPage() {
   const [date, setDate] = useState(todayISO());
   const [body, setBody] = useState("");
   const [color, setColor] = useState(NOTE_COLORS[0].value);
+  const [cat, setCat] = useState("");
+  const [pinFilter, setPinFilter] = useState("");
+
+  /* دسته‌های موجود برای پیشنهاد */
+  const catOptions = useMemo(
+    () => [...new Set(state.notes.map((n) => n.cat).filter((c): c is string => !!c))],
+    [state.notes]
+  );
 
   const notes = useMemo(() => {
     const term = q.trim();
     return [...state.notes]
+      .filter((n) => !pinFilter || n.cat === pinFilter)
       .filter((n) => !term || n.title.includes(term) || n.body.includes(term))
-      .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-  }, [state.notes, q]);
+      .sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
+  }, [state.notes, q, pinFilter]);
 
   const startNew = () => {
     setEditing(null);
-    setTitle(""); setDate(todayISO()); setBody(""); setColor(NOTE_COLORS[0].value);
+    setTitle(""); setDate(todayISO()); setBody(""); setColor(NOTE_COLORS[0].value); setCat("");
     setOpenForm(true);
   };
 
   const startEdit = (n: Note) => {
     setEditing(n);
-    setTitle(n.title); setDate(n.date); setBody(n.body); setColor(n.color);
+    setTitle(n.title); setDate(n.date); setBody(n.body); setColor(n.color); setCat(n.cat ?? "");
     setOpenForm(true);
+  };
+
+  const togglePin = (n: Note) => {
+    mutate((d) => {
+      const x = d.notes.find((y) => y.id === n.id);
+      if (x) x.pinned = !x.pinned;
+    }, n.pinned ? `سنجاق «${n.title}» برداشته شد` : `«${n.title}» سنجاق شد`);
   };
 
   const save = () => {
     if (!title.trim()) return toast("warn", "عنوان یادداشت را بنویسید.");
+    const c = cat.trim();
     if (editing) {
       mutate((d) => {
         const x = d.notes.find((y) => y.id === editing.id);
-        if (x) Object.assign(x, { title: title.trim(), date, body: body.trim(), color });
+        if (x) Object.assign(x, { title: title.trim(), date, body: body.trim(), color, cat: c || undefined });
       }, `یادداشت «${title.trim()}» ویرایش شد`);
       toast("ok", "یادداشت ویرایش شد.");
     } else {
       mutate((d) => {
         d.notes.unshift({
           id: Math.random().toString(36).slice(2, 10),
-          title: title.trim(), date, body: body.trim(), color, createdAt: Date.now(),
+          title: title.trim(), date, body: body.trim(), color, createdAt: Date.now(), cat: c || undefined,
         });
       }, `یادداشت «${title.trim()}» ثبت شد`);
       toast("ok", "یادداشت ذخیره شد.");
@@ -296,6 +313,15 @@ export function NotesPage() {
         <TInput className="!ps-9" placeholder="جست‌وجو در عنوان و متن یادداشت‌ها…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
+      {catOptions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 rise-in" style={{ ["--d" as string]: "60ms" }}>
+          <button className={`chip ${pinFilter === "" ? "chip-on" : ""}`} onClick={() => setPinFilter("")}>همه</button>
+          {catOptions.map((c) => (
+            <button key={c} className={`chip ${pinFilter === c ? "chip-on" : ""}`} onClick={() => setPinFilter(pinFilter === c ? "" : c)}>{c}</button>
+          ))}
+        </div>
+      )}
+
       {notes.length === 0 ? (
         <div className="card rise-in" style={{ ["--d" as string]: "80ms" }}>
           <Empty text={q.trim() ? "یادداشتی با این عبارت پیدا نشد." : "هنوز یادداشتی ندارید — اولین را بسازید."} />
@@ -317,9 +343,15 @@ export function NotesPage() {
                 style={{ background: "color-mix(in srgb, #0d2c24 22%, transparent)", boxShadow: "inset 0 1px 2px rgba(0,0,0,.35)" }} />
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-display text-xl leading-snug">{n.title}</h3>
+                <button onClick={() => togglePin(n)} title={n.pinned ? "برداشتن سنجاق" : "سنجاق کردن"}
+                  className="shrink-0 cursor-pointer transition-transform hover:scale-110"
+                  style={{ color: n.pinned ? "#c2410c" : "rgba(13,44,36,0.4)" }}>
+                  {n.pinned ? <Pin className="w-4 h-4" fill="currentColor" /> : <PinOff className="w-4 h-4" />}
+                </button>
               </div>
-              <p className="text-[10.5px] font-black mt-1 flex items-center gap-1.5 opacity-70">
-                <CalendarDays className="w-3.5 h-3.5" /> {faDate(n.date)}
+              <p className="text-[10.5px] font-black mt-1 flex items-center gap-1.5 flex-wrap opacity-80">
+                <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> {faDate(n.date)}</span>
+                {n.cat && <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(13,44,36,0.12)" }}>{n.cat}</span>}
               </p>
               {n.body && (
                 <p className="text-[13px] font-bold leading-7 mt-3 whitespace-pre-wrap">{n.body}</p>
@@ -355,6 +387,14 @@ export function NotesPage() {
                   style={{ background: c.value, outline: color === c.value ? "2.5px solid var(--fp-text)" : "none", outlineOffset: 2 }} />
               ))}
             </div>
+          </Field>
+          <Field label="دسته (اختیاری)" hint="برای گروه‌بندی یادداشت‌ها — مثلاً: کار، خانه، ایده">
+            <>
+              <TInput list="note-cats" value={cat} onChange={(e) => setCat(e.target.value)} placeholder="مثلاً: کار" />
+              <datalist id="note-cats">
+                {catOptions.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </>
           </Field>
           <Field label="متن یادداشت" hint="می‌توانید با میکروفون هم بنویسید.">
             <textarea
@@ -695,7 +735,7 @@ function buildAiReport(s: AppState): string {
 
 /* ================= ۶) گزارش‌ها ================= */
 export function ReportsPage() {
-  const { state } = useStore();
+  const { state, mutate } = useStore();
   const toast = useToast();
   const t = jalaliToday();
   const [period, setPeriod] = useState<PeriodKey>("thisMonth");
@@ -705,6 +745,69 @@ export function ReportsPage() {
 
   const [aiOpen, setAiOpen] = useState(false);
   const [aiReport, setAiReport] = useState("");
+  /* اتصال به API مدل زبانی */
+  const [showCfg, setShowCfg] = useState(false);
+  const [cfgUrl, setCfgUrl] = useState(state.prefs.aiApiUrl ?? "https://openrouter.ai/api/v1/chat/completions");
+  const [cfgKey, setCfgKey] = useState(state.prefs.aiApiKey ?? "");
+  const [cfgModel, setCfgModel] = useState(state.prefs.aiModel ?? "openai/gpt-4o-mini");
+  const [aiAnswer, setAiAnswer] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const saveCfg = () => {
+    mutate((d) => { d.prefs.aiApiUrl = cfgUrl.trim(); d.prefs.aiApiKey = cfgKey.trim(); d.prefs.aiModel = cfgModel.trim(); }, "ذخیرهٔ تنظیمات هوش مصنوعی");
+    setShowCfg(false);
+    toast("ok", "تنظیمات هوش مصنوعی ذخیره شد.");
+  };
+
+  const analyzeWithAI = async () => {
+    const url = (state.prefs.aiApiUrl ?? cfgUrl).trim();
+    const key = (state.prefs.aiApiKey ?? cfgKey).trim();
+    const model = (state.prefs.aiModel ?? cfgModel).trim() || "openai/gpt-4o-mini";
+    if (!url || !key) { setShowCfg(true); return toast("warn", "ابتدا آدرس API و کلید را وارد و ذخیره کن."); }
+    setAiBusy(true); setAiAnswer("");
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          stream: true,
+          messages: [
+            { role: "system", content: "تو یک مشاور مالی شخصی برای کاربران فارسی‌زبان هستی. پاسخ‌هایت را به فارسی، ساده، عملی و با عدد و رقم بده." },
+            { role: "user", content: aiReport },
+          ],
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let acc = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t.startsWith("data:")) continue;
+          const data = t.slice(5).trim();
+          if (data === "[DONE]") continue;
+          try {
+            const j = JSON.parse(data);
+            const delta = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content ?? "";
+            if (delta) { acc += delta; setAiAnswer(acc); }
+          } catch { /* خط ناقص stream */ }
+        }
+      }
+      if (!acc) throw new Error("پاسخ خالی");
+    } catch (e: any) {
+      toast("err", `تحلیل ناموفق بود — آدرس، کلید و مدل را بررسی کن. (${e.message ?? "خطای شبکه"})`);
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const { months, forecast } = Forecast({ s: state });
   const lm = addJalaliMonths(t.jy, t.jm, -1);
@@ -877,13 +980,55 @@ export function ReportsPage() {
           </span>
         </div>
         <pre dir="rtl"
-          className="text-[12px] leading-7 font-bold whitespace-pre-wrap rounded-xl border p-4 max-h-[46vh] overflow-y-auto"
+          className="text-[12px] leading-7 font-bold whitespace-pre-wrap rounded-xl border p-4 max-h-[30vh] overflow-y-auto"
           style={{ background: "var(--fp-bg)", borderColor: "var(--fp-border)", color: "var(--fp-text2)" }}>
           {aiReport}
         </pre>
-        <div className="flex items-center justify-between mt-4">
+
+        {/* تنظیمات اتصال به مدل زبانی */}
+        <div className="rounded-xl border mt-3 overflow-hidden" style={{ borderColor: "var(--fp-border)" }}>
+          <button onClick={() => setShowCfg((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-[12px] font-black cursor-pointer"
+            style={{ background: "var(--fp-bg3)", color: "var(--fp-text2)" }}>
+            <span className="flex items-center gap-2">
+              <Bot className="w-4 h-4" style={{ color: "var(--fp-accent)" }} />
+              تحلیل مستقیم با هوش مصنوعی {state.prefs.aiApiKey ? "· متصل" : "· تنظیم نشده"}
+            </span>
+            <span>{showCfg ? "بستن" : "تنظیم"}</span>
+          </button>
+          {showCfg && (
+            <div className="grid gap-3 p-4" style={{ background: "var(--fp-bg)" }}>
+              <Field label="آدرس API (OpenRouter / OpenAI / سازگار)"><TInput dir="ltr" value={cfgUrl} onChange={(e) => setCfgUrl(e.target.value)} placeholder="https://openrouter.ai/api/v1/chat/completions" /></Field>
+              <Field label="کلید API"><TInput dir="ltr" type="password" value={cfgKey} onChange={(e) => setCfgKey(e.target.value)} placeholder="sk-…" /></Field>
+              <Field label="مدل"><TInput dir="ltr" value={cfgModel} onChange={(e) => setCfgModel(e.target.value)} placeholder="openai/gpt-4o-mini" /></Field>
+              <div className="flex justify-end">
+                <button className="btn btn-mint btn-sm" onClick={saveCfg}>ذخیرهٔ تنظیمات</button>
+              </div>
+              <p className="text-[10.5px] font-bold leading-5" style={{ color: "var(--fp-text3)" }}>
+                کلید فقط در مرورگر خودت ذخیره می‌شود و هرگز به ابر فرستاده نمی‌شود. آدرس پیش‌فرض OpenRouter است که با مدل‌های رایگان هم کار می‌کند.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* پاسخ هوش مصنوعی */}
+        {(aiAnswer || aiBusy) && (
+          <div className="rounded-xl border mt-3 p-4" style={{ borderColor: "color-mix(in srgb, var(--fp-mint) 40%, transparent)", background: "color-mix(in srgb, var(--fp-mint) 5%, var(--fp-bg))" }}>
+            <p className="text-[12px] font-black flex items-center gap-2 mb-2" style={{ color: "var(--fp-mint)" }}>
+              <Bot className="w-4 h-4" /> تحلیل هوش مصنوعی {aiBusy && <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>— در حال نوشتن…</span>}
+            </p>
+            <p dir="rtl" className="text-[12.5px] font-bold leading-7 whitespace-pre-wrap" style={{ color: "var(--fp-text2)" }}>
+              {aiAnswer}{aiBusy && <span className="caret-blink" style={{ color: "var(--fp-accent)" }}>▍</span>}
+            </p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mt-4 flex-wrap gap-2">
+          <button className="btn btn-mint" onClick={analyzeWithAI} disabled={aiBusy}>
+            <Bot className="w-4 h-4" /> {aiBusy ? "در حال تحلیل…" : "تحلیل با هوش مصنوعی"}
+          </button>
           <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>
-            {faNum(aiReport.length)} کاراکتر · آمادهٔ ارسال به هوش مصنوعی
+            {faNum(aiReport.length)} کاراکتر · آمادهٔ ارسال
           </span>
           <button className="btn btn-gold" onClick={async () => {
             const ok = await copyText(aiReport);

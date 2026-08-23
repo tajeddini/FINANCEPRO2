@@ -1,6 +1,6 @@
 /* ---------- خروجی اکسل حرفه‌ای چندبرگی با ExcelJS + CSV + ICS ---------- */
 import ExcelJS from "exceljs";
-import type { AppState, Tx } from "./lib/data";
+import { getTags, type AppState, type Tx } from "./lib/data";
 import { faDate, jalaliDateStr } from "./lib/utils";
 
 function download(blob: Blob, name: string) {
@@ -177,30 +177,32 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   summarySheet(wb, s, txs, periodLabel);
 
   /* ۲) تراکنش‌ها */
+  const tags = getTags(s);
+  const tagName = (id?: string) => tags.find((x) => x.id === id)?.label ?? "—";
   const w1 = makeSheet(wb, "تراکنش‌ها", [
     { h: "ردیف", w: 7 }, { h: "تاریخ شمسی", w: 17 }, { h: "نوع", w: 10 }, { h: "دسته", w: 17 },
-    { h: "حساب", w: 17 }, { h: "توضیحات", w: 34 }, { h: "روش پرداخت", w: 13 }, { h: "مبلغ (تومان)", w: 17 }, { h: "منبع", w: 10 },
+    { h: "حساب", w: 17 }, { h: "توضیحات", w: 30 }, { h: "تگ", w: 17 }, { h: "روش پرداخت", w: 13 }, { h: "مبلغ (تومان)", w: 17 }, { h: "منبع", w: 10 },
   ]);
   txs.forEach((t, i) => {
     w1.addRow({
       c0: i + 1, c1: faDate(t.date), c2: t.type === "income" ? "درآمد" : "هزینه",
       c3: s.categories.find((c) => c.id === t.categoryId)?.name ?? "—",
       c4: s.accounts.find((a) => a.id === t.accountId)?.name ?? "—",
-      c5: t.note || t.title || "—", c6: t.payMethod ?? "—",
-      c7: t.type === "income" ? t.amount : -t.amount,
-      c8: t.source === "bot" ? "ربات" : "برنامه",
+      c5: t.note || t.title || "—", c6: tagName(t.tag), c7: t.payMethod ?? "—",
+      c8: t.type === "income" ? t.amount : -t.amount,
+      c9: t.source === "bot" ? "ربات" : "برنامه",
     });
     const row = w1.getRow(i + 2);
     const typeCell = row.getCell(3);
     typeCell.font = { bold: true, size: 10.5, name: "Vazirmatn", color: { argb: t.type === "income" ? "FF1F7A56" : "FFC24A3D" } };
-    const amtCell = row.getCell(8);
+    const amtCell = row.getCell(9);
     amtCell.font = { bold: true, size: 10.5, name: "Vazirmatn", color: { argb: t.type === "income" ? "FF1F7A56" : "FFC24A3D" } };
   });
-  zebra(w1, 2, txs.length + 1, [1, 3, 8], [8]);
-  totalRow(w1, `جمع درآمد بازهٔ «${periodLabel}»`, income, 8, "FF1F7A56");
-  totalRow(w1, `جمع هزینهٔ بازهٔ «${periodLabel}»`, expense, 8, "FFC24A3D");
-  totalRow(w1, "تراز نهایی", income - expense, 8, PINE);
-  w1.autoFilter = { from: "A1", to: `I${txs.length + 1}` };
+  zebra(w1, 2, txs.length + 1, [1, 3, 9], [9]);
+  totalRow(w1, `جمع درآمد بازهٔ «${periodLabel}»`, income, 9, "FF1F7A56");
+  totalRow(w1, `جمع هزینهٔ بازهٔ «${periodLabel}»`, expense, 9, "FFC24A3D");
+  totalRow(w1, "تراز نهایی", income - expense, 9, PINE);
+  w1.autoFilter = { from: "A1", to: `J${txs.length + 1}` };
 
   /* ۳) دسته‌ها */
   const w2 = makeSheet(wb, "گزارش دسته‌ها", [
@@ -278,6 +280,26 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   s.currencies.forEach((c) => w7.addRow({ c0: "ارز", c1: `${c.name} (${c.symbol})`, c2: c.qty, c3: c.rate * c.qty, c4: `نرخ: ${c.rate.toLocaleString("fa-IR")}` }));
   s.subscriptions.forEach((x) => w7.addRow({ c0: "اشتراک", c1: x.name, c2: x.amount, c3: x.cycle === "monthly" ? x.amount * 12 : x.amount, c4: `تمدید: ${faDate(x.renew)}` }));
   zebra(w7, 2, s.savings_goals.length + s.assets.length + s.currencies.length + s.subscriptions.length + 1, [1], [3, 4]);
+
+  /* ۹) برچسب‌ها (تحلیل رفتار خرج) */
+  const w8 = makeSheet(wb, "برچسب‌ها", [
+    { h: "برچسب", w: 24 }, { h: "توضیح", w: 34 }, { h: "تعداد تراکنش", w: 14 }, { h: "جمع (تومان)", w: 17 }, { h: "سهم از هزینه", w: 13 },
+  ]);
+  const tagExpense = txs.filter((t) => t.type === "expense");
+  tags.forEach((tg, idx) => {
+    const list = tagExpense.filter((t) => t.tag === tg.id);
+    const sum = list.reduce((a, t) => a + t.amount, 0);
+    w8.addRow({ c0: tg.label, c1: tg.desc || "—", c2: list.length, c3: sum, c4: expense > 0 ? sum / expense : 0 });
+    w8.getRow(idx + 2).getCell(5).numFmt = "0.0%";
+  });
+  zebra(w8, 2, tags.length + 1, [3, 5], [4]);
+
+  /* ۱۰) یادداشت‌ها */
+  const w9 = makeSheet(wb, "یادداشت‌ها", [
+    { h: "عنوان", w: 26 }, { h: "دسته", w: 14 }, { h: "تاریخ شمسی", w: 16 }, { h: "سنجاق", w: 9 }, { h: "متن", w: 50 },
+  ]);
+  s.notes.forEach((n) => w9.addRow({ c0: n.title, c1: n.cat ?? "—", c2: faDate(n.date), c3: n.pinned ? "بله" : "—", c4: n.body || "—" }));
+  zebra(w9, 2, s.notes.length + 1, [4], []);
 
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `financepro-${periodLabel.replace(/\s+/g, "-")}.xlsx`);

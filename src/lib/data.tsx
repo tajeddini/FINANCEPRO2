@@ -30,7 +30,7 @@ export interface PayMethod { id: ID; name: string; }
 export interface Recurring { id: ID; title: string; type: "income" | "expense"; amount: number; categoryId: ID; accountId: ID; dayOfMonth: number; lastRun?: string; }
 export interface Goal { id: ID; title: string; target: number; saved: number; deadline?: string; }
 export interface Appointment { id: ID; date: string; time: string; title: string; note?: string; done?: boolean; }
-export interface Note { id: ID; title: string; body: string; date: string; color: string; createdAt: number; }
+export interface Note { id: ID; title: string; body: string; date: string; color: string; createdAt: number; cat?: string; pinned?: boolean; }
 export interface Cheque { id: ID; kind: "in" | "out"; bank: string; amount: number; date: string; person: string; status: "pending" | "cashed" | "bounced"; }
 export interface Challenge { id: ID; title: string; target: number; saved: number; perDay: number; }
 export interface Currency { id: ID; name: string; symbol: string; rate: number; qty: number; }
@@ -50,6 +50,9 @@ export interface Prefs {
   syncId?: string;
   syncUrl?: string;
   syncKey?: string;
+  aiApiUrl?: string;
+  aiApiKey?: string;
+  aiModel?: string;
 }
 
 export interface AppState {

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownRight, ArrowUpLeft, Banknote, Bot, CalendarDays, Coins, Download, Filter,
-  Landmark, PencilLine, Plus, QrCode, Receipt, Repeat,
+  Landmark, Lightbulb, PencilLine, Plus, QrCode, Receipt, Repeat,
   Scale, Search, Sparkles, Trash2, Upload, Wallet,
 } from "lucide-react";
 import {
@@ -430,6 +430,8 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
           </div>
         </div>
       </div>
+
+      <SpendInsightCard monthTxs={monthTxs} expense={expense} />
     </div>
   );
 }
@@ -439,6 +441,90 @@ function Head({ icon, title, small }: { icon: React.ReactNode; title: string; sm
     <h3 className={`font-black flex items-center gap-2 ${small ? "text-[12.5px]" : "text-[14.5px]"}`} style={{ color: "var(--fp-text)" }}>
       <span style={{ color: "var(--fp-accent)" }}>{icon}</span>{title}
     </h3>
+  );
+}
+
+/* ---------- تحلیل خودکار رفتار خرج (بر اساس برچسب‌ها) ---------- */
+function SpendInsightCard({ monthTxs, expense }: { monthTxs: Tx[]; expense: number }) {
+  const { state } = useStore();
+  const tags = getTags(state);
+  const tagged = monthTxs.filter((x) => x.type === "expense" && x.tag);
+  const perTag = tags
+    .map((tg) => {
+      const sum = tagged.filter((x) => x.tag === tg.id).reduce((a, x) => a + x.amount, 0);
+      return { tag: tg, sum, pct: expense > 0 ? (sum / expense) * 100 : 0 };
+    })
+    .filter((x) => x.sum > 0)
+    .sort((a, b) => b.sum - a.sum);
+  const untagged = monthTxs.filter((x) => x.type === "expense" && !x.tag).length;
+  /* پتانسیل پس‌انداز: برچسب‌های غیرضروریِ پیش‌فرض */
+  const flexTags = ["later", "fun"];
+  const potential = perTag.filter((x) => flexTags.includes(x.tag.id)).reduce((a, x) => a + x.sum, 0);
+  const top = perTag[0];
+
+  const insights: { icon: React.ReactNode; text: string; tone: string }[] = [];
+  if (top) {
+    insights.push({
+      icon: <Sparkles className="w-4 h-4" />,
+      text: `بیشترین خرج این ماه با برچسب «${top.tag.label}» بوده — ٪${faNum(Math.round(top.pct))} از کل هزینه.`,
+      tone: top.tag.color,
+    });
+  }
+  if (potential > 0 && expense > 0) {
+    insights.push({
+      icon: <Lightbulb className="w-4 h-4" />,
+      text: `این ماه ٪${faNum(Math.round((potential / expense) * 100))} از خرج‌هایت (معادل ${faMoney(potential)} تومان) می‌توانست عقب بیفتد — این همان پتانسیل پس‌انداز توست.`,
+      tone: "var(--fp-mint)",
+    });
+  }
+  if (untagged > 0) {
+    insights.push({
+      icon: <Lightbulb className="w-4 h-4" />,
+      text: `${faNum(untagged)} تراکنشِ هزینه هنوز برچسب ندارد — برچسب‌گذاری کمک می‌کند رفتار خرجت را دقیق‌تر ببینی.`,
+      tone: "var(--fp-accent)",
+    });
+  }
+  if (insights.length === 0) {
+    insights.push({
+      icon: <Sparkles className="w-4 h-4" />,
+      text: "هنوز دادهٔ کافی برای تحلیل رفتار خرج نداری — چند تراکنش با برچسب ثبت کن.",
+      tone: "var(--fp-text3)",
+    });
+  }
+
+  return (
+    <div className="card p-5 rise-in" style={{ ["--d" as string]: "200ms" }}>
+      <Head icon={<Lightbulb className="w-4.5 h-4.5" />} title="تحلیل رفتار خرج این ماه" />
+      <div className="grid lg:grid-cols-2 gap-6 mt-4">
+        <div className="grid gap-3.5">
+          {perTag.slice(0, 5).map(({ tag, sum, pct }) => (
+            <div key={tag.id}>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[12.5px] font-black flex items-center gap-2">
+                  <i className="w-2.5 h-2.5 rounded-full not-italic" style={{ background: tag.color }} />
+                  {tag.label}
+                  <span className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>٪{faNum(Math.round(pct))}</span>
+                </span>
+                <span className="text-[12px] font-black tabular">{faMoney(sum)}</span>
+              </div>
+              <Bar pct={pct} color={tag.color} />
+            </div>
+          ))}
+          {perTag.length === 0 && (
+            <p className="text-[12px] font-bold" style={{ color: "var(--fp-text3)" }}>هنوز تراکنشی با برچسب ثبت نشده.</p>
+          )}
+        </div>
+        <div className="grid gap-2.5 content-start">
+          {insights.map((ins, i) => (
+            <div key={i} className="flex items-start gap-2.5 rounded-xl p-3 border"
+              style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)", borderInlineStart: `3px solid ${ins.tone}` }}>
+              <span style={{ color: ins.tone }} className="mt-0.5 shrink-0">{ins.icon}</span>
+              <p className="text-[12px] font-bold leading-6">{ins.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
