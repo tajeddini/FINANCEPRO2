@@ -21,6 +21,13 @@ import {
 import { parseCSV, exportCSV } from "./excel";
 import { Sparkline } from "./widgets";
 
+/* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
+const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
+  { tag: "fun", words: ["تفریح", "کافه", "رستوران", "سینما", "بازی", "سفر", "کنسرت", "شهربازی", "قهوه"] },
+  { tag: "essential", words: ["خوراک", "سوپر", "خانه", "اجاره", "قبض", "سلامت", "دارو", "رفت", "اسنپ", "مترو", "بنزین", "آموزش", "شهریه", "نان", "میوه", "داروخانه"] },
+  { tag: "later", words: ["پوشاک", "لباس", "کفش", "اشتراک", "هدیه"] },
+];
+
 /* ================= فرم تراکنش (افزودن/ویرایش) ================= */
 export function TxModal({
   open, onClose, editing,
@@ -40,6 +47,9 @@ export function TxModal({
   const [touchedCat, setTouchedCat] = useState(false);
   const [smart, setSmart] = useState(() => localStorage.getItem("fp_smart") === "1");
   const [detected, setDetected] = useState<string[]>([]);
+  /* مرحلهٔ پیشنهاد تگ بعد از ثبت تراکنشِ هزینهٔ بدون تگ */
+  const [suggestTxId, setSuggestTxId] = useState<ID | "">("");
+  const [suggestCat, setSuggestCat] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -93,6 +103,26 @@ export function TxModal({
     if (v && note.trim()) runDetect(note);
   };
 
+  /* پیش‌بینی کسری بودجه: هشدار قبل از رسیدن به سقف بودجهٔ دسته */
+  const budgetCheck = (amt: number, catId: ID) => {
+    const b = state.budgets.find((x) => x.categoryId === catId);
+    if (!b || b.limit <= 0) return;
+    const j = jalaliToday();
+    const mr = jalaliMonthRange(j.jy, j.jm);
+    const before = state.transactions
+      .filter((x) => x.categoryId === catId && x.type === "expense" && inRange(x.date, mr))
+      .reduce((a, x) => a + x.amount, 0);
+    const after = before + amt;
+    const catName = state.categories.find((c) => c.id === catId)?.name ?? "دسته";
+    if (after > b.limit) {
+      toast("err", `از سقف بودجهٔ «${catName}» عبور کردی! (${faMoney(after)} از ${faMoney(b.limit)})`);
+    } else if (after >= b.limit * 0.8 && before < b.limit * 0.8) {
+      toast("warn", `به ٪${faNum(Math.round((after / b.limit) * 100))} از بودجهٔ «${catName}» رسیدی — مواظب بقیهٔ ماه باش.`);
+    }
+  };
+
+  const handleClose = () => { setSuggestTxId(""); setSuggestCat(""); onClose(); };
+
   const submit = () => {
     const amt = Number(amount) || 0;
     if (amt <= 0) return toast("warn", "مبلغ باید بزرگ‌تر از صفر باشد.");
@@ -104,23 +134,85 @@ export function TxModal({
         if (t) Object.assign(t, { title: label, note: note.trim() || undefined, tag: tag || undefined, amount: amt, type, categoryId, accountId, date, payMethod: pay });
       }, `تراکنش «${label}» ویرایش شد`);
       toast("ok", "تراکنش ویرایش شد.");
-    } else {
-      mutate((d) => {
-        d.transactions.unshift({
-          id: Math.random().toString(36).slice(2, 10), date, type, amount: amt,
-          title: label, note: note.trim() || undefined, tag: tag || undefined, categoryId, accountId, payMethod: pay,
-          createdAt: Date.now(), source: "app",
-        });
-      }, `تراکنش «${label}» ثبت شد`);
-      toast("ok", `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
+      if (type === "expense") budgetCheck(amt, categoryId);
+      handleClose();
+      return;
     }
-    onClose();
+    const newId = Math.random().toString(36).slice(2, 10);
+    mutate((d) => {
+      d.transactions.unshift({
+        id: newId, date, type, amount: amt,
+        title: label, note: note.trim() || undefined, tag: tag || undefined, categoryId, accountId, payMethod: pay,
+        createdAt: Date.now(), source: "app",
+      });
+    }, `تراکنش «${label}» ثبت شد`);
+    toast("ok", `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
+    if (type === "expense") {
+      budgetCheck(amt, categoryId);
+      /* یادآوری هوشمند تگ‌گذاری: هزینهٔ بدون تگ → پیشنهاد برچسب بر اساس دسته */
+      if (!tag && getTags(state).length > 0) {
+        setSuggestTxId(newId);
+        setSuggestCat(label);
+        return;
+      }
+    }
+    handleClose();
+  };
+
+  /* ترتیب پیشنهادی تگ‌ها: تگِ هم‌خوان با دسته اول می‌آید */
+  const tags = getTags(state);
+  const suggestedTagId = useMemo(() => {
+    const hit = TAG_SUGGEST_KEYWORDS.find((k) => k.words.some((w) => suggestCat.includes(w)));
+    return hit && tags.some((t) => t.id === hit.tag) ? hit.tag : "";
+  }, [suggestCat, tags]);
+  const suggestOrder = useMemo(() => {
+    if (!suggestedTagId) return tags;
+    return [tags.find((t) => t.id === suggestedTagId)!, ...tags.filter((t) => t.id !== suggestedTagId)];
+  }, [tags, suggestedTagId]);
+
+  const applySuggest = (tagId: ID, tagLabel: string) => {
+    mutate((d) => {
+      const t = d.transactions.find((x) => x.id === suggestTxId);
+      if (t) t.tag = tagId;
+    }, `برچسب «${tagLabel}» ثبت شد`);
+    toast("ok", `برچسب «${tagLabel}» برای تراکنش ثبت شد.`);
+    handleClose();
   };
 
   const cats = state.categories.filter((c) => c.type === type);
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "ویرایش تراکنش" : "ثبت تراکنش"} wide>
+    <Modal open={open} onClose={handleClose} title={suggestTxId ? "این خرج چه جور خرجی بود؟" : editing ? "ویرایش تراکنش" : "ثبت تراکنش"} wide>
+      {suggestTxId ? (
+        <div className="grid gap-4 py-2 pop-in">
+          <p className="text-[13px] font-bold leading-7" style={{ color: "var(--fp-text2)" }}>
+            خرجِ «{suggestCat}» ثبت شد ✅ — یک برچسب بزن تا تحلیل رفتار خرجت دقیق‌تر شود:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {suggestOrder.map((tg, i) => {
+              const isSuggested = i === 0 && !!suggestedTagId;
+              return (
+                <button key={tg.id} onClick={() => applySuggest(tg.id, tg.label)} title={tg.desc}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-black cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+                  style={{
+                    background: `color-mix(in srgb, ${tg.color} ${isSuggested ? 24 : 12}%, transparent)`,
+                    color: tg.color,
+                    border: `1.5px solid ${tg.color}`,
+                    boxShadow: isSuggested ? `0 6px 18px -6px color-mix(in srgb, ${tg.color} 65%, transparent)` : "none",
+                  }}>
+                  {isSuggested && <Sparkles className="w-4 h-4" />}
+                  {tg.label}
+                  {isSuggested && <span className="text-[9.5px] font-bold opacity-80">(پیشنهادی)</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end">
+            <button className="btn btn-ghost" onClick={handleClose}>بدون برچسب — رد شو</button>
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="flex rounded-xl p-1 gap-1 mb-4" style={{ background: "var(--fp-bg)" }}>
         {(["expense", "income"] as const).map((t) => (
           <button
@@ -240,12 +332,14 @@ export function TxModal({
         </div>
       )}
       <div className="flex justify-end gap-2 mt-5">
-        <button className="btn btn-ghost" onClick={onClose}>انصراف</button>
+        <button className="btn btn-ghost" onClick={handleClose}>انصراف</button>
         <button className="btn btn-gold" onClick={submit}>
           <Plus className="w-4 h-4" strokeWidth={3} />
           {editing ? "ذخیرهٔ تغییرات" : "ثبت تراکنش"}
         </button>
       </div>
+      </>
+      )}
     </Modal>
   );
 }

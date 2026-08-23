@@ -1,8 +1,8 @@
 /* ---------- پوسته: مسیریابی، ورود/ثبت‌نام، جستجو، یادآوری، نوار بازگشت ---------- */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Moon,
-  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Target, X,
+  BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Mic, Moon,
+  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Sunrise, Target, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
 import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState } from "./lib/cloud";
@@ -13,12 +13,13 @@ import {
 import { faDate, faMoney, faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
 import { ToastProvider, useToast, Modal, TInput, Field } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
-import { AppointmentsPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
+import { AppointmentsPage, DailyPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
 
-type PageId = "dashboard" | "transactions" | "categories" | "debts" | "appointments" | "notes" | "reports" | "manage" | "settings";
+type PageId = "dashboard" | "daily" | "transactions" | "categories" | "debts" | "appointments" | "notes" | "reports" | "manage" | "settings";
 
 const NAV: { id: PageId; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "داشبورد", icon: <LayoutDashboard className="w-[18px] h-[18px]" /> },
+  { id: "daily", label: "روزانه", icon: <Sunrise className="w-[18px] h-[18px]" /> },
   { id: "transactions", label: "تراکنش‌ها", icon: <List className="w-[18px] h-[18px]" /> },
   { id: "categories", label: "گزارش دسته‌ها", icon: <PieChart className="w-[18px] h-[18px]" /> },
   { id: "debts", label: "بدهی‌ها", icon: <Coins className="w-[18px] h-[18px]" /> },
@@ -227,9 +228,38 @@ function GlobalSearch({ onNavigate }: {
   onNavigate: (page: PageId, drill?: { cat?: string; query?: string }) => void;
 }) {
   const { state } = useStore();
+  const toast = useToast();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
+  const [listening, setListening] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const activeRecRef = useRef(false);
+
+  /* جست‌وجوی صوتی: گفتن عبارت به‌جای تایپ */
+  const voiceSearch = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return toast("warn", "مرورگر شما از جست‌وجوی صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
+    if (activeRecRef.current) return;
+    const rec = new SR();
+    rec.lang = "fa-IR";
+    rec.interimResults = true;
+    rec.continuous = false;
+    let heard = "";
+    activeRecRef.current = true;
+    rec.onresult = (e: any) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) heard += e.results[i][0].transcript;
+      }
+      if (heard.trim()) { setQ(heard.trim()); setOpen(true); }
+    };
+    rec.onend = () => { setListening(false); activeRecRef.current = false; };
+    rec.onerror = (e: any) => {
+      setListening(false); activeRecRef.current = false;
+      if (e.error === "not-allowed") toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس اجازه بده.");
+      else if (e.error === "no-speech") toast("warn", "صدایی شنیده نشد — دوباره بزن و صحبت کن.");
+    };
+    try { rec.start(); setListening(true); } catch { activeRecRef.current = false; }
+  };
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -269,13 +299,25 @@ function GlobalSearch({ onNavigate }: {
     <div ref={boxRef} className="relative flex-1 max-w-sm mx-auto">
       <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" style={{ color: "var(--fp-text3)" }} />
       <input
-        className="input !py-2 !ps-9 !text-[12.5px]"
-        placeholder="جست‌وجوی سراسری… (تراکنش، یادداشت، قرار)"
+        className="input !py-2 !ps-9 !pe-10 !text-[12.5px]"
+        placeholder={listening ? "در حال گوش دادن…" : "جست‌وجو — تایپ کن یا بگو 🎙"}
         value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => { if (e.key === "Enter" && has) go("transactions", { query: q }); }}
       />
+      <button onClick={voiceSearch} title="جست‌وجوی صوتی — عبارت را بگو"
+        className="absolute top-1/2 -translate-y-1/2 end-2 w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all duration-150 hover:scale-110 active:scale-95"
+        style={{
+          background: listening ? "color-mix(in srgb, var(--fp-coral) 16%, transparent)" : "transparent",
+          color: listening ? "var(--fp-coral)" : "var(--fp-text3)",
+          boxShadow: listening ? "0 0 0 3px color-mix(in srgb, var(--fp-coral) 15%, transparent)" : "none",
+        }}>
+        <span className="relative grid place-items-center">
+          <Mic className="w-4 h-4" />
+          {listening && <i className="absolute -top-0.5 -left-0.5 w-1.5 h-1.5 rounded-full pulse-soft not-italic" style={{ background: "var(--fp-coral)" }} />}
+        </span>
+      </button>
       {open && has && (
         <div className="absolute top-full inset-x-0 mt-2 rounded-xl border shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto"
           style={{ background: "var(--fp-bg)", borderColor: "var(--fp-border2)" }}>
@@ -599,6 +641,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
           <main className="flex-1 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
             <div key={page + drill.key}>
               {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} />}
+              {page === "daily" && <DailyPage />}
               {page === "transactions" && <TransactionsPage initQuery={drill.query} initCat={drill.cat} />}
               {page === "categories" && <CategoriesPage />}
               {page === "debts" && <DebtsPage />}

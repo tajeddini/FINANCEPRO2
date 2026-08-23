@@ -857,6 +857,35 @@ export function ReportsPage() {
     }
   };
 
+  /* خروجی PDF گزارش هوشمند + تحلیل هوش مصنوعی — پنجرهٔ چاپ جداگانه */
+  const exportAiPdf = () => {
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const w = window.open("", "_blank", "width=900,height=940");
+    if (!w) return toast("warn", "مرورگر اجازهٔ باز کردن پنجرهٔ چاپ را نداد.");
+    w.document.write(`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<title>گزارش هوشمند مالی — فایننس‌پرو</title>
+<link href="https://fonts.googleapis.com/css2?family=Lalezar&family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  @page { margin: 18mm; }
+  body { font-family: "Vazirmatn", sans-serif; color: #12241c; line-height: 2.05; font-size: 12.5px; }
+  header { border-bottom: 3px solid #e8b04b; padding-bottom: 10px; margin-bottom: 18px; }
+  h1 { font-family: "Lalezar", serif; font-size: 26px; margin: 0; }
+  .date { color: #6b7f74; font-size: 11px; font-weight: 700; margin-top: 4px; }
+  pre { white-space: pre-wrap; font-family: "Vazirmatn", sans-serif; font-weight: 700; font-size: 12px; }
+  .ai { margin-top: 26px; border-top: 2px dashed #2fb98a; padding-top: 14px; }
+  .ai h2 { font-family: "Lalezar", serif; font-size: 20px; color: #1f7a56; }
+  footer { margin-top: 30px; text-align: center; color: #9aa89f; font-size: 10px; font-weight: 700; }
+</style></head><body>
+<header><h1>گزارش هوشمند مالی — فایننس‌پرو</h1><div class="date">${jalaliDateStr()}</div></header>
+<pre>${esc(aiReport)}</pre>
+${aiAnswer ? `<div class="ai"><h2>تحلیل هوش مصنوعی</h2><pre>${esc(aiAnswer)}</pre></div>` : ""}
+<footer>ساخته‌شده با فایننس‌پرو — دفترکل دیجیتال شخصی</footer>
+</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 450);
+  };
+
   const { months, forecast } = Forecast({ s: state });
   const lm = addJalaliMonths(t.jy, t.jm, -1);
   const lastRange = jalaliMonthRange(lm.jy, lm.jm);
@@ -867,6 +896,24 @@ export function ReportsPage() {
   const badges = computeBadges(state);
   const income = monthTxs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
   const expense = monthTxs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
+
+  /* مقایسهٔ ماهانه: این ماه در برابر ماه قبل، به تفکیک دسته */
+  const cmpData = useMemo(() => {
+    const cur = jalaliMonthRange(t.jy, t.jm);
+    const map = new Map<string, { name: string; cur: number; prev: number }>();
+    for (const x of state.transactions) {
+      if (x.type !== "expense") continue;
+      const name = state.categories.find((c) => c.id === x.categoryId)?.name ?? "نامشخص";
+      const e = map.get(name) ?? { name, cur: 0, prev: 0 };
+      if (inRange(x.date, cur)) e.cur += x.amount;
+      else if (inRange(x.date, lastRange)) e.prev += x.amount;
+      map.set(name, e);
+    }
+    return [...map.values()]
+      .filter((e) => e.cur + e.prev > 0)
+      .sort((a, b) => b.cur + b.prev - (a.cur + a.prev))
+      .slice(0, 7);
+  }, [state.transactions, state.categories, t.jy, t.jm, lastRange.from, lastRange.to]);
 
   const fmt = (v: number) => (v >= 1_000_000 ? `${faNum((v / 1_000_000).toFixed(1))}م` : faNum(Math.round(v / 1000)) + "هـ");
 
@@ -977,6 +1024,63 @@ export function ReportsPage() {
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "130ms" }}>
           <h3 className="text-[14px] font-black mb-4">نقشهٔ حرارتی خرج — ۱۴ هفته</h3>
           <Heatmap txs={state.transactions} />
+        </div>
+
+        {/* مقایسهٔ ماهانه */}
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "150ms" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-[14px] font-black flex items-center gap-2">
+              <BarChart3 className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} />
+              مقایسهٔ ماهانه — {MONTHS_FA[t.jm - 1]} در برابر {MONTHS_FA[lm.jm - 1]}
+            </h3>
+            <div className="flex items-center gap-3 text-[10.5px] font-black" style={{ color: "var(--fp-text3)" }}>
+              <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-sm not-italic" style={{ background: "var(--fp-accent)" }} /> این ماه</span>
+              <span className="flex items-center gap-1.5"><i className="w-2.5 h-2.5 rounded-sm not-italic" style={{ background: "color-mix(in srgb, var(--fp-text3) 45%, transparent)" }} /> ماه قبل</span>
+            </div>
+          </div>
+          {cmpData.length === 0 ? (
+            <p className="text-[12px] font-bold py-6 text-center" style={{ color: "var(--fp-text3)" }}>هنوز هزینه‌ای ثبت نشده.</p>
+          ) : (
+            <>
+              <div dir="ltr" className="h-56 mt-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={cmpData} margin={{ top: 6, right: 4, left: 4, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 10.5, fontFamily: "Vazirmatn", fontWeight: 700, fill: "var(--fp-text3)" }} axisLine={false} tickLine={false} interval={0} />
+                    <YAxis tickFormatter={(v: number) => fmt(v)} tick={{ fontSize: 10, fontFamily: "Vazirmatn", fill: "var(--fp-text3)" }} axisLine={false} tickLine={false} width={44} orientation="right" />
+                    <RTooltip
+                      cursor={{ fill: "color-mix(in srgb, var(--fp-accent) 6%, transparent)" }}
+                      contentStyle={{ background: "var(--fp-bg2)", border: "1px solid var(--fp-border2)", borderRadius: 12, fontFamily: "Vazirmatn", fontSize: 12, direction: "rtl" }}
+                      formatter={(v: any, k: any) => [faMoney(Number(v)) + " تومان", k === "cur" ? "این ماه" : "ماه قبل"]}
+                      labelStyle={{ color: "var(--fp-text)", fontWeight: 900 }}
+                    />
+                    <RBar dataKey="cur" fill="var(--fp-accent)" radius={[6, 6, 0, 0]} maxBarSize={22} />
+                    <RBar dataKey="prev" fill="color-mix(in srgb, var(--fp-text3) 45%, transparent)" radius={[6, 6, 0, 0]} maxBarSize={22} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-4">
+                {cmpData.map((c) => {
+                  const delta = c.prev > 0 ? Math.round(((c.cur - c.prev) / c.prev) * 100) : null;
+                  const up = (delta ?? 0) > 0;
+                  return (
+                    <div key={c.name} className="flex items-center justify-between rounded-lg px-3 py-2 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                      <span className="text-[11.5px] font-black truncate">{c.name}</span>
+                      {delta === null ? (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)" }}>جدید</span>
+                      ) : delta === 0 ? (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: "var(--fp-bg3)", color: "var(--fp-text3)" }}>بدون تغییر</span>
+                      ) : (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full tabular"
+                          style={{ background: `color-mix(in srgb, ${up ? "var(--fp-coral)" : "var(--fp-mint)"} 14%, transparent)`, color: up ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                          {up ? "▲" : "▼"} ٪{faNum(Math.abs(delta))}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "180ms" }}>
@@ -1090,17 +1194,183 @@ export function ReportsPage() {
           <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>
             {faNum(aiReport.length)} کاراکتر · آمادهٔ ارسال
           </span>
-          <button className="btn btn-gold" onClick={async () => {
-            const ok = await copyText(aiReport);
-            toast(ok ? "ok" : "err", ok ? "گزارش کپی شد — حالا به هوش مصنوعی بده." : "کپی ناموفق بود؛ متن را دستی انتخاب و کپی کن.");
-          }}>
-            <Copy className="w-4 h-4" /> کپی گزارش
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button className="btn btn-ghost" onClick={exportAiPdf} title="خروجی PDF گزارش + تحلیل">
+              <Printer className="w-4 h-4" /> خروجی PDF
+            </button>
+            <button className="btn btn-gold" onClick={async () => {
+              const ok = await copyText(aiReport);
+              toast(ok ? "ok" : "err", ok ? "گزارش کپی شد — حالا به هوش مصنوعی بده." : "کپی ناموفق بود؛ متن را دستی انتخاب و کپی کن.");
+            }}>
+              <Copy className="w-4 h-4" /> کپی گزارش
+            </button>
+          </div>
         </div>
       </Modal>
     </div>
   );
 }
+
+/* ================= ۶٫۵) حالت روزانه ================= */
+export function DailyPage() {
+  const { state, mutate } = useStore();
+  const now = useNow();
+  const today = localISODate(now);
+  const t = jalaliToday();
+
+  const todayTxs = state.transactions.filter((x) => x.date === today);
+  const spent = todayTxs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
+  const earned = todayTxs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
+
+  const todayAppts = state.appointments
+    .filter((a) => a.date === today)
+    .sort((a, b) => a.time.localeCompare(b.time));
+
+  /* یادآوری‌ها: سررسیدهای نزدیک، بودجه‌های در خطر، تمدید اشتراک‌ها */
+  const soon = addDaysISO(today, 7);
+  const reminders: { icon: React.ReactNode; text: string; color: string }[] = [];
+  for (const d of state.debts) {
+    if (d.kind === "debt" && d.due && d.amount - d.paid > 0 && d.due >= today && d.due <= soon) {
+      reminders.push({ icon: <CoinsMini />, text: `بدهی به ${d.person} — ${faMoney(d.amount - d.paid)} تومان، سررسید ${faDate(d.due)}`, color: "var(--fp-coral)" });
+    }
+  }
+  const mr = jalaliMonthRange(t.jy, t.jm);
+  for (const b of state.budgets) {
+    const s = state.transactions.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && inRange(x.date, mr)).reduce((a, x) => a + x.amount, 0);
+    if (b.limit > 0 && s >= b.limit * 0.8) {
+      const name = state.categories.find((c) => c.id === b.categoryId)?.name ?? "دسته";
+      reminders.push({
+        icon: <Shield className="w-4 h-4" />,
+        text: s > b.limit
+          ? `بودجهٔ «${name}» رد شده — ${faMoney(s - b.limit)} تومان مازاد`
+          : `بودجهٔ «${name}» ٪${faNum(Math.round((s / b.limit) * 100))} مصرف شده`,
+        color: s > b.limit ? "var(--fp-coral)" : "var(--fp-accent)",
+      });
+    }
+  }
+  for (const sub of state.subscriptions) {
+    if (sub.renew >= today && sub.renew <= soon) {
+      reminders.push({ icon: <RefreshCw className="w-4 h-4" />, text: `تمدید اشتراک «${sub.name}» — ${faMoney(sub.amount)} تومان در ${faDate(sub.renew)}`, color: "var(--fp-sky)" });
+    }
+  }
+
+  const toggleDone = (id: ID) => {
+    mutate((d) => {
+      const a = d.appointments.find((x) => x.id === id);
+      if (a) a.done = !a.done;
+    }, "وضعیت قرار تغییر کرد");
+  };
+
+  return (
+    <div className="grid gap-5">
+      <div className="rise-in">
+        <h1 className="font-display text-3xl md:text-4xl flex items-center gap-3">
+          <Sun className="w-8 h-8" style={{ color: "var(--fp-accent)" }} /> حالت روزانه
+        </h1>
+        <p className="text-[13px] font-bold mt-1.5 flex items-center gap-2 flex-wrap" style={{ color: "var(--fp-text3)" }}>
+          {jalaliDateStr()}
+          <span className="tabular font-display text-[15px]" style={{ color: "var(--fp-accent)" }} dir="ltr">{faTime(now)}</span>
+        </p>
+      </div>
+
+      {/* آمار امروز */}
+      <div className="grid sm:grid-cols-3 gap-4">
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "40ms" }}>
+          <p className="text-[11.5px] font-black" style={{ color: "var(--fp-text3)" }}>خرج امروز</p>
+          <p className="font-display text-3xl tabular mt-1.5" style={{ color: "var(--fp-coral)" }}>{faMoney(spent)}</p>
+          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{faNum(todayTxs.filter((x) => x.type === "expense").length)} تراکنش</p>
+        </div>
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
+          <p className="text-[11.5px] font-black" style={{ color: "var(--fp-text3)" }}>درآمد امروز</p>
+          <p className="font-display text-3xl tabular mt-1.5" style={{ color: "var(--fp-mint)" }}>{faMoney(earned)}</p>
+          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{faNum(todayTxs.filter((x) => x.type === "income").length)} تراکنش</p>
+        </div>
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "120ms" }}>
+          <p className="text-[11.5px] font-black" style={{ color: "var(--fp-text3)" }}>قرارهای امروز</p>
+          <p className="font-display text-3xl tabular mt-1.5" style={{ color: "var(--fp-accent)" }}>
+            {faNum(todayAppts.filter((a) => !a.done).length)}
+            <span className="text-[15px]" style={{ color: "var(--fp-text3)" }}> از {faNum(todayAppts.length)}</span>
+          </p>
+          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>باقی‌مانده از امروز</p>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5">
+        {/* قرارهای امروز */}
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "160ms" }}>
+          <h3 className="text-[14px] font-black flex items-center gap-2">
+            <CalendarDays className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> برنامهٔ امروز
+          </h3>
+          {todayAppts.length === 0 ? (
+            <p className="text-[12px] font-bold py-6 text-center" style={{ color: "var(--fp-text3)" }}>برای امروز قراری نداری. 🎉</p>
+          ) : (
+            <div className="grid gap-2 mt-3">
+              {todayAppts.map((a) => (
+                <button key={a.id} onClick={() => toggleDone(a.id)}
+                  className="flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-start cursor-pointer transition-all hover:-translate-y-0.5"
+                  style={{ borderColor: a.done ? "var(--fp-border)" : "color-mix(in srgb, var(--fp-mint) 40%, transparent)", background: a.done ? "var(--fp-bg)" : "color-mix(in srgb, var(--fp-mint) 6%, transparent)" }}>
+                  <span className="font-display text-xl tabular shrink-0" dir="ltr" style={{ color: a.done ? "var(--fp-text3)" : "var(--fp-accent)" }}>{faNum(a.time)}</span>
+                  <span className={`flex-1 text-[12.5px] font-black ${a.done ? "line-through opacity-60" : ""}`}>{a.title}</span>
+                  <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 border"
+                    style={{ borderColor: a.done ? "var(--fp-mint)" : "var(--fp-border2)", background: a.done ? "var(--fp-mint)" : "transparent" }}>
+                    {a.done && <Check className="w-3.5 h-3.5" strokeWidth={3.5} style={{ color: "#071b16" }} />}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* یادآوری‌ها */}
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "200ms" }}>
+          <h3 className="text-[14px] font-black flex items-center gap-2">
+            <Bell className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> یادآوری‌های هفتهٔ پیشِ رو
+          </h3>
+          {reminders.length === 0 ? (
+            <p className="text-[12px] font-bold py-6 text-center" style={{ color: "var(--fp-text3)" }}>چیز نگران‌کننده‌ای در راه نیست. 😌</p>
+          ) : (
+            <div className="grid gap-2 mt-3">
+              {reminders.map((r, i) => (
+                <div key={i} className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 border"
+                  style={{ borderColor: `color-mix(in srgb, ${r.color} 35%, transparent)`, background: `color-mix(in srgb, ${r.color} 7%, transparent)` }}>
+                  <span style={{ color: r.color }} className="shrink-0">{r.icon}</span>
+                  <span className="text-[12px] font-bold leading-6">{r.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* تراکنش‌های امروز */}
+      <div className="card p-5 rise-in" style={{ ["--d" as string]: "240ms" }}>
+        <h3 className="text-[14px] font-black flex items-center gap-2">
+          <TrendingUp className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> تراکنش‌های امروز
+        </h3>
+        {todayTxs.length === 0 ? (
+          <p className="text-[12px] font-bold py-6 text-center" style={{ color: "var(--fp-text3)" }}>امروز هنوز تراکنشی ثبت نشده.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-1.5 mt-3">
+            {todayTxs.map((x) => {
+              const c = state.categories.find((cc) => cc.id === x.categoryId);
+              return (
+                <div key={x.id} className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5" style={{ background: "var(--fp-bg)" }}>
+                  <i className="w-2.5 h-2.5 rounded-full not-italic shrink-0" style={{ background: c?.color ?? "#888" }} />
+                  <span className="flex-1 text-[12px] font-black truncate">{x.note || x.title}</span>
+                  <span className="text-[12px] font-black tabular shrink-0" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {x.type === "income" ? "+" : "−"}{faMoney(x.amount)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CoinsMini() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="9" r="6" /><path d="M15.5 5.5a6 6 0 1 1-8 8" strokeLinecap="round" /><path d="M7 9h4M9 7v4" strokeLinecap="round" /></svg>; }
 
 /* ================= ۷) مدیریت ================= */
 type FieldType = "text" | "amount" | "date" | "number" | "select";
@@ -1222,13 +1492,19 @@ export function ManagePage() {
         const t = jalaliToday();
         const spent = s.transactions.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && inRange(x.date, jalaliMonthRange(t.jy, t.jm))).reduce((a, x) => a + x.amount, 0);
         const over = spent > b.limit;
+        const warn = !over && b.limit > 0 && spent >= b.limit * 0.8;
+        const color = over ? "var(--fp-coral)" : warn ? "var(--fp-accent)" : "var(--fp-mint)";
         return (
           <div className="w-full">
-            <div className="flex justify-between text-[12.5px] font-black mb-1.5">
-              <span>{s.categories.find((c) => c.id === b.categoryId)?.name}</span>
-              <span className="tabular" style={{ color: over ? "var(--fp-coral)" : "var(--fp-mint)" }}>{faMoney(spent)} از {faMoney(b.limit)} {over && "⚠"}</span>
+            <div className="flex justify-between text-[12.5px] font-black mb-1.5 items-center gap-2">
+              <span className="flex items-center gap-1.5">
+                {s.categories.find((c) => c.id === b.categoryId)?.name}
+                {over && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "color-mix(in srgb, var(--fp-coral) 15%, transparent)", color: "var(--fp-coral)" }}>مازاد بر سقف</span>}
+                {warn && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)", color: "var(--fp-accent)" }}>نزدیک سقف</span>}
+              </span>
+              <span className="tabular" style={{ color }}>{faMoney(spent)} از {faMoney(b.limit)}</span>
             </div>
-            <Bar pct={(spent / b.limit) * 100} color={over ? "var(--fp-coral)" : "var(--fp-mint)"} />
+            <Bar pct={b.limit > 0 ? (spent / b.limit) * 100 : 0} color={color} />
           </div>
         );
       },
