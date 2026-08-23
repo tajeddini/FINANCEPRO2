@@ -212,14 +212,15 @@ function appendSmart(base: string, add: string): string {
 
 /* ================= تایپ صوتی (fa-IR) — پیشرفته =================
    ۱) متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
-   ۲) هر «نشست» تشخیص، یک نمونهٔ تازهٔ SpeechRecognition است — نتایج نشست قبل
-      هرگز باقی نمی‌مانند، پس تکرار کلمه رخ نمی‌دهد (باگ اصلی نسخهٔ PWA/اندروید).
-   ۳) متنِ نهایی هر بار از کل نتایجِ همان نشست بازسازی می‌شود (idempotent).
-   ۴) گوش دادن پیوسته است؛ بعد از مکث، نشست جدید خودکار شروع می‌شود تا «توقف ضبط».
-   ۵) گارد شروع دوتایی: کلیک‌های تکراری یا رویدادهای دوبله، نشست دوم نمی‌سازند.
-   ۶) الحاق هوشمند (appendSmart): مبنای الحاق، «محتوای واقعیِ لحظه‌ای فیلد» است و اگر
-      جمله‌ای از قبل در انتهای فیلد باشد دوباره اضافه نمی‌شود — باگ تکرار جمله در
-      PWA/اندروید (که موتور بعد از مکث، جملهٔ قبلی را دوباره می‌فرستد) را کاملاً حل می‌کند. */
+   ۲) تحویل «افزایشی بر اساس resultIndex»: هر جملهٔ نهایی دقیقاً یک‌بار و بر اساس
+      ایندکسش تحویل می‌شود؛ بازخوانیِ از صفرِ آرایهٔ نتایج حذف شده — این باگ «برفی»
+      (تکرار روزافزون کلمه‌ها) در PWA/اندروید را که موتور نتیجهٔ قبلی را دوباره می‌فرستد،
+      ریشه‌ای حل می‌کند.
+   ۳) «توکن نشست» (sessionId): هر نشست شمارهٔ یکتا می‌گیرد و نشست‌های قدیمی/هم‌پوشان
+      باطل می‌شوند — هیچ‌وقت دو نمونهٔ تشخیص همزمان متن تحویل نمی‌دهند.
+   ۴) گوش دادن پیوسته است؛ بعد از مکث، نشست جدید (با نمونهٔ تازه) خودکار شروع می‌شود.
+   ۵) الحاق هوشمند (appendSmart): اگر جمله‌ای از قبل در انتهای فیلد باشد دوباره اضافه
+      نمی‌شود — لایهٔ دفاعی نهایی در برابر تکرار. */
 export function MicButton({
   onText, baseText = "", disabled,
 }: {
@@ -233,6 +234,9 @@ export function MicButton({
   const recRef = useRef<any>(null);
   const stopReqRef = useRef(false);
   const activeRef = useRef(false); /* گارد همگام — جلوی شروع دوتایی */
+  /* توکن نشست — هر نشست یک شمارهٔ یکتا می‌گیرد؛ نشست‌های قدیمی/هم‌پوشان باطل می‌شوند
+     تا هیچ‌وقت دو نمونهٔ تشخیص همزمان متن تحویل ندهند (عامل دوم باگ برفی PWA) */
+  const sessionIdRef = useRef(0);
   /* محتوای لحظه‌ای فیلد — مبنای الحاق و حذف تکرار
      (در PWA/اندروید موتور گاهی جملهٔ قبلی را دوباره می‌فرستد؛ appendSmart جلوش را می‌گیرد) */
   const fieldRef = useRef(baseText);
@@ -244,19 +248,27 @@ export function MicButton({
   useEffect(() => () => {
     stopReqRef.current = true;
     activeRef.current = false;
+    sessionIdRef.current++; /* باطل‌کردن نشست در حال اجرا */
     try { recRef.current?.abort(); } catch { /* ignore */ }
   }, []);
 
   const hardStop = (msg?: string, kind: "err" | "warn" = "err") => {
     stopReqRef.current = true;
     activeRef.current = false;
+    sessionIdRef.current++; /* باطل‌کردن نشست در حال اجرا */
     setListening(false);
     setHeard("");
     if (msg) toast(kind, msg);
   };
 
-  /* یک نشست تشخیصِ تازه — همیشه نمونهٔ جدید، هرگز start() دوباره روی نمونهٔ قدیم */
+  /* یک نشست تشخیصِ تازه — همیشه نمونهٔ جدید + تحویل افزایشی بر اساس resultIndex.
+     هر نتیجهٔ نهایی (isFinal) دقیقاً «یک‌بار» و بر اساس ایندکسش تحویل می‌شود؛ بازخوانیِ
+     از صفرِ آرایهٔ نتایج حذف شده تا تکرارِ موتور در PWA/اندروید دیگر اثری نداشته باشد. */
   const beginSession = () => {
+    /* نمونهٔ قبلی (اگر هست) را کاملاً باطل کن — هیچ‌وقت دو نمونهٔ همزمان */
+    try { recRef.current?.abort(); } catch { /* ignore */ }
+
+    const myId = ++sessionIdRef.current; /* توکن یکتای این نشست */
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const rec = new SR();
     rec.lang = "fa-IR";
@@ -264,22 +276,30 @@ export function MicButton({
     rec.continuous = true;
     rec.maxAlternatives = 1;
 
+    let sessionFinals = ""; /* جمله‌های نهاییِ تحویل‌شدهٔ همین نشست (به ترتیب ایندکس) */
+    let committedUpTo = -1; /* آخرین ایندکسِ تحویل‌شده — تکرار همان ایندکس نادیده گرفته می‌شود */
+
     rec.onresult = (e: any) => {
-      /* بازسازی کامل از نتایج همین نشست — تکرار تحویل، خروجی را عوض نمی‌کند */
-      let fin = "";
-      let interim = "";
-      for (let i = 0; i < e.results.length; i++) {
+      if (sessionIdRef.current !== myId) return; /* نشست قدیمی — باطل */
+      /* فقط نتایجِ جدید از resultIndex به بعد؛ هر ایندکسِ نهایی حداکثر یک‌بار */
+      for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        const txt = (r[0]?.transcript ?? "").trim();
-        if (!txt) continue;
-        if (r.isFinal) fin += txt + " ";
-        else interim += txt + " ";
+        if (r.isFinal && i > committedUpTo) {
+          const txt = (r[0]?.transcript ?? "").trim();
+          if (txt) sessionFinals += (sessionFinals ? " " : "") + txt;
+          committedUpTo = i;
+        }
       }
-      setHeard((fin + interim).trim());
-      if (fin.trim()) {
-        const merged = appendSmart(fieldRef.current, fin.trim());
-        /* فقط وقتی واقعاً چیز جدیدی اضافه شده تحویل بده — و فوراً fieldRef را به‌روز کن
-           تا اگر موتورِ PWA همین جمله را دوباره فرستاد، appendSmart جلوی تکرارش را بگیرد */
+      if (sessionIdRef.current !== myId) return;
+      /* پیش‌نمایش زنده: آخرین نتیجهٔ غیرنهایی */
+      let interim = "";
+      if (e.results.length > 0) {
+        const last = e.results[e.results.length - 1];
+        if (!last.isFinal) interim = (last[0]?.transcript ?? "").trim();
+      }
+      setHeard((sessionFinals + (interim ? " " + interim : "")).trim());
+      if (sessionFinals) {
+        const merged = appendSmart(fieldRef.current, sessionFinals);
         if (merged !== fieldRef.current.trim()) {
           fieldRef.current = merged;
           onText(merged);
@@ -288,20 +308,22 @@ export function MicButton({
     };
 
     rec.onend = () => {
-      if (!stopReqRef.current) {
-        /* نشست بعدی با نمونهٔ تازه — fieldRef خودش به‌روز است، نیازی به پایهٔ جدا نیست */
-        window.setTimeout(() => {
-          if (stopReqRef.current || !activeRef.current) return;
-          beginSession();
-        }, 180);
+      if (sessionIdRef.current !== myId) return; /* نشست قدیمی — باطل */
+      if (stopReqRef.current) {
+        activeRef.current = false;
+        setListening(false);
+        setHeard("");
         return;
       }
-      activeRef.current = false;
-      setListening(false);
-      setHeard("");
+      /* مکث طبیعی → نشستِ بعدی با نمونهٔ تازه (fieldRef به‌روز است) */
+      window.setTimeout(() => {
+        if (stopReqRef.current || sessionIdRef.current !== myId) return;
+        beginSession();
+      }, 250);
     };
 
     rec.onerror = (ev: any) => {
+      if (sessionIdRef.current !== myId) return;
       if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
         hardStop("دسترسی به میکروفون رد شد — از نوار آدرس مرورگر اجازه بدهید.");
       } else if (ev.error === "network") {
@@ -315,9 +337,9 @@ export function MicButton({
     };
 
     recRef.current = rec;
+    activeRef.current = true;
     try {
       rec.start();
-      activeRef.current = true;
       setListening(true);
       setHeard("");
     } catch {
@@ -336,6 +358,7 @@ export function MicButton({
     if (activeRef.current || listening) {
       stopReqRef.current = true;
       activeRef.current = false;
+      sessionIdRef.current++; /* باطل‌کردن نشست در حال اجرا */
       try { recRef.current?.stop(); } catch { /* ignore */ }
       setListening(false);
       setHeard("");
