@@ -191,13 +191,35 @@ export function JalaliPicker({
   );
 }
 
+/** الحاق هوشمند و idempotent: اگر `add` از قبل (کامل یا بخشی از آن) در انتهای `base`
+    وجود داشته باشد، دوباره اضافه نمی‌شود. جلوی تکرار جمله در PWA/اندروید را می‌گیرد. */
+function appendSmart(base: string, add: string): string {
+  const b = base.trim();
+  const a = add.trim();
+  if (!a) return b;
+  if (!b) return a;
+  if (b.endsWith(a)) return b; /* تکرار کامل — هیچ تغییری نده */
+  /* بلندترین پیشوندِ add که با انتهای base یکی است را پیدا و حذف کن */
+  let overlap = 0;
+  const maxK = Math.min(b.length, a.length);
+  for (let k = maxK; k > 0; k--) {
+    if (b.endsWith(a.slice(0, k))) { overlap = k; break; }
+  }
+  const rest = a.slice(overlap).trim();
+  if (!rest) return b;
+  return (b + " " + rest).trim();
+}
+
 /* ================= تایپ صوتی (fa-IR) — پیشرفته =================
    ۱) متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
    ۲) هر «نشست» تشخیص، یک نمونهٔ تازهٔ SpeechRecognition است — نتایج نشست قبل
       هرگز باقی نمی‌مانند، پس تکرار کلمه رخ نمی‌دهد (باگ اصلی نسخهٔ PWA/اندروید).
    ۳) متنِ نهایی هر بار از کل نتایجِ همان نشست بازسازی می‌شود (idempotent).
    ۴) گوش دادن پیوسته است؛ بعد از مکث، نشست جدید خودکار شروع می‌شود تا «توقف ضبط».
-   ۵) گارد شروع دوتایی: کلیک‌های تکراری یا رویدادهای دوبله، نشست دوم نمی‌سازند. */
+   ۵) گارد شروع دوتایی: کلیک‌های تکراری یا رویدادهای دوبله، نشست دوم نمی‌سازند.
+   ۶) الحاق هوشمند (appendSmart): مبنای الحاق، «محتوای واقعیِ لحظه‌ای فیلد» است و اگر
+      جمله‌ای از قبل در انتهای فیلد باشد دوباره اضافه نمی‌شود — باگ تکرار جمله در
+      PWA/اندروید (که موتور بعد از مکث، جملهٔ قبلی را دوباره می‌فرستد) را کاملاً حل می‌کند. */
 export function MicButton({
   onText, baseText = "", disabled,
 }: {
@@ -211,9 +233,10 @@ export function MicButton({
   const recRef = useRef<any>(null);
   const stopReqRef = useRef(false);
   const activeRef = useRef(false); /* گارد همگام — جلوی شروع دوتایی */
-  /* پایهٔ الحاق — بعد از هر نشست، به آخرین متنِ تحویل‌شده به‌روز می‌شود */
-  const baseRef = useRef("");
-  const latestRef = useRef("");
+  /* محتوای لحظه‌ای فیلد — مبنای الحاق و حذف تکرار
+     (در PWA/اندروید موتور گاهی جملهٔ قبلی را دوباره می‌فرستد؛ appendSmart جلوش را می‌گیرد) */
+  const fieldRef = useRef(baseText);
+  useEffect(() => { fieldRef.current = baseText; }, [baseText]);
   const supported = typeof window !== "undefined" &&
     !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   const toast = useToast();
@@ -254,18 +277,21 @@ export function MicButton({
       }
       setHeard((fin + interim).trim());
       if (fin.trim()) {
-        const merged = ((baseRef.current ? baseRef.current + " " : "") + fin.trim()).trim();
-        latestRef.current = merged;
-        onText(merged);
+        const merged = appendSmart(fieldRef.current, fin.trim());
+        /* فقط وقتی واقعاً چیز جدیدی اضافه شده تحویل بده — و فوراً fieldRef را به‌روز کن
+           تا اگر موتورِ PWA همین جمله را دوباره فرستاد، appendSmart جلوی تکرارش را بگیرد */
+        if (merged !== fieldRef.current.trim()) {
+          fieldRef.current = merged;
+          onText(merged);
+        }
       }
     };
 
     rec.onend = () => {
       if (!stopReqRef.current) {
-        /* نشست بعدی با نمونهٔ تازه — نتایج این نشست دور ریخته می‌شود */
-        baseRef.current = latestRef.current;
+        /* نشست بعدی با نمونهٔ تازه — fieldRef خودش به‌روز است، نیازی به پایهٔ جدا نیست */
         window.setTimeout(() => {
-          if (stopReqRef.current) return;
+          if (stopReqRef.current || !activeRef.current) return;
           beginSession();
         }, 180);
         return;
@@ -316,8 +342,7 @@ export function MicButton({
       return;
     }
     stopReqRef.current = false;
-    baseRef.current = baseText.trim();
-    latestRef.current = baseRef.current;
+    fieldRef.current = baseText.trim(); /* snapshot هنگام شروع */
     beginSession();
   };
 
