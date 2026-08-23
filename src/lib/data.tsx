@@ -364,8 +364,10 @@ function applyRecurring(s: AppState) {
   const monthKey = `${t.jy}-${String(t.jm).padStart(2, "0")}`;
   for (const r of s.recurring) {
     if (r.lastRun === monthKey) continue;
-    if (t.jd >= r.dayOfMonth) {
-      const day = Math.min(r.dayOfMonth, jalaliMonthLen(t.jy, t.jm));
+    /* روز مؤثر: در ماه‌های کوتاه (۲۹/۳۰ روزه)، آخرین روز ماه.
+       اول روز مؤثر را حساب کن بعد مقایسه کن — وگرنه dayOfMonth=31 در ماه ۳۰ روزه هرگز اجرا نمی‌شود. */
+    const day = Math.min(r.dayOfMonth, jalaliMonthLen(t.jy, t.jm));
+    if (t.jd >= day) {
       s.transactions.unshift({
         id: uid(), date: jalaliToISO(t.jy, t.jm, day), type: r.type, amount: r.amount,
         title: `${r.title} (دوره‌ای)`, categoryId: r.categoryId, accountId: r.accountId,

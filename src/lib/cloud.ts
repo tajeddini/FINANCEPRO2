@@ -21,6 +21,27 @@ export const decodeState = (code: string): AppState | null => {
   }
 };
 
+/** تراکنش‌هایی که محلی ثبت شده‌اند ولی در نسخهٔ ابری وجود ندارند */
+export function localOnlyTx(local: AppState, pulled: AppState): AppState["transactions"] {
+  const ids = new Set(pulled.transactions.map((t) => t.id));
+  return local.transactions.filter((t) => !ids.has(t.id));
+}
+
+/**
+ * ادغام دادهٔ ابری در پیش‌نویس محلی — بدون از دست رفتن تراکنش‌های محلی.
+ * تراکنش‌های محلی که در ابر نیستند (مثلاً در مرورگر دیگر ثبت شده و هنوز سینک
+ * نشده‌اند) با dedupe بر اساس id حفظ می‌شوند. تعداد تراکنش‌های حفظ‌شده را برمی‌گرداند.
+ */
+export function mergePulledState(d: AppState, pulled: AppState): number {
+  const keep = localOnlyTx(d, pulled);
+  const localPrefs = d.prefs; /* prefs محلی (تم، پین و…) هرگز بازنویسی نشود */
+  Object.assign(d, pulled, { prefs: localPrefs });
+  /* نسخه‌های قدیمیِ ابر ممکن است جدول‌های جدید را نداشته باشند */
+  if (!Array.isArray(d.notes)) d.notes = [];
+  if (keep.length) d.transactions = [...keep, ...d.transactions];
+  return keep.length;
+}
+
 /* ===== سینک Supabase (REST) ===== */
 const restBase = (url: string) => url.replace(/\/+$/, "") + "/rest/v1";
 
@@ -41,12 +62,15 @@ export async function pushToCloud(
   if (!p.syncUrl || !p.syncKey || !id)
     return { ok: false, message: "آدرس، کلید و شناسهٔ سینک کامل نیست." };
   try {
+    /* 🔒 امنیت: هرگز دادهٔ حساس prefs (پین، کلید سینک، آدرس، توکن‌ها) به ابر فرستاده نشود.
+       فقط شناسهٔ سینک نگه داشته می‌شود — decodeState همچنان به وجود prefs نیاز دارد. */
+    const safeState: AppState = { ...s, prefs: { syncId: p.syncId } as Prefs };
     const res = await fetch(`${restBase(p.syncUrl)}/financepro_state`, {
       method: "POST",
       headers: authHeaders(p.syncKey, { Prefer: "resolution=merge-duplicates" }),
       body: JSON.stringify({
         id,
-        data: encodeState(s),
+        data: encodeState(safeState),
         updated_at: new Date().toISOString(),
       }),
     });

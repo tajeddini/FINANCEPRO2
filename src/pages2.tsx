@@ -10,12 +10,12 @@ import { clearData, sampleFill, useStore, TX_TAGS, type AppState, type ID, type 
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
-  copyText, fireNotification, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA,
-  PERIODS, periodRange, playChime, relTime, todayISO, useNow, WEEKDAYS_FA, WEEKDAYS_MIN,
-  type PeriodKey,
+  copyText, fireNotification, jalaliShort, jalaliToISO, jalaliToday, localISODate,
+  MONTHS_FA, PERIODS, periodRange, playChime, relTime, todayISO, useNow,
+  WEEKDAYS_FA, WEEKDAYS_MIN, type PeriodKey,
 } from "./lib/utils";
 import { THEMES, applyAccent } from "./lib/themes";
-import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs } from "./lib/cloud";
+import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs, localOnlyTx, mergePulledState } from "./lib/cloud";
 import { listUsers } from "./lib/auth";
 import {
   AmountInput, Bar, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, MicButton, Modal,
@@ -536,7 +536,7 @@ function buildAiReport(s: AppState): string {
   const P = (x = "") => L.push(x);
 
   P("📊 گزارش هوشمند مالی — فایننس‌پرو");
-  P(`تاریخ: ${t.jy}/${t.jm}/${t.jd} (هجری شمسی) | ${new Date().toISOString().slice(0, 10)} (میلادی)`);
+  P(`تاریخ: ${t.jy}/${t.jm}/${t.jd} (هجری شمسی) | ${localISODate(new Date())} (میلادی)`);
   P("");
   P("این گزارش، داده‌های واقعی دفترکل مالی شخصی من است (همهٔ مبالغ به تومان). از تو به‌عنوان مشاور مالی می‌خواهم رفتار مالی‌ام را دقیق تحلیل کنی و راهکار عملی بدهی.");
   P("");
@@ -978,7 +978,7 @@ export function ManagePage() {
         { key: "amount", label: "مبلغ (تومان)", type: "amount" },
         { key: "categoryId", label: "دسته", type: "select", options: [] },
         { key: "accountId", label: "حساب", type: "select", options: [] },
-        { key: "dayOfMonth", label: "روز ماه (۱-۲۸)", type: "number" },
+        { key: "dayOfMonth", label: "روز ماه (۱-۳۱ — آخر ماه در ماه‌های کوتاه)", type: "number" },
       ],
       row: (r, s) => (
         <div className="flex items-center gap-3">
@@ -1323,8 +1323,15 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
     if (!pull.ok) {
       toast("err", pull.message);
     } else if (pull.state && (pull.state.rev ?? 0) > (state.rev ?? 0)) {
-      mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "دریافت داده از ابر");
-      toast("ok", "تراکنش‌های شما از ابر بازیابی شد — این دستگاه همگام است.");
+      /* دادهٔ ابری جدیدتر است — ادغام کن اما تراکنش‌های محلیِ سینک‌نشده را حفظ کن */
+      const pulled = pull.state;
+      const keepCount = localOnlyTx(state, pulled).length;
+      mutate((d) => { mergePulledState(d, pulled); }, "دریافت داده از ابر");
+      if (keepCount > 0) {
+        toast("warn", `تغییرات محلی تازه (${faNum(keepCount)} تراکنش) با دادهٔ ابری ادغام شد.`);
+      } else {
+        toast("ok", "تراکنش‌های شما از ابر بازیابی شد — این دستگاه همگام است.");
+      }
     } else {
       const push = await pushToCloud(state, ep, cloudSyncId);
       toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد — در هر دستگاهی با همین نام کاربری همین داده را می‌بینید." : push.message);

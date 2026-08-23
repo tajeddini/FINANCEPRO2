@@ -10,8 +10,8 @@ import {
 } from "./lib/data";
 import {
   calcEMI, faDate, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange,
-  jalaliShort, jalaliToday, periodRange, PERIODS, relTime, todayISO, useCountUp,
-  type PeriodKey,
+  jalaliShort, jalaliToday, localISODate, periodRange, PERIODS, relTime, todayISO,
+  useCountUp, type PeriodKey,
 } from "./lib/utils";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
@@ -273,7 +273,7 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
     let run = 0;
     for (let i = 29; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = localISODate(d);
       const day = state.transactions.filter((x) => x.date === iso);
       run += day.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0)
         - day.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);

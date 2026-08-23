@@ -5,12 +5,12 @@ import {
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
-import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud } from "./lib/cloud";
+import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
-import { faNum, faTime, fireNotification, jalaliDateStr, playChime, relTime, useNow } from "./lib/utils";
+import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
 import { ToastProvider, useToast, Modal, TInput, Field } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
 import { AppointmentsPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
@@ -305,9 +305,14 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       if (!pull.ok) {
         /* خطای واقعی (شبکه/کلید) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
       } else if (pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
-        /* ابر جدیدتر است — دادهٔ دستگاه اصلی را بازیابی کن */
-        mutateRef.current((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "بازیابی داده‌ها از ابر");
-        toastRef.current("ok", "تراکنش‌های شما از ابر بازیابی شد.");
+        /* ابر جدیدتر است — دادهٔ دستگاه اصلی را بازیابی کن،
+           اما تراکنش‌های محلیِ سینک‌نشده را حفظ کن (جلوگیری از گم شدن تغییرات) */
+        const pulled = pull.state;
+        const keepCount = localOnlyTx(s, pulled).length;
+        mutateRef.current((d) => { mergePulledState(d, pulled); }, "بازیابی داده‌ها از ابر");
+        toastRef.current("ok", keepCount > 0
+          ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
+          : "تراکنش‌های شما از ابر بازیابی شد.");
       } else {
         /* ابر خالی یا قدیمی‌تر است — فرستادن محلی امن است */
         await pushToCloud(s, ep, cloudSyncId);
@@ -347,7 +352,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   /* یادآوری قرارها — اعلان یک‌ساعت‌قبل */
   useEffect(() => {
     if (remindedRef.current) return;
-    const today = now.toISOString().slice(0, 10);
+    const today = localISODate(now);
     const soon = state.appointments.find((a) => {
       if (a.date !== today || a.done) return false;
       const [h, m] = a.time.split(":").map(Number);
@@ -365,7 +370,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
      پخش می‌شود (از Service Worker تا حتی وقتی برنامه در پس‌زمینه است). */
   useEffect(() => {
     if (!state.prefs.notifyEnabled) return;
-    const today = now.toISOString().slice(0, 10);
+    const today = localISODate(now);
     const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
     for (const a of state.appointments) {
       if (a.date !== today || a.done) continue;

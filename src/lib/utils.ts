@@ -84,8 +84,16 @@ export function addDaysISO(iso: string, n: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/** تاریخ ISO از اجزای **محلی** — نه UTC.
+    ⚠️ هرگز از toISOString() برای «امروز» استفاده نشود: ایران UTC+3:30 است و بین
+    ۰۰:۰۰ تا ۰۳:۳۰ بامداد، toISOString روز قبل را برمی‌گرداند. */
+export function localISODate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function todayISO(): string {
-  return addDaysISO(new Date().toISOString().slice(0, 10), 0);
+  return localISODate(new Date());
 }
 
 export function inRange(iso: string, r: { from: string; to: string }): boolean {
@@ -130,7 +138,7 @@ export function relTime(at: number | string): string {
   if (h < 24) return `${faNum(h)} ساعت پیش`;
   const d = Math.floor(h / 24);
   if (d < 31) return `${faNum(d)} روز پیش`;
-  return jalaliShort(new Date(t).toISOString().slice(0, 10));
+  return jalaliShort(localISODate(new Date(t)));
 }
 
 /* ---------- بازه‌های زمانی (۹ فیلتر) ---------- */
