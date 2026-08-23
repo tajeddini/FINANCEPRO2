@@ -9,18 +9,18 @@ export type ID = string;
 
 export interface Account { id: ID; name: string; type: string; initial: number; color: string; balance: number; }
 export interface Category { id: ID; name: string; type: "income" | "expense"; color: string; }
-/* تگ‌های تراکنش — نوع خرج را مشخص می‌کنند */
-export const TX_TAGS = [
-  { id: "essential", label: "ضروری", color: "#ff7a6b", desc: "خرجی که چاره‌ای جز پرداختش نبود" },
-  { id: "fun", label: "تفریحی", color: "#e8b04b", desc: "برای خوش‌گذرانی و تفریح" },
-  { id: "later", label: "میشد بعدا هم خرید", color: "#5ec8de", desc: "عجله‌ای نداشت؛ می‌شد عقب انداخت" },
-  { id: "cheap", label: "معمولی و قیمتش کم بود خریدم", color: "#57d9a3", desc: "ارزان بود و نیاز معمولی" },
-] as const;
-export type TxTagId = typeof TX_TAGS[number]["id"];
+/* تگ‌های تراکنش — نوع خرج را مشخص می‌کنند و کاربر می‌تواند تگ دلخواه بسازد */
+export interface TagDef { id: ID; label: string; color: string; desc?: string; builtin?: boolean; }
+export const DEFAULT_TAGS: TagDef[] = [
+  { id: "essential", label: "ضروری", color: "#ff7a6b", desc: "خرجی که چاره‌ای جز پرداختش نبود", builtin: true },
+  { id: "fun", label: "تفریحی", color: "#e8b04b", desc: "برای خوش‌گذرانی و تفریح", builtin: true },
+  { id: "later", label: "میشد بعدا هم خرید", color: "#5ec8de", desc: "عجله‌ای نداشت؛ می‌شد عقب انداخت", builtin: true },
+  { id: "cheap", label: "معمولی و قیمتش کم بود خریدم", color: "#57d9a3", desc: "ارزان بود و نیاز معمولی", builtin: true },
+];
 
 export interface Tx {
   id: ID; date: string; type: "income" | "expense"; amount: number; title: string;
-  note?: string; tag?: TxTagId; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
+  note?: string; tag?: ID; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
@@ -54,6 +54,7 @@ export interface Prefs {
 
 export interface AppState {
   accounts: Account[]; categories: Category[]; transactions: Tx[]; transfers: Transfer[];
+  tags: TagDef[];
   debts: Debt[]; installments: Installment[]; budgets: Budget[]; payment_methods: PayMethod[];
   recurring: Recurring[]; savings_goals: Goal[]; appointments: Appointment[]; notes: Note[]; cheques: Cheque[];
   splits: { id: ID; title: string; total: number; parts: number }[];
@@ -90,6 +91,7 @@ function seed(): AppState {
     categories,
     transactions: [],
     transfers: [],
+    tags: DEFAULT_TAGS.map((t) => ({ ...t })),
     debts: [],
     installments: [],
     budgets: [],
@@ -382,7 +384,7 @@ function applyRecurring(s: AppState) {
 /* ---------- Store ---------- */
 export type TableName = keyof Pick<
   AppState,
-  "accounts" | "categories" | "transactions" | "transfers" | "debts" | "installments" |
+  "accounts" | "categories" | "transactions" | "transfers" | "tags" | "debts" | "installments" |
   "budgets" | "payment_methods" | "recurring" | "savings_goals" | "appointments" | "notes" |
   "cheques" | "challenges" | "currencies" | "assets" | "subscriptions"
 >;
@@ -408,6 +410,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
         if (typeof parsed.rev !== "number") parsed.rev = 0;
         /* مهاجرت: داده‌های قدیمی که جدول‌های جدید ندارند */
         if (!Array.isArray(parsed.notes)) parsed.notes = [];
+        if (!Array.isArray(parsed.tags)) parsed.tags = DEFAULT_TAGS.map((t) => ({ ...t }));
         applyRecurring(parsed);
         recomputeBalances(parsed);
         return parsed;
@@ -485,6 +488,9 @@ export const sumTx = (txs: Tx[], type?: "income" | "expense") =>
 
 export const catById = (s: AppState, id: ID) => s.categories.find((c) => c.id === id);
 export const accById = (s: AppState, id: ID) => s.accounts.find((a) => a.id === id);
+/** تگ‌های تراکنش — اگر state تگی نداشت (دادهٔ خیلی قدیمی) به پیش‌فرض‌ها برمی‌گردد */
+export const getTags = (s: AppState): TagDef[] => (s.tags?.length ? s.tags : DEFAULT_TAGS);
+export const tagById = (s: AppState, id: ID | undefined) => (id ? getTags(s).find((t) => t.id === id) : undefined);
 
 export { jalaliToday, todayISO };
 export const monthKeyOf = (jy: number, jm: number) => `${jy}-${String(jm).padStart(2, "0")}`;

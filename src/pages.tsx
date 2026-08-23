@@ -6,7 +6,8 @@ import {
   Scale, Search, Sparkles, Trash2, Upload, Wallet,
 } from "lucide-react";
 import {
-  accById, catById, detectSmart, sumTx, useStore, TX_TAGS, type Tx, type TxTagId,
+  accById, catById, detectSmart, getTags, sumTx, tagById, useStore,
+  type ID, type Tx,
 } from "./lib/data";
 import {
   calcEMI, faDate, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange,
@@ -35,7 +36,7 @@ export function TxModal({
   const [accountId, setAccountId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [pay, setPay] = useState("کارت");
-  const [tag, setTag] = useState<TxTagId | "">("");
+  const [tag, setTag] = useState<ID | "">("");
   const [touchedCat, setTouchedCat] = useState(false);
   const [smart, setSmart] = useState(() => localStorage.getItem("fp_smart") === "1");
   const [detected, setDetected] = useState<string[]>([]);
@@ -214,7 +215,7 @@ export function TxModal({
         <div className="mt-4">
           <Field label="تگ خرج (این خرید چه جور خرجی بود؟)">
             <div className="flex flex-wrap gap-2">
-              {TX_TAGS.map((t) => {
+              {getTags(state).map((t) => {
                 const on = tag === t.id;
                 return (
                   <button
@@ -489,7 +490,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
   const [type, setType] = useState<"all" | "income" | "expense">("all");
   const [period, setPeriod] = useState<PeriodKey>("thisMonth");
   const [catFilter, setCatFilter] = useState(initCat ?? "");
-  const [tagFilter, setTagFilter] = useState<TxTagId | "">("");
+  const [tagFilter, setTagFilter] = useState<ID | "">("");
   const [editing, setEditing] = useState<Tx | null>(null);
   const [openEdit, setOpenEdit] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
@@ -562,7 +563,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10.5px] font-black me-1" style={{ color: "var(--fp-text3)" }}>تگ:</span>
           <button className={`chip ${tagFilter === "" ? "chip-on" : ""}`} onClick={() => setTagFilter("")}>همه</button>
-          {TX_TAGS.map((tg) => (
+          {getTags(state).map((tg) => (
             <button key={tg.id} onClick={() => setTagFilter(tagFilter === tg.id ? "" : tg.id)}
               className="chip"
               style={tagFilter === tg.id ? {
@@ -607,7 +608,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                         <p className="text-[13.5px] font-black truncate flex items-center gap-1.5 flex-wrap">
                           <span className="px-1.5 py-0.5 rounded-md text-[10.5px]" style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>{c?.name ?? tx.title}</span>
                           {(() => {
-                            const tg = TX_TAGS.find((t) => t.id === tx.tag);
+                            const tg = tagById(state, tx.tag);
                             return tg ? (
                               <span title={tg.desc} className="px-1.5 py-0.5 rounded-full text-[9.5px] font-black border shrink-0"
                                 style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color, borderColor: `color-mix(in srgb, ${tg.color} 45%, transparent)` }}>

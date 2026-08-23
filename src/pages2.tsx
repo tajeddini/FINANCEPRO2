@@ -6,7 +6,7 @@ import {
   Sparkles, StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { clearData, sampleFill, useStore, TX_TAGS, type AppState, type ID, type Appointment, type Note } from "./lib/data";
+import { clearData, getTags, sampleFill, useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
@@ -580,7 +580,7 @@ function buildAiReport(s: AppState): string {
 
   P("## ۴. برچسب‌های رفتاری این ماه (روی هزینه‌ها)");
   let laterSum = 0, funSum = 0;
-  for (const tag of TX_TAGS) {
+  for (const tag of getTags(s)) {
     const txs = monthTxs.filter((x) => x.type === "expense" && x.tag === tag.id);
     const sum = txs.reduce((a, x) => a + x.amount, 0);
     if (tag.id === "later") laterSum = sum;
@@ -907,6 +907,7 @@ interface ToolDef {
 }
 
 const COLORS = ["#57d9a3", "#5ec8de", "#e8b04b", "#ff7a6b", "#8f7ae8", "#f28fc0", "#7ab8f2", "#c0e85e"];
+const TAG_COLORS = ["#ff7a6b", "#e8b04b", "#5ec8de", "#57d9a3", "#8f7ae8", "#f28fc0", "#7ab8f2", "#c0e85e", "#ffa94d", "#63e6be"];
 
 export function ManagePage() {
   const { state, mutate, trashItem } = useStore();
@@ -1124,6 +1125,25 @@ export function ManagePage() {
         </div>
       ),
     },
+    {
+      id: "tags", title: "برچسب‌ها", icon: <TagI />, table: "tags",
+      fields: [
+        { key: "label", label: "نام برچسب", type: "text" },
+        { key: "desc", label: "توضیح (راهنمای هنگام انتخاب)", type: "text" },
+        { key: "color", label: "رنگ", type: "select", options: TAG_COLORS.map((c) => ({ v: c, l: c })) },
+      ],
+      row: (tg, s) => (
+        <div className="flex items-center gap-3">
+          <i className="w-3.5 h-3.5 rounded-full not-italic shrink-0" style={{ background: tg.color }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-black truncate">{tg.label}</p>
+            {tg.desc && <p className="text-[10.5px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>{tg.desc}</p>}
+          </div>
+          {tg.builtin && <span className="chip !cursor-default">پیش‌فرض</span>}
+          <span className="text-[11px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faNum(s.transactions.filter((t) => t.tag === tg.id).length)} تراکنش</span>
+        </div>
+      ),
+    },
   ];
 
   const active = tools.find((tl) => tl.id === tab)!;
@@ -1160,9 +1180,10 @@ export function ManagePage() {
       } else {
         obj.id = Math.random().toString(36).slice(2, 10);
         if (active.table === "accounts") obj.balance = obj.initial;
+        if (active.table === "tags") obj.builtin = false;
         arr.push(obj);
       }
-    }, `${active.title}: ${editing ? "ویرایش" : "افزودن"} «${form.name ?? form.title ?? form.person ?? ""}»`);
+    }, `${active.title}: ${editing ? "ویرایش" : "افزودن"} «${form.name ?? form.title ?? form.person ?? form.label ?? ""}»`);
     toast("ok", editing ? "ویرایش شد." : "اضافه شد.");
     setOpenForm(false);
   };
@@ -1219,7 +1240,7 @@ export function ManagePage() {
               <div className="flex-1 min-w-0">{active.row(item, state)}</div>
               <div className="flex shrink-0 gap-1.5">
                 <EditBtn onClick={() => startEdit(item)} />
-                <DeleteBtn onClick={() => trashItem(active.table as any, item.id, item.name ?? item.title ?? item.person ?? active.title)} />
+                <DeleteBtn onClick={() => trashItem(active.table as any, item.id, item.name ?? item.title ?? item.person ?? item.label ?? active.title)} />
               </div>
             </div>
           ))}
@@ -1283,6 +1304,7 @@ function FileI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="non
 function GemI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3h12l4 6-10 13L2 9Z" /><path d="M11 3 8 9l4 13 4-13-3-6" /><path d="M2 9h20" /></svg>; }
 function FlameI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3 1.072-2.143 .224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z" /></svg>; }
 function CoinI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5c.5-1 1.5-1.5 2.5-1.5 1.5 0 2.5 1 2.5 2s-1 1.7-2.5 2-2.5 1-2.5 2 1 2 2.5 2c1 0 2-.5 2.5-1.5M12 6.5v11" strokeLinecap="round" /></svg>; }
+function TagI() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r="1" fill="currentColor" /></svg>; }
 function SparklesI() { return <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" /><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z" /></svg>; }
 
 /* ================= ۸) تنظیمات ================= */
