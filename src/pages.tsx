@@ -6,7 +6,7 @@ import {
   Scale, Search, Sparkles, Trash2, Upload, Wallet,
 } from "lucide-react";
 import {
-  accById, catById, detectSmart, sumTx, useStore, type Tx,
+  accById, catById, detectSmart, sumTx, useStore, TX_TAGS, type Tx, type TxTagId,
 } from "./lib/data";
 import {
   calcEMI, faDate, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange,
@@ -35,6 +35,7 @@ export function TxModal({
   const [accountId, setAccountId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [pay, setPay] = useState("کارت");
+  const [tag, setTag] = useState<TxTagId | "">("");
   const [touchedCat, setTouchedCat] = useState(false);
   const [smart, setSmart] = useState(() => localStorage.getItem("fp_smart") === "1");
   const [detected, setDetected] = useState<string[]>([]);
@@ -46,9 +47,9 @@ export function TxModal({
       setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
       setAmount(String(editing.amount));
       setCategoryId(editing.categoryId); setAccountId(editing.accountId);
-      setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTouchedCat(true);
+      setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTag(editing.tag ?? ""); setTouchedCat(true);
     } else {
-      setType("expense"); setNote(""); setAmount(""); setDate(todayISO()); setPay("کارت");
+      setType("expense"); setNote(""); setAmount(""); setDate(todayISO()); setPay("کارت"); setTag("");
       setTouchedCat(false);
       setAccountId(state.accounts[0]?.id ?? "");
       setCategoryId(state.categories.find((c) => c.type === "expense")?.id ?? "");
@@ -99,14 +100,14 @@ export function TxModal({
     if (editing) {
       mutate((d) => {
         const t = d.transactions.find((x) => x.id === editing.id);
-        if (t) Object.assign(t, { title: label, note: note.trim() || undefined, amount: amt, type, categoryId, accountId, date, payMethod: pay });
+        if (t) Object.assign(t, { title: label, note: note.trim() || undefined, tag: tag || undefined, amount: amt, type, categoryId, accountId, date, payMethod: pay });
       }, `تراکنش «${label}» ویرایش شد`);
       toast("ok", "تراکنش ویرایش شد.");
     } else {
       mutate((d) => {
         d.transactions.unshift({
           id: Math.random().toString(36).slice(2, 10), date, type, amount: amt,
-          title: label, note: note.trim() || undefined, categoryId, accountId, payMethod: pay,
+          title: label, note: note.trim() || undefined, tag: tag || undefined, categoryId, accountId, payMethod: pay,
           createdAt: Date.now(), source: "app",
         });
       }, `تراکنش «${label}» ثبت شد`);
@@ -182,7 +183,7 @@ export function TxModal({
                 className="input resize-none !text-[13.5px] !leading-6 flex-1"
                 autoFocus
               />
-              <MicButton onText={(t) => onNote(t)} />
+              <MicButton onText={(t) => onNote(t)} baseText={note} />
             </div>
           </Field>
         </div>
@@ -208,6 +209,35 @@ export function TxModal({
           </TSelect>
         </Field>
       </div>
+
+      {type === "expense" && (
+        <div className="mt-4">
+          <Field label="تگ خرج (این خرید چه جور خرجی بود؟)">
+            <div className="flex flex-wrap gap-2">
+              {TX_TAGS.map((t) => {
+                const on = tag === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTag(on ? "" : t.id)}
+                    title={t.desc}
+                    className="px-3 py-2 rounded-xl text-[12px] font-black transition-all duration-150 cursor-pointer hover:scale-[1.03] active:scale-95"
+                    style={{
+                      background: on ? `color-mix(in srgb, ${t.color} 22%, transparent)` : "var(--fp-bg)",
+                      color: on ? t.color : "var(--fp-text3)",
+                      border: `1.5px solid ${on ? t.color : "var(--fp-border)"}`,
+                      boxShadow: on ? `0 4px 14px -6px color-mix(in srgb, ${t.color} 60%, transparent)` : "none",
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        </div>
+      )}
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={onClose}>انصراف</button>
         <button className="btn btn-gold" onClick={submit}>
@@ -459,6 +489,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
   const [type, setType] = useState<"all" | "income" | "expense">("all");
   const [period, setPeriod] = useState<PeriodKey>("thisMonth");
   const [catFilter, setCatFilter] = useState(initCat ?? "");
+  const [tagFilter, setTagFilter] = useState<TxTagId | "">("");
   const [editing, setEditing] = useState<Tx | null>(null);
   const [openEdit, setOpenEdit] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
@@ -471,9 +502,10 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
       .filter((t) => (type === "all" || t.type === type))
       .filter((t) => inRange(t.date, range))
       .filter((t) => !catFilter || t.categoryId === catFilter)
+      .filter((t) => !tagFilter || t.tag === tagFilter)
       .filter((t) => !q.trim() || t.title.includes(q.trim()) || (t.note ?? "").includes(q.trim()))
       .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-  }, [state.transactions, type, period, q, catFilter, range.from, range.to]);
+  }, [state.transactions, type, period, q, catFilter, tagFilter, range.from, range.to]);
 
   const groups = useMemo(() => {
     const m = new Map<string, Tx[]>();
@@ -527,6 +559,20 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
             </button>
           )}
         </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10.5px] font-black me-1" style={{ color: "var(--fp-text3)" }}>تگ:</span>
+          <button className={`chip ${tagFilter === "" ? "chip-on" : ""}`} onClick={() => setTagFilter("")}>همه</button>
+          {TX_TAGS.map((tg) => (
+            <button key={tg.id} onClick={() => setTagFilter(tagFilter === tg.id ? "" : tg.id)}
+              className="chip"
+              style={tagFilter === tg.id ? {
+                background: `color-mix(in srgb, ${tg.color} 20%, transparent)`,
+                color: tg.color, borderColor: tg.color,
+              } : undefined}>
+              {tg.label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {PERIODS.map((p) => (
             <button key={p.key} className={`chip ${period === p.key ? "chip-on" : ""}`} onClick={() => setPeriod(p.key)}>{p.label}</button>
@@ -558,8 +604,17 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                         {tx.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-black truncate flex items-center gap-1.5">
+                        <p className="text-[13.5px] font-black truncate flex items-center gap-1.5 flex-wrap">
                           <span className="px-1.5 py-0.5 rounded-md text-[10.5px]" style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>{c?.name ?? tx.title}</span>
+                          {(() => {
+                            const tg = TX_TAGS.find((t) => t.id === tx.tag);
+                            return tg ? (
+                              <span title={tg.desc} className="px-1.5 py-0.5 rounded-full text-[9.5px] font-black border shrink-0"
+                                style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color, borderColor: `color-mix(in srgb, ${tg.color} 45%, transparent)` }}>
+                                {tg.label}
+                              </span>
+                            ) : null;
+                          })()}
                           {tx.note && <span className="truncate">{tx.note}</span>}
                           {tx.source === "bot" && <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "color-mix(in srgb, var(--fp-sky) 15%, transparent)", color: "var(--fp-sky)" }}>ربات</span>}
                         </p>

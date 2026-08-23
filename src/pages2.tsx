@@ -18,7 +18,7 @@ import { THEMES, applyAccent } from "./lib/themes";
 import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs } from "./lib/cloud";
 import { listUsers } from "./lib/auth";
 import {
-  AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
+  AmountInput, Bar, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, MicButton, Modal,
   TInput, TSelect, useToast,
 } from "./ui";
 import { computeBadges, computeHealthScore, Forecast, Heatmap, ScoreRing } from "./widgets";
@@ -181,10 +181,8 @@ export function AppointmentsPage() {
                     }}>
                     <FileDown className="w-4 h-4" />
                   </button>
-                  <button className="icon-btn !w-8 !h-8 hover:!text-[var(--fp-coral)]" onClick={() => trashItem("appointments", a.id, a.title)}>
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <button className="icon-btn !w-8 !h-8" onClick={() => { setEditing(a); setOpenForm(true); }}><PencilLine className="w-4 h-4" /></button>
+                  <EditBtn onClick={() => { setEditing(a); setOpenForm(true); }} />
+                  <DeleteBtn onClick={() => trashItem("appointments", a.id, a.title)} />
                 </div>
               ))}
             </div>
@@ -326,16 +324,16 @@ export function NotesPage() {
               {n.body && (
                 <p className="text-[13px] font-bold leading-7 mt-3 whitespace-pre-wrap">{n.body}</p>
               )}
-              <div className="flex justify-end gap-1.5 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex justify-end gap-1.5 mt-4">
                 <button
-                  className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105"
-                  style={{ background: "rgba(13,44,36,0.12)", color: "#0d2c24" }}
+                  className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                  style={{ background: "rgba(13,44,36,0.14)", color: "#0d2c24", border: "1px solid rgba(13,44,36,0.25)" }}
                   onClick={() => startEdit(n)}>
                   <PencilLine className="w-3.5 h-3.5" /> ویرایش
                 </button>
                 <button
-                  className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105"
-                  style={{ background: "rgba(190,40,40,0.16)", color: "#8f1d1d" }}
+                  className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105 active:scale-95"
+                  style={{ background: "rgba(190,40,40,0.18)", color: "#8f1d1d", border: "1px solid rgba(190,40,40,0.35)" }}
                   onClick={() => trashItem("notes", n.id, n.title)}>
                   <Trash2 className="w-3.5 h-3.5" /> حذف
                 </button>
@@ -367,8 +365,8 @@ export function NotesPage() {
               className="input !leading-7 resize-y"
               style={{ background: "var(--fp-bg)", border: "1px solid var(--fp-border)" }}
             />
-            <div className="flex justify-start mt-2">
-              <MicButton onText={(t) => setBody(t)} />
+            <div className="mt-2">
+              <MicButton onText={(t) => setBody(t)} baseText={body} />
             </div>
           </Field>
           <div className="flex justify-end gap-2 mt-1">
@@ -495,8 +493,8 @@ function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => vo
         <Field label="عنوان">
           <div className="flex gap-2">
             <TInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثلاً: ویزیت دندانپزشکی" autoFocus />
-            <MicButton onText={setTitle} />
           </div>
+          <MicButton onText={(t) => setTitle(t)} baseText={title} />
         </Field>
         <Field label="یادداشت"><TInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         <TimeWheel
@@ -1015,11 +1013,9 @@ export function ManagePage() {
           {items.map((item) => (
             <div key={item.id} className="group flex items-center gap-3 rounded-xl border px-4 py-3 transition-all hover:border-[var(--fp-mint)]" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
               <div className="flex-1 min-w-0">{active.row(item, state)}</div>
-              <div className="flex shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button className="icon-btn" onClick={() => startEdit(item)}><PencilLine className="w-4 h-4" /></button>
-                <button className="icon-btn hover:!text-[var(--fp-coral)]" onClick={() => trashItem(active.table as any, item.id, item.name ?? item.title ?? item.person ?? active.title)}>
-                  <Trash2 className="w-4 h-4" />
-                </button>
+              <div className="flex shrink-0 gap-1.5">
+                <EditBtn onClick={() => startEdit(item)} />
+                <DeleteBtn onClick={() => trashItem(active.table as any, item.id, item.name ?? item.title ?? item.person ?? active.title)} />
               </div>
             </div>
           ))}

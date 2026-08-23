@@ -3,7 +3,7 @@ import {
   createContext, useContext, useEffect, useRef, useState,
   type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes,
 } from "react";
-import { ChevronRight, ChevronLeft, Mic, MicOff, Check, AlertTriangle, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, Mic, MicOff, Check, AlertTriangle, X, PencilLine, Trash2 } from "lucide-react";
 import {
   faNum, groupInt, jalaliFirstOffset, jalaliMonthLen, jalaliToday, jalaliToISO,
   isoToJalali, MONTHS_FA, todayISO, toEnDigits,
@@ -189,63 +189,145 @@ export function JalaliPicker({
   );
 }
 
-/* ================= تایپ صوتی (fa-IR) ================= */
+/* ================= تایپ صوتی (fa-IR) — پیشرفته =================
+   متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
+   حالت پیوسته + پیش‌نمایش زندهٔ گفته‌ها + پیام‌های راهنمای خطا. */
 export function MicButton({
-  onText, disabled,
+  onText, baseText = "", disabled,
 }: {
-  onText: (text: string) => void; disabled?: boolean;
+  onText: (text: string) => void;
+  /** متن فعلی فیلد — گفته‌های جدید به انتهای آن اضافه می‌شود */
+  baseText?: string;
+  disabled?: boolean;
 }) {
   const [listening, setListening] = useState(false);
+  const [heard, setHeard] = useState("");
   const recRef = useRef<any>(null);
+  const startBaseRef = useRef("");
   const supported = typeof window !== "undefined" &&
     !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
   const toast = useToast();
 
+  useEffect(() => () => { try { recRef.current?.abort(); } catch { /* ignore */ } }, []);
+
   const toggle = () => {
     if (!supported) {
-      toast("warn", "مرورگر شما از تایپ صوتی پشتیبانی نمی‌کند (Chrome را امتحان کنید).");
+      toast("warn", "مرورگر شما از تایپ صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
       return;
     }
     if (listening) {
       recRef.current?.stop();
-      setListening(false);
       return;
     }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const rec = new SR();
     rec.lang = "fa-IR";
     rec.interimResults = true;
-    rec.continuous = false;
+    rec.continuous = true;
+    rec.maxAlternatives = 1;
+    startBaseRef.current = baseText.trim();
     let final = "";
     rec.onresult = (e: any) => {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const txt = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += txt;
+        if (e.results[i].isFinal) final += txt + " ";
         else interim += txt;
       }
-      onText(final + interim);
+      setHeard((final + interim).trim());
+      const merged = (startBaseRef.current + " " + final).trim();
+      if (final.trim()) onText(merged);
     };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => {
-      setListening(false);
-      toast("err", "تشخیص صوتی ناموفق بود؛ دوباره تلاش کنید.");
+    rec.onend = () => { setListening(false); setHeard(""); };
+    rec.onerror = (e: any) => {
+      setListening(false); setHeard("");
+      if (e.error === "not-allowed" || e.error === "service-not-allowed")
+        toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس مرورگر اجازه بدهید.");
+      else if (e.error === "no-speech")
+        toast("warn", "صدایی شنیده نشد — نزدیک‌تر صحبت کنید و دوباره بزنید.");
+      else if (e.error === "network")
+        toast("err", "خطای شبکه در تشخیص صوت — اینترنت را بررسی کنید.");
+      else toast("err", "تشخیص صوتی ناموفق بود؛ دوباره تلاش کنید.");
     };
     recRef.current = rec;
-    rec.start();
-    setListening(true);
+    try {
+      rec.start();
+      setListening(true);
+      setHeard("");
+    } catch { /* اگر قبلاً در حال اجرا بود */ }
   };
 
   return (
+    <span className="inline-flex flex-col gap-1.5 w-full">
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={disabled}
+        title={listening ? "توقف ضبط" : supported ? "تایپ صوتی (فارسی) — به متن موجود اضافه می‌کند" : "تایپ صوتی پشتیبانی نمی‌شود"}
+        className="flex items-center gap-2 self-start px-3.5 py-2 rounded-xl text-[12px] font-black transition-all duration-200 cursor-pointer active:scale-95"
+        style={{
+          background: listening ? "color-mix(in srgb, var(--fp-coral) 16%, transparent)" : "var(--fp-bg3)",
+          color: listening ? "var(--fp-coral)" : "var(--fp-text2)",
+          border: `1px solid ${listening ? "var(--fp-coral)" : "var(--fp-border2)"}`,
+          boxShadow: listening ? "0 0 0 3px color-mix(in srgb, var(--fp-coral) 18%, transparent)" : "none",
+        }}
+      >
+        <span className="relative grid place-items-center">
+          {listening
+            ? <MicOff className="w-4 h-4" />
+            : <Mic className="w-4 h-4" />}
+          {listening && (
+            <span className="absolute -top-1 -left-1 w-2 h-2 rounded-full pulse-soft" style={{ background: "var(--fp-coral)" }} />
+          )}
+        </span>
+        {listening ? "توقف ضبط" : "دیکتهٔ صوتی"}
+        {baseText.trim() && !listening && (
+          <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: "color-mix(in srgb, var(--fp-mint) 14%, transparent)", color: "var(--fp-mint)" }}>
+            به متن فعلی اضافه می‌شود
+          </span>
+        )}
+      </button>
+      {listening && (
+        <span className="text-[11px] font-bold leading-5 px-3 py-2 rounded-lg border border-dashed"
+          style={{ borderColor: "var(--fp-border2)", color: heard ? "var(--fp-text2)" : "var(--fp-text3)" }}>
+          {heard ? <>«{heard}»</> : "در حال گوش دادن… صحبت کنید"}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/* ================= دکمه‌های ویرایش و حذف — پررنگ و همیشه‌نمای ================= */
+export function EditBtn({ onClick, title = "ویرایش" }: { onClick: () => void; title?: string }) {
+  return (
     <button
-      type="button"
-      onClick={toggle}
-      disabled={disabled}
-      title={supported ? "تایپ صوتی (فارسی)" : "تایپ صوتی پشتیبانی نمی‌شود"}
-      className={`icon-btn ${listening ? "mic-live" : ""}`}
-      style={{ border: "1px solid var(--fp-border)" }}
+      onClick={onClick}
+      title={title}
+      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+      style={{
+        background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)",
+        color: "var(--fp-accent)",
+        border: "1px solid color-mix(in srgb, var(--fp-accent) 40%, transparent)",
+      }}
     >
-      {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+      <PencilLine className="w-3.5 h-3.5" /> ویرایش
+    </button>
+  );
+}
+
+export function DeleteBtn({ onClick, title = "حذف" }: { onClick: () => void; title?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+      style={{
+        background: "color-mix(in srgb, var(--fp-coral) 14%, transparent)",
+        color: "var(--fp-coral)",
+        border: "1px solid color-mix(in srgb, var(--fp-coral) 40%, transparent)",
+      }}
+    >
+      <Trash2 className="w-3.5 h-3.5" /> حذف
     </button>
   );
 }

@@ -9,9 +9,18 @@ export type ID = string;
 
 export interface Account { id: ID; name: string; type: string; initial: number; color: string; balance: number; }
 export interface Category { id: ID; name: string; type: "income" | "expense"; color: string; }
+/* تگ‌های تراکنش — نوع خرج را مشخص می‌کنند */
+export const TX_TAGS = [
+  { id: "essential", label: "ضروری", color: "#ff7a6b", desc: "خرجی که چاره‌ای جز پرداختش نبود" },
+  { id: "fun", label: "تفریحی", color: "#e8b04b", desc: "برای خوش‌گذرانی و تفریح" },
+  { id: "later", label: "میشد بعدا هم خرید", color: "#5ec8de", desc: "عجله‌ای نداشت؛ می‌شد عقب انداخت" },
+  { id: "cheap", label: "معمولی و قیمتش کم بود خریدم", color: "#57d9a3", desc: "ارزان بود و نیاز معمولی" },
+] as const;
+export type TxTagId = typeof TX_TAGS[number]["id"];
+
 export interface Tx {
   id: ID; date: string; type: "income" | "expense"; amount: number; title: string;
-  note?: string; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
+  note?: string; tag?: TxTagId; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
