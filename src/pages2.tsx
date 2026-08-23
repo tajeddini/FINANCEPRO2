@@ -735,7 +735,8 @@ function buildAiReport(s: AppState): string {
 
 /* ---------- پیش‌تنظیم‌های ارائه‌دهندهٔ هوش مصنوعی ---------- */
 const AI_PROVIDERS = [
-  { id: "gemini", label: "Google Gemini (رایگان — پیشنهادی)", url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model: "gemini-2.0-flash" },
+  /* آدرس پایهٔ API بومی گوگل — هم کلیدهای AIza و هم کلیدهای جدید AQ. با این endpoint کار می‌کنند */
+  { id: "gemini", label: "Google Gemini (رایگان — پیشنهادی)", url: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-flash-latest" },
   { id: "openrouter", label: "OpenRouter", url: "https://openrouter.ai/api/v1/chat/completions", model: "openai/gpt-4o-mini" },
   { id: "openai", label: "OpenAI", url: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
 ];
@@ -772,20 +773,47 @@ export function ReportsPage() {
     const model = (state.prefs.aiModel ?? cfgModel).trim() || AI_PROVIDERS[0].model;
     if (!url || !key) { setShowCfg(true); return toast("warn", "ابتدا آدرس API و کلید را وارد و ذخیره کن."); }
     setAiBusy(true); setAiAnswer("");
+
+    const SYSTEM = "تو یک مشاور مالی شخصی برای کاربران فارسی‌زبان هستی. پاسخ‌هایت را به فارسی، ساده، عملی و با عدد و رقم بده.";
+
+    /* تشخیص خودکار پروتکل:
+       - آدرس‌های generativelanguage.googleapis.com → فرمت بومی گوگل با هدر X-goog-api-key
+         (کلیدهای جدید «شخصی» که با AQ. شروع می‌شوند فقط با همین فرمت کار می‌کنند؛ کلیدهای AIza هم همین‌جا جواب می‌دهند)
+       - بقیهٔ آدرس‌ها (OpenRouter، OpenAI و سازگارها) → فرمت OpenAI با هدر Authorization: Bearer */
+    const isGoogle = url.includes("generativelanguage.googleapis.com");
+
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          stream: true,
-          messages: [
-            { role: "system", content: "تو یک مشاور مالی شخصی برای کاربران فارسی‌زبان هستی. پاسخ‌هایت را به فارسی، ساده، عملی و با عدد و رقم بده." },
-            { role: "user", content: aiReport },
-          ],
-        }),
-      });
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      let res: Response;
+      if (isGoogle) {
+        const m = url.match(/^(https?:\/\/[^/]+\/v1(?:beta|alpha)?)/i);
+        const base = m ? m[1] : "https://generativelanguage.googleapis.com/v1beta";
+        res = await fetch(`${base}/models/${model}:streamGenerateContent?alt=sse`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-goog-api-key": key },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM }] },
+            contents: [{ role: "user", parts: [{ text: aiReport }] }],
+          }),
+        });
+      } else {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify({
+            model,
+            stream: true,
+            messages: [
+              { role: "system", content: SYSTEM },
+              { role: "user", content: aiReport },
+            ],
+          }),
+        });
+      }
+
+      if (!res.ok || !res.body) {
+        const msg = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}${msg ? " — " + msg.slice(0, 140) : ""}`);
+      }
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
@@ -803,12 +831,25 @@ export function ReportsPage() {
           if (data === "[DONE]") continue;
           try {
             const j = JSON.parse(data);
-            const delta = j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content ?? "";
+            /* پاسخ گوگل: candidates[0].content.parts — پاسخ OpenAI: choices[0].delta */
+            const delta =
+              j.choices?.[0]?.delta?.content ??
+              j.choices?.[0]?.message?.content ??
+              (Array.isArray(j.candidates?.[0]?.content?.parts)
+                ? j.candidates[0].content.parts.map((p: any) => p.text ?? "").join("")
+                : undefined) ??
+              "";
             if (delta) { acc += delta; setAiAnswer(acc); }
-          } catch { /* خط ناقص stream */ }
+            else if (j.promptFeedback?.blockReason) {
+              throw new Error(`گوگل پاسخ را مسدود کرد (${j.promptFeedback.blockReason})`);
+            }
+          } catch (e) {
+            if (e instanceof SyntaxError) continue; /* خط ناقص stream */
+            throw e;
+          }
         }
       }
-      if (!acc) throw new Error("پاسخ خالی");
+      if (!acc) throw new Error("پاسخ خالی — کلید یا مدل را بررسی کن");
     } catch (e: any) {
       toast("err", `تحلیل ناموفق بود — آدرس، کلید و مدل را بررسی کن. (${e.message ?? "خطای شبکه"})`);
     } finally {
@@ -1018,13 +1059,13 @@ export function ReportsPage() {
                 </TSelect>
               </Field>
               <Field label="آدرس API"><TInput dir="ltr" value={cfgUrl} onChange={(e) => setCfgUrl(e.target.value)} placeholder="https://…" /></Field>
-              <Field label="کلید API"><TInput dir="ltr" type="password" value={cfgKey} onChange={(e) => setCfgKey(e.target.value)} placeholder="AIza… یا sk-…" /></Field>
-              <Field label="مدل"><TInput dir="ltr" value={cfgModel} onChange={(e) => setCfgModel(e.target.value)} placeholder="gemini-2.0-flash" /></Field>
+              <Field label="کلید API"><TInput dir="ltr" type="password" value={cfgKey} onChange={(e) => setCfgKey(e.target.value)} placeholder="AIza… یا AQ.… یا sk-…" /></Field>
+              <Field label="مدل"><TInput dir="ltr" value={cfgModel} onChange={(e) => setCfgModel(e.target.value)} placeholder="gemini-flash-latest" /></Field>
               <div className="flex justify-end">
                 <button className="btn btn-mint btn-sm" onClick={saveCfg}>ذخیرهٔ تنظیمات</button>
               </div>
               <p className="text-[10.5px] font-bold leading-5" style={{ color: "var(--fp-text3)" }}>
-                کلید فقط در مرورگر خودت ذخیره می‌شود و هرگز به ابر فرستاده نمی‌شود. برای استفادهٔ رایگان، ارائه‌دهندهٔ «Google Gemini» را انتخاب کن و کلید رایگانت را از aistudio.google.com بگیر.
+                کلید فقط در مرورگر خودت ذخیره می‌شود و هرگز به ابر فرستاده نمی‌شود. برای استفادهٔ رایگان، ارائه‌دهندهٔ «Google Gemini» را انتخاب کن و کلید رایگانت را از aistudio.google.com بگیر — هم کلیدهای قدیمی (AIza…) و هم کلیدهای جدید شخصی (AQ.…) به‌طور خودکار شناخته می‌شوند.
               </p>
             </div>
           )}
