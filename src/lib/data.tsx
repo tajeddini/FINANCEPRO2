@@ -458,7 +458,8 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       if (!entry) return;
       (d[entry.table as TableName] as unknown[]).push(entry.item);
       d.trash = d.trash.filter((e) => e.key !== key);
-    }, `«${arguments_label(key, state)}» بازگردانی شد`);
+      d.activity_logs.unshift({ id: uid(), at: Date.now(), text: `«${entry.label}» بازگردانی شد` });
+    });
   };
 
   const purgeTrash = () => {
@@ -476,10 +477,6 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       {children}
     </Ctx.Provider>
   );
-}
-
-function arguments_label(key: string, state: AppState): string {
-  return state.trash.find((e) => e.key === key)?.label ?? "مورد";
 }
 
 /* ---------- گزینش‌گرها ---------- */
