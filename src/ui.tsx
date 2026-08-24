@@ -78,7 +78,7 @@ export function CatIconInline({ icon, className = "w-4 h-4", color }: {
   return <I className={className} style={color ? { color } : undefined} />;
 }
 import {
-  faNum, groupInt, jalaliFirstOffset, jalaliMonthLen, jalaliShort, jalaliToday, jalaliToISO,
+  faDate, faNum, groupInt, jalaliFirstOffset, jalaliMonthLen, jalaliShort, jalaliToday, jalaliToISO,
   isoToJalali, MONTHS_FA, PERIODS, periodRange, todayISO, toEnDigits, type PeriodKey,
 } from "./lib/utils";
 
@@ -547,3 +547,81 @@ export function Bar({ pct, color, delay = 0 }: { pct: number; color?: string; de
 
 export const hiddenMoney = "••••••";
 export { todayISO };
+
+/* ================= فیلتر بازهٔ زمانی + بازهٔ دلخواه ================= */
+
+/** هوک مشترک فیلتر زمانی — ۹ بازهٔ آماده + «بازهٔ دلخواه» با انتخاب از/تا */
+export function usePeriod(initial: PeriodKey = "thisMonth") {
+  const [period, setPeriod] = useState<PeriodKey>(initial);
+  const t = jalaliToday();
+  const [from, setFrom] = useState(() => jalaliToISO(t.jy, t.jm, 1));
+  const [to, setTo] = useState(() => todayISO());
+
+  const range = useMemo(() => {
+    if (period !== "custom") return periodRange(period);
+    const f = from.slice(0, 10), tt = to.slice(0, 10);
+    return f <= tt ? { from: f, to: tt } : { from: tt, to: f };
+  }, [period, from, to]);
+
+  const label = period === "custom"
+    ? `${faDate(range.from)} تا ${faDate(range.to)}`
+    : PERIODS.find((p) => p.key === period)?.label ?? "";
+
+  return { period, setPeriod, range, label, from, setFrom, to, setTo };
+}
+
+export type PeriodHook = ReturnType<typeof usePeriod>;
+
+/** چیپ‌های فیلتر زمانی — با بازهٔ دلخواه (دو تقویم شمسی از/تا) */
+export function PeriodFilter({ pf, count, className }: {
+  pf: PeriodHook;
+  /** متن اختیاری سمت چپ — مثلاً «X تراکنش در این بازه» */
+  count?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`card p-3.5 rise-in ${className ?? ""}`}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {PERIODS.map((p) => (
+          <button
+            key={p.key}
+            className={`chip ${pf.period === p.key ? "chip-on" : ""}`}
+            style={p.key === "custom" && pf.period === "custom" ? {
+              background: "color-mix(in srgb, var(--fp-sky) 22%, transparent)",
+              color: "var(--fp-sky)",
+              borderColor: "var(--fp-sky)",
+            } : undefined}
+            onClick={() => pf.setPeriod(p.key)}
+          >
+            {p.key === "custom" && <CalendarDays className="w-3.5 h-3.5" />}
+            {p.label}
+          </button>
+        ))}
+        {count !== undefined && (
+          <span className="text-[11px] font-bold ms-auto tabular" style={{ color: "var(--fp-text3)" }}>
+            {count}
+          </span>
+        )}
+      </div>
+
+      {pf.period === "custom" && (
+        <div className="grid sm:grid-cols-2 gap-4 mt-4 pt-4 border-t rise-in" style={{ borderColor: "var(--fp-border)" }}>
+          <div>
+            <p className="text-[11.5px] font-black mb-2 flex items-center gap-1.5" style={{ color: "var(--fp-text2)" }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--fp-sky)" }} /> از تاریخ:
+              <span className="tabular" style={{ color: "var(--fp-sky)" }}>{faDate(pf.range.from)}</span>
+            </p>
+            <JalaliPicker value={pf.from} onChange={pf.setFrom} />
+          </div>
+          <div>
+            <p className="text-[11.5px] font-black mb-2 flex items-center gap-1.5" style={{ color: "var(--fp-text2)" }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--fp-mint)" }} /> تا تاریخ:
+              <span className="tabular" style={{ color: "var(--fp-mint)" }}>{faDate(pf.range.to)}</span>
+            </p>
+            <JalaliPicker value={pf.to} onChange={pf.setTo} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -17,7 +17,7 @@ import {
 import { parseBankSMS, matchAccountByCard, matchAccountByBankName, SMS_SAMPLES, type SmsParse } from "./lib/sms";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
-  TInput, TSelect, useToast, hiddenMoney, CatGlyph, CatIconInline,
+  PeriodFilter, TInput, TSelect, useToast, usePeriod, hiddenMoney, CatGlyph, CatIconInline,
 } from "./ui";
 import { parseCSV, exportCSV } from "./excel";
 import { Sparkline } from "./widgets";
@@ -711,10 +711,11 @@ function SpendInsightCard({ monthTxs, expense }: { monthTxs: Tx[]; expense: numb
     })
     .filter((x) => x.sum > 0)
     .sort((a, b) => b.sum - a.sum);
-  const untagged = monthTxs.filter((x) => x.type === "expense" && !x.tag).length;
-  /* پتانسیل پس‌انداز: برچسب‌های غیرضروریِ پیش‌فرض */
-  const flexTags = ["later", "fun"];
-  const potential = perTag.filter((x) => flexTags.includes(x.tag.id)).reduce((a, x) => a + x.sum, 0);
+  /* بدون‌برچسب = تگی ندارد یا تگش حذف شده (یتیم) */
+  const untagged = monthTxs.filter((x) => x.type === "expense" && (!x.tag || !tagById(state, x.tag))).length;
+  /* پتانسیل پس‌انداز: همهٔ برچسب‌های غیرضروری — با برچسب‌های سفارشی کاربر هم به‌روز می‌ماند */
+  const essential = tags.find((tg) => tg.label.includes("ضروری"));
+  const potential = perTag.filter((x) => x.tag.id !== essential?.id).reduce((a, x) => a + x.sum, 0);
   const top = perTag[0];
 
   const insights: { icon: React.ReactNode; text: string; tone: string }[] = [];
@@ -829,7 +830,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
   const toast = useToast();
   const [q, setQ] = useState(initQuery ?? "");
   const [type, setType] = useState<"all" | "income" | "expense">("all");
-  const [period, setPeriod] = useState<PeriodKey>("thisMonth");
+  const pf = usePeriod("thisMonth");
   const [catFilter, setCatFilter] = useState(initCat ?? "");
   const [tagFilter, setTagFilter] = useState<ID | "">("");
   const [editing, setEditing] = useState<Tx | null>(null);
@@ -838,7 +839,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
   const [csvText, setCsvText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const range = periodRange(period);
+  const range = pf.range;
   const filtered = useMemo(() => {
     return state.transactions
       .filter((t) => (type === "all" || t.type === type))
@@ -847,7 +848,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
       .filter((t) => !tagFilter || t.tag === tagFilter)
       .filter((t) => !q.trim() || t.title.includes(q.trim()) || (t.note ?? "").includes(q.trim()))
       .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-  }, [state.transactions, type, period, q, catFilter, tagFilter, range.from, range.to]);
+  }, [state.transactions, type, q, catFilter, tagFilter, range.from, range.to]);
 
   const groups = useMemo(() => {
     const m = new Map<string, Tx[]>();
@@ -915,12 +916,9 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {PERIODS.map((p) => (
-            <button key={p.key} className={`chip ${period === p.key ? "chip-on" : ""}`} onClick={() => setPeriod(p.key)}>{p.label}</button>
-          ))}
-        </div>
       </div>
+
+      <PeriodFilter pf={pf} count={<>{faNum(filtered.length)} تراکنش در این بازه</>} />
 
       <div className="grid gap-4 rise-in" style={{ ["--d" as string]: "120ms" }}>
         {groups.length === 0 && <div className="card"><Empty text="تراکنشی با این فیلترها پیدا نشد." /></div>}
@@ -1030,11 +1028,11 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
 /* ================= ۳) گزارش دسته‌ها ================= */
 export function CategoriesPage() {
   const { state } = useStore();
-  const [period, setPeriod] = useState<PeriodKey>("thisMonth");
+  const pf = usePeriod("thisMonth");
   const [type, setType] = useState<"expense" | "income">("expense");
   const [selected, setSelected] = useState<string>("");
 
-  const range = periodRange(period);
+  const range = pf.range;
   const txs = state.transactions.filter((t) => t.type === type && inRange(t.date, range));
   const total = sumTx(txs);
 
@@ -1067,11 +1065,7 @@ export function CategoriesPage() {
           <button className={`chip ${type === "income" ? "chip-on" : ""}`} onClick={() => setType("income")}>درآمدها</button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-1.5 rise-in" style={{ ["--d" as string]: "50ms" }}>
-        {PERIODS.map((p) => (
-          <button key={p.key} className={`chip ${period === p.key ? "chip-on" : ""}`} onClick={() => setPeriod(p.key)}>{p.label}</button>
-        ))}
-      </div>
+      <PeriodFilter pf={pf} count={<>{faNum(txs.length)} تراکنش در این بازه</>} className="!mt-0" />
 
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="card p-6 grid place-items-center rise-in" style={{ ["--d" as string]: "90ms" }}>
@@ -1138,9 +1132,9 @@ export function CategoriesPage() {
         const list = txs
           .filter((t) => t.categoryId === selected)
           .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-        const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
+        const periodLabel = pf.label;
         return (
-          <div key={selected + period + type} className="card overflow-hidden rise-in">
+          <div key={selected + pf.period + pf.range.from + pf.range.to + type} className="card overflow-hidden rise-in">
             <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b"
               style={{ borderColor: "var(--fp-border)", background: `color-mix(in srgb, ${cat?.color ?? "#888"} 9%, var(--fp-bg))` }}>
               <span className="flex items-center gap-2.5 text-[14px] font-black">

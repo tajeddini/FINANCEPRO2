@@ -144,7 +144,7 @@ export function relTime(at: number | string): string {
 /* ---------- بازه‌های زمانی (۹ فیلتر) ---------- */
 export type PeriodKey =
   | "today" | "yesterday" | "week" | "thisMonth" | "lastMonth"
-  | "last3" | "thisYear" | "lastYear" | "all";
+  | "last3" | "thisYear" | "lastYear" | "all" | "custom";
 
 export const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: "today", label: "امروز" },
@@ -156,6 +156,7 @@ export const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: "thisYear", label: "امسال" },
   { key: "lastYear", label: "سال گذشته" },
   { key: "all", label: "همه" },
+  { key: "custom", label: "بازهٔ دلخواه" },
 ];
 
 export function periodRange(key: PeriodKey): { from: string; to: string } {
@@ -190,6 +191,9 @@ export function periodRange(key: PeriodKey): { from: string; to: string } {
       const ly = t.jy - 1;
       return { from: jalaliMonthRange(ly, 1).from, to: jalaliMonthRange(ly, 12).to };
     }
+    case "custom":
+      /* بازهٔ دلخواه — توسط هوک usePeriod با تاریخ‌های انتخابی کاربر ساخته می‌شود */
+      return { from: end, to: end };
     default:
       return { from: "2000-01-01", to: end };
   }

@@ -19,7 +19,7 @@ import { encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effect
 import { listUsers } from "./lib/auth";
 import {
   AmountInput, Bar, CatGlyph, CATEGORY_ICONS, CATEGORY_ICON_LABELS, Confirm, DeleteBtn, EditBtn,
-  Empty, Field, JalaliPicker, MicButton, Modal, TInput, TSelect, useToast,
+  Empty, Field, JalaliPicker, MicButton, Modal, PeriodFilter, TInput, TSelect, useToast, usePeriod,
 } from "./ui";
 import { computeBadges, computeHealthScore, Forecast, Heatmap, ScoreRing } from "./widgets";
 import { exportExcel, exportCSV } from "./excel";
@@ -746,9 +746,9 @@ export function ReportsPage() {
   const { state, mutate } = useStore();
   const toast = useToast();
   const t = jalaliToday();
-  const [period, setPeriod] = useState<PeriodKey>("thisMonth");
-  const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "";
-  const range = periodRange(period);
+  const pf = usePeriod("thisMonth");
+  const periodLabel = pf.label;
+  const range = pf.range;
   const monthTxs = state.transactions.filter((x) => inRange(x.date, range));
 
   const [aiOpen, setAiOpen] = useState(false);
@@ -933,17 +933,9 @@ ${aiAnswer ? `<div class="ai"><h2>تحلیل هوش مصنوعی</h2><pre>${esc(
         </div>
       </div>
 
-      {/* فیلترهای زمانی — همان فیلترهای صفحهٔ تراکنش‌ها */}
-      <div className="card p-3.5 flex flex-wrap items-center gap-1.5 rise-in no-print" style={{ ["--d" as string]: "40ms" }}>
-        <span className="text-[11.5px] font-black me-2 flex items-center gap-1.5" style={{ color: "var(--fp-text3)" }}>
-          <CalendarDays className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> بازهٔ گزارش:
-        </span>
-        {PERIODS.map((p) => (
-          <button key={p.key} className={`chip ${period === p.key ? "chip-on" : ""}`} onClick={() => setPeriod(p.key)}>{p.label}</button>
-        ))}
-        <span className="text-[11px] font-bold ms-auto tabular" style={{ color: "var(--fp-text3)" }}>
-          {faNum(monthTxs.length)} تراکنش در این بازه
-        </span>
+      {/* فیلترهای زمانی — ۹ بازهٔ آماده + بازهٔ دلخواه */}
+      <div className="no-print">
+        <PeriodFilter pf={pf} count={<>{faNum(monthTxs.length)} تراکنش در این بازه</>} className="!mt-0" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-5">

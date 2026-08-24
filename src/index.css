@@ -240,9 +240,37 @@ html[data-accent="ruby"] { --fp-accent: #ff5e7e; --fp-mint: #ff9db4; }
 html[data-accent="royal"] { --fp-accent: #7aa2f7; --fp-mint: #54d6e8; }
 html[data-accent="copper"] { --fp-accent: #dd9460; --fp-mint: #b3c968; }
 
-/* تم زمردی دارک — پس‌زمینهٔ عمیق‌تر و سبزتر */
-html[data-accent="emerald-dark"] { --fp-bg: #04110d; --fp-bg2: #071a14; --fp-pine: #03100c; }
-html[data-accent="emerald-dark"].light { --fp-bg: #eef8f2; --fp-bg2: #e2f2e9; --fp-pine: #0a3b2a; }
+/* تم زمردی دارک — ترکیب کامل زمرد و دارک (بازنویسی کل متغیرها) */
+html[data-accent="emerald-dark"] {
+  --fp-bg: #030f0a;
+  --fp-bg2: #07231a;
+  --fp-bg3: #0d3325;
+  --fp-text: #dcf5e8;
+  --fp-text2: #9cc9b4;
+  --fp-text3: #5f8a76;
+  --fp-border: rgba(52, 211, 153, 0.16);
+  --fp-border2: rgba(52, 211, 153, 0.36);
+  --fp-mint: #5eead4;
+  --fp-accent: #34d399;
+  --fp-coral: #ff8578;
+  --fp-sky: #67d8e8;
+  --fp-pine: #02120c;
+}
+html[data-accent="emerald-dark"].light {
+  --fp-bg: #eef8f2;
+  --fp-bg2: #ffffff;
+  --fp-bg3: #e0f1e8;
+  --fp-text: #0c2b1f;
+  --fp-text2: #3f6a58;
+  --fp-text3: #7ba392;
+  --fp-border: rgba(6, 78, 59, 0.14);
+  --fp-border2: rgba(6, 78, 59, 0.34);
+  --fp-mint: #10b981;
+  --fp-accent: #059669;
+  --fp-coral: #d84f3f;
+  --fp-sky: #0e7f97;
+  --fp-pine: #0a3b2a;
+}
 
 html[data-accent="emerald"] .brand-swatch { background: linear-gradient(135deg, #e8b04b 0 52%, #2fb98a 52%); }
 html[data-accent="emerald-dark"] .brand-swatch { background: linear-gradient(135deg, #34d399 0 52%, #5eead4 52%); }
