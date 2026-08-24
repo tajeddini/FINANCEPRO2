@@ -8,11 +8,28 @@ import {
   UtensilsCrossed, Car, Home, HeartPulse, Gamepad2, Shirt, GraduationCap, Tv, Gift, Briefcase,
   Banknote, Wallet, ShoppingCart, Coffee, Plane, Music, Dumbbell, BookOpen, Smartphone,
   PawPrint, Stethoscope, Fuel, Baby, Pizza, Bus, Wrench, MoreHorizontal,
+  Apple, Croissant, CandlestickChart, Receipt, Beef, Wifi, Landmark, CupSoda,
   type LucideIcon,
 } from "lucide-react";
 
 /* ---------- آیکون‌های دسته‌ها ---------- */
-export const CATEGORY_ICONS: Record<string, LucideIcon> = {
+type CatIcon = React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+
+/* نمادهای جنسیتی — در lucide نیستند، دستی کشیده شده‌اند */
+const MarsIcon: CatIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="10" cy="14" r="5.5" />
+    <path d="M14 10 20 4" /><path d="M15 4h5v5" />
+  </svg>
+);
+const VenusIcon: CatIcon = ({ className, style }) => (
+  <svg viewBox="0 0 24 24" className={className} style={style} fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="8.5" r="5.5" />
+    <path d="M12 14v7" /><path d="M8.5 17.5h7" />
+  </svg>
+);
+
+export const CATEGORY_ICONS: Record<string, CatIcon> = {
   utensils: UtensilsCrossed, car: Car, home: Home, "heart-pulse": HeartPulse,
   "gamepad-2": Gamepad2, shirt: Shirt, "graduation-cap": GraduationCap, tv: Tv,
   gift: Gift, briefcase: Briefcase, banknote: Banknote, wallet: Wallet,
@@ -20,16 +37,24 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   dumbbell: Dumbbell, "book-open": BookOpen, smartphone: Smartphone, "paw-print": PawPrint,
   stethoscope: Stethoscope, fuel: Fuel, baby: Baby, pizza: Pizza, bus: Bus,
   wrench: Wrench, more: MoreHorizontal,
+  /* آیکون‌های جدید (v1.9) */
+  apple: Apple, "cup-soda": CupSoda, croissant: Croissant, candlestick: CandlestickChart,
+  receipt: Receipt, beef: Beef, wifi: Wifi, male: MarsIcon, female: VenusIcon,
+  landmark: Landmark,
 };
 
 export const CATEGORY_ICON_LABELS: Record<string, string> = {
   utensils: "غذا و خوراک", car: "ماشین", home: "خانه", "heart-pulse": "سلامت",
   "gamepad-2": "بازی و تفریح", shirt: "پوشاک", "graduation-cap": "آموزش", tv: "اشتراک و فیلم",
   gift: "هدیه", briefcase: "کار و پروژه", banknote: "پول و حقوق", wallet: "کیف پول",
-  "shopping-cart": "خرید", coffee: "کافه", plane: "سفر", music: "موسیقی",
+  "shopping-cart": "خرید", coffee: "دانهٔ قهوه", plane: "سفر", music: "موسیقی",
   dumbbell: "ورزش", "book-open": "کتاب", smartphone: "موبایل", "paw-print": "حیوان خانگی",
   stethoscope: "پزشکی", fuel: "سوخت", baby: "کودک", pizza: "فست‌فود", bus: "حمل‌ونقل عمومی",
   wrench: "تعمیرات", more: "سایر",
+  /* آیکون‌های جدید (v1.9) */
+  apple: "میوه", "cup-soda": "کافه", croissant: "نان و شیرینی", candlestick: "پراپ تریدینگ",
+  receipt: "قبوض", beef: "گوشت و پروتئین", wifi: "اینترنت", male: "شخص (مرد)", female: "شخص (زن)",
+  landmark: "وام و تسهیلات",
 };
 
 /* آیکون دسته داخل کاشی رنگی (جایگزین دایرهٔ رنگی) */

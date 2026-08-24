@@ -15,6 +15,12 @@ export const CATEGORY_ICON_BY_NAME: Record<string, string> = {
   "خوراک": "utensils", "رفت‌وآمد": "car", "خانه و اجاره": "home", "سلامت": "heart-pulse",
   "تفریح": "gamepad-2", "پوشاک": "shirt", "آموزش": "graduation-cap", "اشتراک": "tv",
   "متفرقه": "wallet", "حقوق": "banknote", "پروژه": "briefcase", "هدیه": "gift",
+  /* آیکون‌های جدید (v1.9) */
+  "میوه": "apple", "قهوه": "coffee", "دانه قهوه": "coffee", "کافه": "cup-soda",
+  "نان": "croissant", "شیرینی": "croissant", "پراپ تریدینگ": "candlestick", "ترید": "candlestick",
+  "معامله‌گری": "candlestick", "قبوض": "receipt", "قبض": "receipt", "گوشت": "beef",
+  "پروتئین": "beef", "اینترنت": "wifi", "مرد": "male", "زن": "female",
+  "وام": "landmark", "تسهیلات": "landmark", "قسط": "landmark",
 };
 /* تگ‌های تراکنش — نوع خرج را مشخص می‌کنند و کاربر می‌تواند تگ دلخواه بسازد */
 export interface TagDef { id: ID; label: string; color: string; desc?: string; builtin?: boolean; }
