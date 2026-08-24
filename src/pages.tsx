@@ -14,7 +14,7 @@ import {
   jalaliShort, jalaliToday, localISODate, periodRange, PERIODS, relTime, todayISO,
   useCountUp, type PeriodKey,
 } from "./lib/utils";
-import { parseBankSMS, matchAccountByCard, type SmsParse } from "./lib/sms";
+import { parseBankSMS, matchAccountByCard, matchAccountByBankName, SMS_SAMPLES, type SmsParse } from "./lib/sms";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
   TInput, TSelect, useToast, hiddenMoney, CatGlyph, CatIconInline,
@@ -186,9 +186,9 @@ export function TxModal({
   };
 
   /* ---------- تحلیل پیام بانکی ---------- */
-  const analyzeSms = () => {
-    if (!smsText.trim()) return toast("warn", "ابتدا متن پیام بانکی را بچسبان.");
-    const r = parseBankSMS(smsText);
+  const analyzeSms = (source = smsText) => {
+    if (!source.trim()) return toast("warn", "ابتدا متن پیام بانکی را بچسبان.");
+    const r = parseBankSMS(source);
     setSmsResult(r);
     if (r.confidence === "low") {
       toast("err", "مبلغی در پیام پیدا نشد — متن پیام را کامل کپی کن.");
@@ -198,7 +198,10 @@ export function TxModal({
     setType(r.type);
     setAmount(String(r.amountToman));
     if (r.dateISO) setDate(r.dateISO);
-    const matched = matchAccountByCard(state.accounts, r.cardTail);
+    /* تطبیق حساب: چهار رقم کارت ← شمارهٔ حساب ← نام بانک داخل پیام */
+    const matched =
+      matchAccountByCard(state.accounts, r.cardTail, r.accountNo) ??
+      matchAccountByBankName(state.accounts, source);
     if (matched) setAccountId(matched.id);
     if (r.merchant) {
       setNote(r.merchant);
@@ -318,19 +321,30 @@ export function TxModal({
 
         {smsOpen && (
           <div className="px-4 pb-4 rise-in">
-            <div className="rounded-xl border border-dashed p-3" dir="ltr"
+            <div className="rounded-xl border border-dashed p-3" dir="rtl"
               style={{ borderColor: "var(--fp-border2)", background: "var(--fp-bg2)" }}>
               <textarea
                 value={smsText}
                 onChange={(e) => { setSmsText(e.target.value); setSmsResult(null); }}
-                rows={3}
-                placeholder={"e.g.  Kharid az Hyper Star\nMablagh 1,234,567 Rial  Kart *4321\n1403/05/12  14:30"}
+                rows={4}
+                placeholder={"بانك ملي ايران\nانتقال:4,509,000-\nحساب:83008\nمانده:220,654,858\n0531-20:40"}
                 className="w-full bg-transparent outline-none resize-none text-[12px] leading-6"
-                style={{ fontFamily: "ui-monospace, 'Courier New', monospace", color: "var(--fp-text2)" }}
+                style={{ color: "var(--fp-text2)" }}
               />
             </div>
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <span className="text-[10px] font-black me-0.5" style={{ color: "var(--fp-text3)" }}>نمونهٔ واقعی:</span>
+              {SMS_SAMPLES.map((s) => (
+                <button key={s.label}
+                  onClick={() => { setSmsText(s.text); analyzeSms(s.text); }}
+                  className="text-[10px] font-black px-2.5 py-1 rounded-full cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+                  style={{ background: "color-mix(in srgb, var(--fp-sky) 13%, transparent)", color: "var(--fp-sky)", border: "1px solid color-mix(in srgb, var(--fp-sky) 40%, transparent)" }}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-              <button className="btn btn-sm" onClick={analyzeSms}
+              <button className="btn btn-sm" onClick={() => analyzeSms()}
                 style={{ background: "var(--fp-sky)", color: "#071b16" }}>
                 <Sparkles className="w-4 h-4" /> تحلیل پیام
               </button>
@@ -349,7 +363,7 @@ export function TxModal({
                       background: smsResult.confidence === "high" ? "color-mix(in srgb, var(--fp-mint) 16%, transparent)" : "color-mix(in srgb, var(--fp-accent) 16%, transparent)",
                       color: smsResult.confidence === "high" ? "var(--fp-mint)" : "var(--fp-accent)",
                     }}>
-                    {smsResult.confidence === "high" ? "اطمینان بالا" : "واحد پول را چک کن"}
+                    {smsResult.confidence === "high" ? "اطمینان بالا" : "بازبینی کن"}
                   </span>
                 </div>
                 <div className="flex items-baseline gap-2 flex-wrap">
@@ -369,11 +383,13 @@ export function TxModal({
                       <CalendarDays className="w-3 h-3" /> {smsResult.dateISO ? faDate(smsResult.dateISO) : smsResult.jalali}{smsResult.time ? ` — ${faNum(smsResult.time)}` : ""}
                     </span>
                   )}
-                  {smsResult.cardTail && (
+                  {(smsResult.cardTail || smsResult.accountNo) && (
                     <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" dir="ltr" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
-                      <Wallet className="w-3 h-3" /> *{faNum(smsResult.cardTail)}
+                      <Wallet className="w-3 h-3" />
+                      {smsResult.cardTail ? <bdi>*{faNum(smsResult.cardTail)}</bdi> : <bdi>حساب {faNum(smsResult.accountNo!)}</bdi>}
                       {(() => {
-                        const a = matchAccountByCard(state.accounts, smsResult.cardTail);
+                        const a = matchAccountByCard(state.accounts, smsResult.cardTail, smsResult.accountNo)
+                          ?? matchAccountByBankName(state.accounts, smsText);
                         return a ? <b style={{ color: "var(--fp-mint)" }}>← {a.name}</b> : <i className="not-italic" style={{ color: "var(--fp-text3)" }}>حساب منطبق پیدا نشد</i>;
                       })()}
                     </span>
@@ -388,12 +404,16 @@ export function TxModal({
                       <Landmark className="w-3 h-3" /> مانده: {faMoney(smsResult.balanceToman)}
                     </span>
                   )}
-                  {smsResult.unit === "unknown" && (
-                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg" style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)" }}>
-                      ⚠ واحد پول در پیام نبود — ریال فرض شد؛ مبلغ را چک کن
-                    </span>
-                  )}
                 </div>
+                {smsResult.notes.length > 0 && (
+                  <ul className="grid gap-1 mt-2.5 pt-2.5 border-t" style={{ borderColor: "color-mix(in srgb, var(--fp-sky) 22%, transparent)" }}>
+                    {smsResult.notes.map((n, i) => (
+                      <li key={i} className="text-[10.5px] font-bold leading-5 flex items-start gap-1.5" style={{ color: "var(--fp-accent)" }}>
+                        <Lightbulb className="w-3 h-3 mt-0.5 shrink-0" /> {n}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
           </div>
