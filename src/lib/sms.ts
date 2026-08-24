@@ -12,8 +12,12 @@
         خرید از هایپر استار
         مبلغ 1,234,567 ریال  کارت *4321
         1403/05/12 14:30  مانده: 22,000,000 ریال
-*/
-import { toEnDigits, jalaliToISO, jalaliToday, jalaliMonthLen } from "./utils";
+   ── بانک رسالت (شماره ارجاع نقطه‌دار، مبلغ با علامت و بدون کلیدواژه/واحد، تاریخ MM/DD_HH:MM):
+        10.10070145.1
+        -10,314,000
+        06/01_15:08
+        مانده: 2,876,564,356
+ */import { toEnDigits, jalaliToISO, jalaliToday, jalaliMonthLen } from "./utils";
 
 export interface SmsParse {
   type: "income" | "expense";
@@ -29,6 +33,8 @@ export interface SmsParse {
   accountNo?: string;
   merchant?: string;
   balanceToman?: number;
+  /** شمارهٔ ارجاع تراکنش (مثل 10.10070145.1 در فرمت رسالت) */
+  reference?: string;
   confidence: "high" | "medium" | "low";
   /** یادداشت‌های تحلیلی برای نمایش (مثلاً حدس سال یا واحد) */
   notes: string[];
@@ -47,8 +53,14 @@ const toToman = (value: number, unit: "rial" | "toman" | "unknown"): number =>
   unit === "rial" ? Math.round(value / 10) : Math.round(value);
 
 export function parseBankSMS(raw: string): SmsParse {
-  const text = normalize(raw);
+  const normalized = normalize(raw);
   const notes: string[] = [];
+
+  /* ================= شمارهٔ ارجاع (فرمت رسالت: 10.10070145.1) =================
+     قبل از هر چیز استخراج و از متنِ کاری حذف می‌شود تا با مبلغ یا تاریخ اشتباه گرفته نشود. */
+  const refM = normalized.match(/\b([0-9]{1,6}\.[0-9]{4,}\.[0-9]{1,4})\b/);
+  const reference = refM ? refM[1] : undefined;
+  const text = reference ? normalized.replace(reference, " ") : normalized;
 
   /* ================= مبلغ ================= */
   let rawAmount = 0;
@@ -96,6 +108,18 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
+  /* ۴) عدد گروه‌دارِ تنها با علامت — فرمت رسالت: «-10,314,000» در یک خط جدا
+     (بدون کلیدواژه و بدون واحد؛ علامت +/- الزامی است تا با مانده اشتباه نشود) */
+  if (!amountFound) {
+    m = text.match(/(?:^|\n)\s*([+-])\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{5,})\s*(?=\n|$)/);
+    if (m && parseFloat(m[2]) > 0) {
+      rawAmount = parseFloat(m[2].replace(/,/g, ""));
+      explicitSign = m[1] as "+" | "-";
+      unit = unitAt(text);
+      amountFound = true;
+    }
+  }
+
   /* واحد نامشخص → عرف بانک‌های ایران «ریال» است */
   const unitInferred = amountFound && unit === "unknown";
   if (unitInferred) {
@@ -117,9 +141,11 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
-  /* ب) فرمت بانک ملی: MMDD-HH:MM (بدون سال → حدس از امروز) */
+  /* ب) تاریخ کوتاه بدون سال + ساعت — دو فرمت رایج:
+        ملی:    0531-20:40   (MMDD-HH:MM)
+        رسالت:  06/01_15:08  (MM/DD_HH:MM) */
   let time: string | undefined;
-  const mmdd = text.match(/\b(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])\s*[-–]\s*([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
+  const mmdd = text.match(/\b(0[1-9]|1[0-2])\s*[/\-.]?\s*(0[1-9]|[12][0-9]|3[01])\s*[_\-–]\s*([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
   if (mmdd) {
     const jm = +mmdd[1], jd = +mmdd[2];
     time = `${mmdd[3].padStart(2, "0")}:${mmdd[4]}`;
@@ -179,7 +205,7 @@ export function parseBankSMS(raw: string): SmsParse {
   return {
     type, amountToman: toToman(rawAmount, unit), rawAmount: Math.round(rawAmount),
     unit, unitInferred, dateISO, jalali, time, cardTail, accountNo,
-    merchant, balanceToman, confidence, notes,
+    merchant, balanceToman, reference, confidence, notes,
   };
 }
 
@@ -228,5 +254,9 @@ export const SMS_SAMPLES: { label: string; text: string }[] = [
   {
     label: "واریز حقوق — بانک ملت",
     text: "بانک ملت\nواریز: +185,000,000\nحساب: 112233\nمانده: 197,320,000\n0601-08:15",
+  },
+  {
+    label: "برداشت — بانک رسالت",
+    text: "10.10070145.1\n-10,314,000\n06/01_15:08\nمانده: 2,876,564,356",
   },
 ];

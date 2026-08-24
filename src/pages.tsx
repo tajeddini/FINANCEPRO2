@@ -404,6 +404,11 @@ export function TxModal({
                       <Landmark className="w-3 h-3" /> مانده: {faMoney(smsResult.balanceToman)}
                     </span>
                   )}
+                  {smsResult.reference && (
+                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" dir="ltr" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
+                      <Receipt className="w-3 h-3" /> ارجاع: <bdi>{smsResult.reference}</bdi>
+                    </span>
+                  )}
                 </div>
                 {smsResult.notes.length > 0 && (
                   <ul className="grid gap-1 mt-2.5 pt-2.5 border-t" style={{ borderColor: "color-mix(in srgb, var(--fp-sky) 22%, transparent)" }}>
