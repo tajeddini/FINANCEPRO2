@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownRight, ArrowUpLeft, Banknote, Bot, CalendarDays, Coins, Download, Filter,
-  Landmark, Lightbulb, PencilLine, Plus, QrCode, Receipt, Repeat,
+  Landmark, Lightbulb, MessageSquare, PencilLine, Plus, QrCode, Receipt, Repeat,
   Scale, Search, Sparkles, Trash2, Upload, Wallet,
 } from "lucide-react";
 import {
@@ -10,10 +10,11 @@ import {
   type ID, type Tx,
 } from "./lib/data";
 import {
-  calcEMI, faDate, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange,
+  calcEMI, faDate, faMoney, faNum, groupInt, inRange, jalaliDateStr, jalaliMonthRange,
   jalaliShort, jalaliToday, localISODate, periodRange, PERIODS, relTime, todayISO,
   useCountUp, type PeriodKey,
 } from "./lib/utils";
+import { parseBankSMS, matchAccountByCard, type SmsParse } from "./lib/sms";
 import {
   AmountInput, Bar, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
   TInput, TSelect, useToast, hiddenMoney, CatGlyph, CatIconInline,
@@ -50,10 +51,15 @@ export function TxModal({
   /* مرحلهٔ پیشنهاد تگ بعد از ثبت تراکنشِ هزینهٔ بدون تگ */
   const [suggestTxId, setSuggestTxId] = useState<ID | "">("");
   const [suggestCat, setSuggestCat] = useState("");
+  /* ثبت از پیام بانکی */
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsText, setSmsText] = useState("");
+  const [smsResult, setSmsResult] = useState<SmsParse | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDetected([]);
+    setSmsOpen(false); setSmsText(""); setSmsResult(null);
     if (editing) {
       setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
       setAmount(String(editing.amount));
@@ -179,6 +185,32 @@ export function TxModal({
     handleClose();
   };
 
+  /* ---------- تحلیل پیام بانکی ---------- */
+  const analyzeSms = () => {
+    if (!smsText.trim()) return toast("warn", "ابتدا متن پیام بانکی را بچسبان.");
+    const r = parseBankSMS(smsText);
+    setSmsResult(r);
+    if (r.confidence === "low") {
+      toast("err", "مبلغی در پیام پیدا نشد — متن پیام را کامل کپی کن.");
+      return;
+    }
+    /* پر کردن خودکار فرم */
+    setType(r.type);
+    setAmount(String(r.amountToman));
+    if (r.dateISO) setDate(r.dateISO);
+    const matched = matchAccountByCard(state.accounts, r.cardTail);
+    if (matched) setAccountId(matched.id);
+    if (r.merchant) {
+      setNote(r.merchant);
+      /* حدس دسته از نام فروشنده/طرف مقابل */
+      const d = detectSmart(r.merchant, state.categories, state.accounts);
+      if (d.categoryId) { setCategoryId(d.categoryId); setTouchedCat(true); }
+    }
+    toast("ok", r.type === "income"
+      ? `واریز ${faMoney(r.amountToman)} تومانی شناسایی شد — فرم پر شد.`
+      : `خرج ${faMoney(r.amountToman)} تومانی شناسایی شد — فرم پر شد.`);
+  };
+
   const cats = state.categories.filter((c) => c.type === type);
 
   return (
@@ -263,6 +295,110 @@ export function TxModal({
           ))}
         </div>
       )}
+
+      {/* ---------- ثبت از پیام بانکی ---------- */}
+      <div className="rounded-xl border overflow-hidden mb-4 transition-all duration-200"
+        style={{
+          borderColor: smsOpen ? "color-mix(in srgb, var(--fp-sky) 55%, transparent)" : "var(--fp-border)",
+          background: smsOpen ? "color-mix(in srgb, var(--fp-sky) 5%, var(--fp-bg))" : "var(--fp-bg)",
+        }}>
+        <button onClick={() => { setSmsOpen((o) => !o); setSmsResult(null); }}
+          className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
+          <MessageSquare className="w-5 h-5 shrink-0" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text3)" }} />
+          <span className="text-[13px] font-black" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text2)" }}>
+            ثبت از پیام بانکی
+          </span>
+          <span className="text-[10.5px] font-bold flex-1 text-start" style={{ color: "var(--fp-text3)" }}>
+            پیامک بانک را بچسبان تا مبلغ، تاریخ و کارت خودش دربیاید
+          </span>
+          <span className={`transition-transform duration-200 ${smsOpen ? "rotate-180" : ""}`} style={{ color: "var(--fp-text3)" }}>
+            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+          </span>
+        </button>
+
+        {smsOpen && (
+          <div className="px-4 pb-4 rise-in">
+            <div className="rounded-xl border border-dashed p-3" dir="ltr"
+              style={{ borderColor: "var(--fp-border2)", background: "var(--fp-bg2)" }}>
+              <textarea
+                value={smsText}
+                onChange={(e) => { setSmsText(e.target.value); setSmsResult(null); }}
+                rows={3}
+                placeholder={"e.g.  Kharid az Hyper Star\nMablagh 1,234,567 Rial  Kart *4321\n1403/05/12  14:30"}
+                className="w-full bg-transparent outline-none resize-none text-[12px] leading-6"
+                style={{ fontFamily: "ui-monospace, 'Courier New', monospace", color: "var(--fp-text2)" }}
+              />
+            </div>
+            <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+              <button className="btn btn-sm" onClick={analyzeSms}
+                style={{ background: "var(--fp-sky)", color: "#071b16" }}>
+                <Sparkles className="w-4 h-4" /> تحلیل پیام
+              </button>
+              <span className="text-[10px] font-bold flex items-center gap-1" style={{ color: "var(--fp-text3)" }}>
+                🔒 تحلیل فقط روی دستگاه خودت انجام می‌شود — پیام هیچ‌جا فرستاده نمی‌شود
+              </span>
+            </div>
+
+            {smsResult && smsResult.confidence !== "low" && (
+              <div className="mt-3 rounded-xl border p-3.5 rise-in"
+                style={{ borderColor: "color-mix(in srgb, var(--fp-sky) 40%, transparent)", background: "color-mix(in srgb, var(--fp-sky) 7%, transparent)" }}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-[11.5px] font-black" style={{ color: "var(--fp-sky)" }}>نتیجهٔ تحلیل — فرم پر شد ✔</span>
+                  <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full"
+                    style={{
+                      background: smsResult.confidence === "high" ? "color-mix(in srgb, var(--fp-mint) 16%, transparent)" : "color-mix(in srgb, var(--fp-accent) 16%, transparent)",
+                      color: smsResult.confidence === "high" ? "var(--fp-mint)" : "var(--fp-accent)",
+                    }}>
+                    {smsResult.confidence === "high" ? "اطمینان بالا" : "واحد پول را چک کن"}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-display text-3xl tabular" style={{ color: smsResult.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {smsResult.type === "income" ? "+" : "−"}{faMoney(smsResult.amountToman)}
+                  </span>
+                  <span className="text-[11px] font-black" style={{ color: "var(--fp-text2)" }}>تومان</span>
+                  {smsResult.unit === "rial" && (
+                    <span className="text-[10.5px] font-bold tabular" style={{ color: "var(--fp-text3)" }}>
+                      ← {faNum(groupInt(smsResult.rawAmount))} ریال (تبدیل خودکار)
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-2.5">
+                  {smsResult.jalali && (
+                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
+                      <CalendarDays className="w-3 h-3" /> {smsResult.dateISO ? faDate(smsResult.dateISO) : smsResult.jalali}{smsResult.time ? ` — ${faNum(smsResult.time)}` : ""}
+                    </span>
+                  )}
+                  {smsResult.cardTail && (
+                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" dir="ltr" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
+                      <Wallet className="w-3 h-3" /> *{faNum(smsResult.cardTail)}
+                      {(() => {
+                        const a = matchAccountByCard(state.accounts, smsResult.cardTail);
+                        return a ? <b style={{ color: "var(--fp-mint)" }}>← {a.name}</b> : <i className="not-italic" style={{ color: "var(--fp-text3)" }}>حساب منطبق پیدا نشد</i>;
+                      })()}
+                    </span>
+                  )}
+                  {smsResult.merchant && (
+                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
+                      <Receipt className="w-3 h-3" /> {smsResult.merchant}
+                    </span>
+                  )}
+                  {smsResult.balanceToman !== undefined && (
+                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
+                      <Landmark className="w-3 h-3" /> مانده: {faMoney(smsResult.balanceToman)}
+                    </span>
+                  )}
+                  {smsResult.unit === "unknown" && (
+                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg" style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)" }}>
+                      ⚠ واحد پول در پیام نبود — ریال فرض شد؛ مبلغ را چک کن
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
