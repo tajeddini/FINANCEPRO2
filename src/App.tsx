@@ -734,32 +734,40 @@ function AccentCycle() {
 function UndoBar() {
   const { state, restore, purgeTrash } = useStore();
   const now = useNow(200);
-  const entry = state.trash[state.trash.length - 1];
   useEffect(() => { purgeTrash(); }, [now]);
-  if (!entry) return null;
-  const remaining = Math.max(0, entry.until - now.getTime());
-  if (remaining <= 0) return null;
-  const secs = Math.ceil(remaining / 1000);
+  /* همهٔ حذف‌های هنوز-منقضی‌نشده — هرکدام جداگانه قابل بازگشت */
+  const pending = state.trash
+    .map((e) => ({ e, remaining: e.until - now.getTime() }))
+    .filter((x) => x.remaining > 0)
+    .sort((a, b) => b.e.until - a.e.until);
+  if (pending.length === 0) return null;
   return (
     <div className="fixed bottom-20 lg:bottom-6 inset-x-0 z-[110] px-4 pointer-events-none no-print">
-      <div className="pointer-events-auto max-w-lg mx-auto rounded-2xl border overflow-hidden slide-up shadow-2xl"
-        style={{ background: "var(--fp-bg2)", borderColor: "color-mix(in srgb, var(--fp-accent) 50%, transparent)" }}>
-        <div className="flex items-center gap-3 px-4 py-3">
-          <span className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)", color: "var(--fp-accent)" }}>
-            <RotateCcw className="w-4 h-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[12.5px] font-black truncate">«{entry.label}» حذف شد</p>
-            <p className="text-[10.5px] font-bold tabular mt-0.5" style={{ color: "var(--fp-accent)" }}>
-              {faNum(secs)} ثانیه تا حذف دائم
-            </p>
-          </div>
-          <button className="btn btn-gold btn-sm" onClick={() => restore(entry.key)}>بازگردانی</button>
-          <button className="icon-btn !w-8 !h-8" onClick={purgeTrash} title="حذف فوری"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="h-1" style={{ background: "var(--fp-bg3)" }}>
-          <div className="h-full transition-[width] duration-200 ease-linear" style={{ width: `${(remaining / 30000) * 100}%`, background: "var(--fp-accent)" }} />
-        </div>
+      <div className="pointer-events-auto max-w-lg mx-auto grid gap-2">
+        {pending.map(({ e, remaining }) => {
+          const secs = Math.ceil(remaining / 1000);
+          return (
+            <div key={e.key} className="rounded-2xl border overflow-hidden slide-up shadow-2xl"
+              style={{ background: "var(--fp-bg2)", borderColor: "color-mix(in srgb, var(--fp-accent) 50%, transparent)" }}>
+              <div className="flex items-center gap-3 px-4 py-3">
+                <span className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)", color: "var(--fp-accent)" }}>
+                  <RotateCcw className="w-4 h-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-black truncate">«{e.label}» حذف شد</p>
+                  <p className="text-[10.5px] font-bold tabular mt-0.5" style={{ color: "var(--fp-accent)" }}>
+                    {faNum(secs)} ثانیه تا حذف دائم
+                  </p>
+                </div>
+                <button className="btn btn-gold btn-sm" onClick={() => restore(e.key)}>بازگردانی</button>
+                <button className="icon-btn !w-8 !h-8" onClick={purgeTrash} title="حذف فوری همه"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="h-1" style={{ background: "var(--fp-bg3)" }}>
+                <div className="h-full transition-[width] duration-200 ease-linear" style={{ width: `${(remaining / 30000) * 100}%`, background: "var(--fp-accent)" }} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

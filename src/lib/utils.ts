@@ -186,8 +186,9 @@ export function periodRange(key: PeriodKey): { from: string; to: string } {
     case "thisYear":
       return { from: jalaliMonthRange(t.jy, 1).from, to: end };
     case "lastYear": {
+      /* کل سال قبل — از ۱ فروردین تا ۲۹/۳۰ اسفند (نه فقط اسفند) */
       const ly = t.jy - 1;
-      return ms(ly, 12);
+      return { from: jalaliMonthRange(ly, 1).from, to: jalaliMonthRange(ly, 12).to };
     }
     default:
       return { from: "2000-01-01", to: end };

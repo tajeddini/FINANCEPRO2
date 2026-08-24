@@ -397,6 +397,18 @@ function applyRecurring(s: AppState) {
   }
 }
 
+/** مهاجرت دادهٔ بارگذاری‌شده (پشتیبان / کد انتقال / ابر / localStorage قدیمی) —
+    جدول‌های جدید (notes, tags, trash) و آیکون دسته‌ها را پر می‌کند تا نسخه‌های قدیمی کرش نکنند */
+export function migrateLoadedState(s: AppState): AppState {
+  if (typeof s.rev !== "number") s.rev = 0;
+  if (!Array.isArray(s.notes)) s.notes = [];
+  if (!Array.isArray(s.tags)) s.tags = DEFAULT_TAGS.map((t) => ({ ...t }));
+  if (!Array.isArray(s.trash)) s.trash = [];
+  if (!Array.isArray(s.activity_logs)) s.activity_logs = [];
+  for (const c of s.categories ?? []) if (!c.icon) c.icon = CATEGORY_ICON_BY_NAME[c.name] ?? "wallet";
+  return s;
+}
+
 /* ---------- Store ---------- */
 export type TableName = keyof Pick<
   AppState,
@@ -422,13 +434,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
-        const parsed = JSON.parse(raw) as AppState;
-        if (typeof parsed.rev !== "number") parsed.rev = 0;
-        /* مهاجرت: داده‌های قدیمی که جدول‌های جدید ندارند */
-        if (!Array.isArray(parsed.notes)) parsed.notes = [];
-        if (!Array.isArray(parsed.tags)) parsed.tags = DEFAULT_TAGS.map((t) => ({ ...t }));
-        /* مهاجرت: دسته‌های قدیمی بدون آیکون، آیکون پیش‌فرض می‌گیرند */
-        for (const c of parsed.categories) if (!c.icon) c.icon = CATEGORY_ICON_BY_NAME[c.name] ?? "wallet";
+        const parsed = migrateLoadedState(JSON.parse(raw) as AppState);
         applyRecurring(parsed);
         recomputeBalances(parsed);
         return parsed;
@@ -469,7 +475,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       d[table] = arr.filter((x) => x.id !== id) as never;
       d.trash = [...d.trash.filter((e) => e.table !== table || e.item.id !== id), {
         key: uid(), table, item, until: Date.now() + 30000, label,
-      }].slice(-3);
+      }].slice(-8); /* تا ۸ حذف همزمان قابل بازگشت */
     });
   };
 

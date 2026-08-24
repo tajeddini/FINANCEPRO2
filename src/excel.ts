@@ -1,7 +1,7 @@
 /* ---------- خروجی اکسل حرفه‌ای چندبرگی با ExcelJS + CSV + ICS ---------- */
 import ExcelJS from "exceljs";
 import { getTags, type AppState, type Tx } from "./lib/data";
-import { faDate, jalaliDateStr } from "./lib/utils";
+import { faDate, jalaliDateStr, toEnDigits } from "./lib/utils";
 
 function download(blob: Blob, name: string) {
   const a = document.createElement("a");
@@ -339,14 +339,17 @@ export function parseCSV(text: string, s: AppState): {
       continue;
     }
     const [date, type, title, catName, amount] = parts;
+    /* نرمال‌سازی: ارقام فارسی/عربی ← لاتین + حذف جداکنندهٔ هزارگان تا مبلغ صفر نشود */
+    const ndate = toEnDigits(date).trim();
+    const namount = toEnDigits(amount).replace(/[٬،,\s]/g, "");
     const isIncome = /income|درآمد/i.test(type);
     const category = s.categories.find((c) => c.name === catName) ??
       s.categories.find((c) => c.type === (isIncome ? "income" : "expense"));
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !title || !amount) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ndate) || !title || !namount) {
       errors++;
       continue;
     }
-    rows.push({ date, type: isIncome ? "income" : "expense", title, categoryId: category?.id ?? "", amount: parseFloat(amount) || 0 });
+    rows.push({ date: ndate, type: isIncome ? "income" : "expense", title, categoryId: category?.id ?? "", amount: parseFloat(namount) || 0 });
   }
   return { rows, errors };
 }

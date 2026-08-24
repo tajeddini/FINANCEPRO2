@@ -6,7 +6,7 @@ import {
   Sparkles, StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { clearData, getTags, sampleFill, useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
+import { clearData, getTags, migrateLoadedState, sampleFill, useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
@@ -1392,8 +1392,24 @@ export function ManagePage() {
   const [openForm, setOpenForm] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
   const [confirmClear, setConfirmClear] = useState(false);
+  const [pendingAccountDelete, setPendingAccountDelete] = useState<{ id: string; name: string; linked: number } | null>(null);
 
   const txCount = state.transactions.length;
+
+  /* حذف حسابِ دارای تراکنش/انتقال، اول هشدار می‌دهد تا موجودی کل بی‌صدا کم نشود */
+  const handleDelete = (item: any) => {
+    const label = item.name ?? item.title ?? item.person ?? item.label ?? active.title;
+    if (active.table === "accounts") {
+      const linked =
+        state.transactions.filter((t) => t.accountId === item.id).length +
+        state.transfers.filter((t) => t.from === item.id || t.to === item.id).length;
+      if (linked > 0) {
+        setPendingAccountDelete({ id: item.id, name: item.name ?? "حساب", linked });
+        return;
+      }
+    }
+    trashItem(active.table as any, item.id, label);
+  };
 
   const tools: ToolDef[] = [
     {
@@ -1725,7 +1741,7 @@ export function ManagePage() {
               <div className="flex-1 min-w-0">{active.row(item, state)}</div>
               <div className="flex shrink-0 gap-1.5">
                 <EditBtn onClick={() => startEdit(item)} />
-                <DeleteBtn onClick={() => trashItem(active.table as any, item.id, item.name ?? item.title ?? item.person ?? item.label ?? active.title)} />
+                <DeleteBtn onClick={() => handleDelete(item)} />
               </div>
             </div>
           ))}
@@ -1801,6 +1817,17 @@ export function ManagePage() {
         }}
         title="پاک‌سازی همهٔ داده‌ها"
         desc="همهٔ تراکنش‌ها، بدهی‌ها، قرارها، بودجه‌ها، اهداف و بقیهٔ داده‌ها حذف می‌شوند و موجودی حساب‌ها صفر می‌شود. دسته‌ها و حساب‌ها باقی می‌مانند. این کار قابل‌بازگشت نیست — مطمئنید؟"
+      />
+
+      <Confirm
+        open={!!pendingAccountDelete}
+        onClose={() => setPendingAccountDelete(null)}
+        onYes={() => {
+          if (pendingAccountDelete) trashItem("accounts", pendingAccountDelete.id, pendingAccountDelete.name);
+          setPendingAccountDelete(null);
+        }}
+        title="حذف حسابِ دارای تراکنش"
+        desc={`حساب «${pendingAccountDelete?.name}» به ${faNum(pendingAccountDelete?.linked ?? 0)} تراکنش/انتقال متصل است. با حذف آن، مبلغ این تراکنش‌ها دیگر در «موجودی کل» حساب نمی‌شود (خود تراکنش‌ها حذف نمی‌شوند و قابل بازگشت هم هست). ادامه می‌دهید؟`}
       />
     </div>
   );
@@ -2058,7 +2085,8 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                 if (!transferIn.trim()) return toast("warn", "کدی وارد نشده است.");
                 const d = decodeState(transferIn);
                 if (!d) return toast("err", "کد معتبر نیست — دوباره از ابتدا کپی کنید.");
-                mutate((s) => { Object.assign(s, d, { prefs: s.prefs }); }, "انتقال داده از مرورگر دیگر");
+                /* مهاجرت نسخه‌های قدیمی تا جدول‌های جدید خالی نمانند */
+                mutate((s) => { Object.assign(s, migrateLoadedState(d), { prefs: s.prefs }); }, "انتقال داده از مرورگر دیگر");
                 setTransferIn(""); setTransferOut("");
                 toast("ok", "اطلاعات با موفقیت منتقل شد.");
               }}>وارد کردن اطلاعات</button>
@@ -2117,8 +2145,9 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                   try {
                     const data = JSON.parse(String(r.result));
                     if (!data.transactions || !data.accounts) throw new Error("bad");
-                    mutate((d) => Object.assign(d, data), "بازیابی از پشتیبان");
-                    toast("ok", "دادهٔ پشتیبان بازیابی شد.");
+                    /* prefs فعلی (تم، پین، اتصال ابری) حفظ شود + مهاجرت نسخه‌های قدیمی */
+                    mutate((d) => Object.assign(d, migrateLoadedState(data), { prefs: d.prefs }), "بازیابی از پشتیبان");
+                    toast("ok", "دادهٔ پشتیبان بازیابی شد — تنظیمات و اتصال ابری این دستگاه حفظ شد.");
                   } catch { toast("err", "فایل پشتیبان معتبر نیست."); }
                 };
                 r.readAsText(f);

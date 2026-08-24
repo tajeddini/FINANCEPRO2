@@ -1,5 +1,5 @@
 /* ---------- ماندگاری بین مرورگرها: کد انتقال + سینک واقعی Supabase ---------- */
-import type { AppState, Prefs } from "./data";
+import { migrateLoadedState, type AppState, type Prefs } from "./data";
 
 /* ===== کد انتقال (آفلاین، بین مرورگرها) ===== */
 export const encodeState = (s: AppState): string => {
@@ -37,7 +37,7 @@ export function mergePulledState(d: AppState, pulled: AppState): number {
   const localPrefs = d.prefs; /* prefs محلی (تم، پین و…) هرگز بازنویسی نشود */
   Object.assign(d, pulled, { prefs: localPrefs });
   /* نسخه‌های قدیمیِ ابر ممکن است جدول‌های جدید را نداشته باشند */
-  if (!Array.isArray(d.notes)) d.notes = [];
+  migrateLoadedState(d);
   if (keep.length) d.transactions = [...keep, ...d.transactions];
   return keep.length;
 }

@@ -1193,8 +1193,9 @@ export function DebtsPage() {
   const { state, mutate, trashItem } = useStore();
   const toast = useToast();
   const [tab, setTab] = useState<"debt" | "credit" | "inst">("debt");
-  const [payFor, setPayFor] = useState<{ id: string; person: string; remaining: number } | null>(null);
+  const [payFor, setPayFor] = useState<{ id: string; person: string; remaining: number; kind: "debt" | "credit" } | null>(null);
   const [payAmt, setPayAmt] = useState("");
+  const [payAcc, setPayAcc] = useState("");
   const [loan, setLoan] = useState({ p: "10000000", r: "23", n: "12" });
   const [qr, setQr] = useState<string | null>(null);
   const [editDebt, setEditDebt] = useState<{ id: string; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string } | null>(null);
@@ -1243,7 +1244,7 @@ export function DebtsPage() {
                         {faMoney(remaining)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>از {faMoney(d.amount)}</span>
                       </p>
                       <button className="btn btn-mint btn-sm mt-1.5" disabled={remaining <= 0}
-                        onClick={() => { setPayFor({ id: d.id, person: d.person, remaining }); setPayAmt(""); }}>
+                        onClick={() => { setPayFor({ id: d.id, person: d.person, remaining, kind: d.kind }); setPayAmt(""); setPayAcc(state.accounts[0]?.id ?? ""); }}>
                         {tab === "debt" ? "پرداخت" : "دریافت"}
                       </button>
                     </div>
@@ -1324,17 +1325,37 @@ export function DebtsPage() {
       )}
 
       <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`${tab === "debt" ? "پرداخت به" : "دریافت از"} ${payFor?.person ?? ""}`}>
-        <Field label="مبلغ (تومان) — باقی‌مانده: "><AmountInput value={payAmt} onChange={setPayAmt} /></Field>
+        <Field label={`مبلغ (تومان) — باقی‌مانده: ${faMoney(payFor?.remaining ?? 0)}`}>
+          <AmountInput value={payAmt} onChange={setPayAmt} />
+        </Field>
+        {state.accounts.length > 0 && (
+          <Field label={payFor?.kind === "debt" ? "پرداخت از حساب" : "دریافت به حساب"}>
+            <TSelect value={payAcc} onChange={(e) => setPayAcc(e.target.value)}>
+              {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </TSelect>
+          </Field>
+        )}
         <div className="flex justify-end gap-2 mt-5">
           <button className="btn btn-ghost" onClick={() => setPayFor(null)}>انصراف</button>
           <button className="btn btn-mint" onClick={() => {
             const v = Math.min(Number(payAmt) || 0, payFor?.remaining ?? 0);
             if (v <= 0) return toast("warn", "مبلغ معتبر نیست.");
+            const isDebt = payFor?.kind === "debt";
             mutate((d) => {
               const x = d.debts.find((y) => y.id === payFor!.id);
               if (x) x.paid = Math.min(x.amount, x.paid + v);
-            }, `پرداخت ${faMoney(v)} به ${payFor?.person}`);
-            toast("ok", "ثبت شد.");
+              /* ثبت تراکنش تا تسویه روی ماندهٔ حساب هم اثر بگذارد */
+              const cat = d.categories.find((c) => c.type === (isDebt ? "expense" : "income"));
+              d.transactions.unshift({
+                id: Math.random().toString(36).slice(2, 10), date: todayISO(),
+                type: isDebt ? "expense" : "income", amount: v,
+                title: isDebt ? `پرداخت بدهی به ${payFor?.person}` : `دریافت طلب از ${payFor?.person}`,
+                note: "تسویهٔ بدهی/طلب",
+                categoryId: cat?.id ?? "", accountId: payAcc || d.accounts[0]?.id || "",
+                payMethod: "کارت", createdAt: Date.now(), source: "app",
+              });
+            }, isDebt ? `پرداخت ${faMoney(v)} به ${payFor?.person}` : `دریافت ${faMoney(v)} از ${payFor?.person}`);
+            toast("ok", "ثبت شد و تراکنش آن در حساب نشست.");
             setPayFor(null); setPayAmt("");
           }}>ثبت</button>
         </div>
