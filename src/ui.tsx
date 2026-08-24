@@ -285,10 +285,10 @@ function appendSmart(base: string, add: string): string {
 
 /* ================= تایپ صوتی (fa-IR) — پیشرفته =================
    ۱) متن قبلی پاک نمی‌شود؛ گفته‌های جدید به انتهای متن موجود اضافه می‌شوند.
-   ۲) تحویل «افزایشی بر اساس resultIndex»: هر جملهٔ نهایی دقیقاً یک‌بار و بر اساس
-      ایندکسش تحویل می‌شود؛ بازخوانیِ از صفرِ آرایهٔ نتایج حذف شده — این باگ «برفی»
-      (تکرار روزافزون کلمه‌ها) در PWA/اندروید را که موتور نتیجهٔ قبلی را دوباره می‌فرستد،
-      ریشه‌ای حل می‌کند.
+   ۲) بازسازی «idempotent» از کل آرایهٔ نتایج: در هر رویداد، متن نهاییِ نشست از «صفر»
+      و از کل e.results ساخته می‌شود — هیچ تجمع دستی در کلوژر وجود ندارد. این‌طوری اگر
+      موتور (مخصوصاً Chrome اندروید/PWA) نشست را ری‌استارت کند یا رویدادی تکرار شود،
+      خروجی همیشه یکتاست و کلمه‌ای تکرار نمی‌شود (باگ «برفی» ریشه‌ای حل شده).
    ۳) «توکن نشست» (sessionId): هر نشست شمارهٔ یکتا می‌گیرد و نشست‌های قدیمی/هم‌پوشان
       باطل می‌شوند — هیچ‌وقت دو نمونهٔ تشخیص همزمان متن تحویل نمی‌دهند.
    ۴) گوش دادن پیوسته است؛ بعد از مکث، نشست جدید (با نمونهٔ تازه) خودکار شروع می‌شود.
@@ -334,9 +334,9 @@ export function MicButton({
     if (msg) toast(kind, msg);
   };
 
-  /* یک نشست تشخیصِ تازه — همیشه نمونهٔ جدید + تحویل افزایشی بر اساس resultIndex.
-     هر نتیجهٔ نهایی (isFinal) دقیقاً «یک‌بار» و بر اساس ایندکسش تحویل می‌شود؛ بازخوانیِ
-     از صفرِ آرایهٔ نتایج حذف شده تا تکرارِ موتور در PWA/اندروید دیگر اثری نداشته باشد. */
+  /* یک نشست تشخیصِ تازه — همیشه نمونهٔ جدید + بازسازی idempotent از کل e.results.
+     متن نهایی در هر رویداد از «صفر» و از کل آرایهٔ نتایج ساخته می‌شود (نه تجمع در کلوژر)،
+     تا ری‌استارت داخلی موتور یا تکرار رویداد در PWA/اندروید هرگز باعث تکرار کلمه نشود. */
   const beginSession = () => {
     /* نمونهٔ قبلی (اگر هست) را کاملاً باطل کن — هیچ‌وقت دو نمونهٔ همزمان */
     try { recRef.current?.abort(); } catch { /* ignore */ }
@@ -349,34 +349,32 @@ export function MicButton({
     rec.continuous = true;
     rec.maxAlternatives = 1;
 
-    let sessionFinals = ""; /* جمله‌های نهاییِ تحویل‌شدهٔ همین نشست (به ترتیب ایندکس) */
-    let committedUpTo = -1; /* آخرین ایندکسِ تحویل‌شده — تکرار همان ایندکس نادیده گرفته می‌شود */
+    /* پیشوند جلسه = محتوای فیلد در لحظهٔ شروع این نشست (ثابت در طول نشست) */
+    const sessionPrefix = fieldRef.current;
+    let lastEmitted = sessionPrefix;
 
     rec.onresult = (e: any) => {
       if (sessionIdRef.current !== myId) return; /* نشست قدیمی — باطل */
-      /* فقط نتایجِ جدید از resultIndex به بعد؛ هر ایندکسِ نهایی حداکثر یک‌بار */
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal && i > committedUpTo) {
-          const txt = (r[0]?.transcript ?? "").trim();
-          if (txt) sessionFinals += (sessionFinals ? " " : "") + txt;
-          committedUpTo = i;
-        }
-      }
-      if (sessionIdRef.current !== myId) return;
-      /* پیش‌نمایش زنده: آخرین نتیجهٔ غیرنهایی */
+      /* بازسازی کامل و idempotent متن نهایی از «کل» آرایهٔ نتایجِ نشست —
+         بدون هیچ تجمع دستی در کلوژر. اگر موتور (مخصوصاً Chrome اندروید/PWA) نشست را
+         داخلی ری‌استارت کند، results از ایندکس ۰ شروع شود، یا رویدادی تکرار شود،
+         بازخوانی از e.results همیشه «همان متن درستِ یکتا» را می‌دهد و کلمه‌ای تکرار نمی‌شود. */
+      let finals = "";
       let interim = "";
-      if (e.results.length > 0) {
-        const last = e.results[e.results.length - 1];
-        if (!last.isFinal) interim = (last[0]?.transcript ?? "").trim();
+      for (let i = 0; i < e.results.length; i++) {
+        const r = e.results[i];
+        const txt = (r[0]?.transcript ?? "").trim();
+        if (!txt) continue;
+        if (r.isFinal) finals += (finals ? " " : "") + txt;
+        else interim = txt; /* فقط آخرین پیش‌نویسِ غیرنهایی */
       }
-      setHeard((sessionFinals + (interim ? " " + interim : "")).trim());
-      if (sessionFinals) {
-        const merged = appendSmart(fieldRef.current, sessionFinals);
-        if (merged !== fieldRef.current.trim()) {
-          fieldRef.current = merged;
-          onText(merged);
-        }
+      setHeard((finals + (interim ? " " + interim : "")).trim());
+      if (!finals) return;
+      const merged = appendSmart(sessionPrefix, finals);
+      if (merged !== lastEmitted) {
+        lastEmitted = merged;
+        fieldRef.current = merged;
+        onText(merged);
       }
     };
 

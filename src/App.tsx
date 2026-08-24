@@ -383,7 +383,9 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinErr, setPinErr] = useState(false);
-  const remindedRef = useRef(false);
+  /* شناسهٔ قرارهایی که «یک‌ساعت‌قبل» یادآوری شده‌اند — هر قرار مستقل یادآوری می‌شود
+     (نه یک boolean سراسری که بعد از اولین مورد، بقیه را برای همیشه خاموش می‌کرد) */
+  const remindedIdsRef = useRef<Set<string>>(new Set());
 
   /* ---------- نصب PWA ---------- */
   const [installEvt, setInstallEvt] = useState<Event | null>(null);
@@ -498,18 +500,19 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     if (state.prefs.pinEnabled && state.prefs.pin) setLocked(true);
   }, []);
 
-  /* یادآوری قرارها — اعلان یک‌ساعت‌قبل */
+  /* یادآوری قرارها — اعلان یک‌ساعت‌قبل.
+     هر قرار با شناسهٔ خودش در Set ثبت می‌شود تا «هر قرار جدا و مستقل» یادآوری شود؛
+     اگر در یک روز چند قرار نزدیک‌به‌هم باشد، برای همه‌شان (نه فقط اولی) توست می‌آید. */
   useEffect(() => {
-    if (remindedRef.current) return;
     const today = localISODate(now);
     const soon = state.appointments.find((a) => {
-      if (a.date !== today || a.done) return false;
+      if (a.date !== today || a.done || remindedIdsRef.current.has(a.id)) return false;
       const [h, m] = a.time.split(":").map(Number);
       const mins = h * 60 + m - (now.getHours() * 60 + now.getMinutes());
       return mins >= 0 && mins <= 60;
     });
     if (soon) {
-      remindedRef.current = true;
+      remindedIdsRef.current.add(soon.id);
       toast("warn", `یادآوری: «${soon.title}» ساعت ${faNum(soon.time)} — تا یک ساعت دیگر`);
     }
   }, [state.appointments, now, toast]);
