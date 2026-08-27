@@ -1,14 +1,32 @@
 /* ---------- پارسر پیام‌های بانکی فارسی ----------
    همهٔ پردازش روی دستگاه خود کاربر انجام می‌شود — پیام هیچ‌جا ارسال نمی‌شود.
-   فرمت‌های پشتیبانی‌شده: بانک ملی (انتقال:4,509,000- / حساب:83008 / 0531-20:40)،
-   بانک رسالت (ارجاع نقطه‌دار / -10,314,000 / 06/01_15:08) و فرمت‌های رایج دیگر. */
-import { toEnDigits, jalaliToISO, jalaliMonthLen, jalaliToday } from "./utils";
+
+   فرمت‌های پشتیبانی‌شده (نمونه‌های واقعی):
+   ── بانک ملی (بدون واحد، علامت منفیِ انتهای مبلغ = برداشت، تاریخ MMDD):
+        بانك ملي ايران
+        انتقال:4,509,000-
+        حساب:83008
+        مانده:220,654,858
+        0531-20:40
+   ── بانک‌های با واحد ریال/تومان و تاریخ کامل شمسی:
+        خرید از هایپر استار
+        مبلغ 1,234,567 ریال  کارت *4321
+        1403/05/12 14:30  مانده: 22,000,000 ریال
+   ── بانک رسالت (شماره ارجاع نقطه‌دار، مبلغ با علامت و بدون کلیدواژه/واحد، تاریخ MM/DD_HH:MM):
+        10.10070145.1
+        -10,314,000
+        06/01_15:08
+        مانده: 2,876,564,356
+*/
+import { toEnDigits, jalaliToISO, jalaliToday, jalaliMonthLen } from "./utils";
 
 export interface SmsParse {
   type: "income" | "expense";
   amountToman: number;
   rawAmount: number;
   unit: "rial" | "toman" | "unknown";
+  /** واحد در پیام نبود و «ریال» (عرف بانک‌های ایران) فرض شد */
+  unitInferred: boolean;
   dateISO?: string;
   jalali?: string;
   time?: string;
@@ -16,73 +34,66 @@ export interface SmsParse {
   accountNo?: string;
   merchant?: string;
   balanceToman?: number;
+  /** شمارهٔ ارجاع تراکنش (مثل 10.10070145.1 در فرمت رسالت) */
   reference?: string;
   confidence: "high" | "medium" | "low";
-  /** یادداشت‌های تحلیلی — جاهایی که پارسر حدس زده و کاربر باید چک کند */
+  /** یادداشت‌های تحلیلی برای نمایش (مثلاً حدس سال یا واحد) */
   notes: string[];
 }
 
-/** نرمال‌سازی: ارقام فارسی/عربی ← لاتین، کاف و یای عربی ← فارسی، جداکننده‌ها */
-const clean = (s: string) =>
+/** نرمال‌سازی متن: ارقام فارسی/عربی ← لاتین، کاف و یای عربی ← فارسی، جداکننده‌ها */
+const normalize = (s: string) =>
   toEnDigits(s)
-    .replace(/ك/g, "ک")
-    .replace(/ي/g, "ی")
-    .replace(/\u200c/g, " ")
+    .replace(/[ك]/g, "ک")
+    .replace(/[ي]/g, "ی")
     .replace(/[٬،]/g, ",")
-    .replace(/[٫]/g, ".");
+    .replace(/[٫]/g, ".")
+    .replace(/[\u200c\u200f\u200e]/g, " ");
 
-/** تبدیل «مبلغ + واحد» به تومان */
-function toToman(value: number, unit: "rial" | "toman" | "unknown"): number {
-  if (unit === "rial") return Math.round(value / 10);
-  return Math.round(value);
-}
-
-const unitAt = (around: string): "rial" | "toman" | "unknown" => {
-  if (/ریال/.test(around)) return "rial";
-  if (/تومان|تومن|توم\b/.test(around)) return "toman";
-  return "unknown";
-};
+const toToman = (value: number, unit: "rial" | "toman" | "unknown"): number =>
+  unit === "rial" ? Math.round(value / 10) : Math.round(value);
 
 export function parseBankSMS(raw: string): SmsParse {
+  const normalized = normalize(raw);
   const notes: string[] = [];
-  const normalized = clean(raw);
 
-  /* ---------- شمارهٔ ارجاع (فرمت رسالت: 10.10070145.1) ----------
-     اول از همه جدا می‌شود تا با مبلغ/تاریخ اشتباه گرفته نشود */
-  let reference: string | undefined;
-  let text = normalized;
-  const refM = normalized.match(/^\s*(\d{1,4}(?:\.\d{4,}){1,3})\s*$/m);
-  if (refM) {
-    reference = refM[1];
-    text = normalized.replace(refM[0], " ");
-  }
+  /* ================= شمارهٔ ارجاع (فرمت رسالت: 10.10070145.1) =================
+     قبل از هر چیز استخراج و از متنِ کاری حذف می‌شود تا با مبلغ یا تاریخ اشتباه گرفته نشود. */
+  const refM = normalized.match(/\b([0-9]{1,6}\.[0-9]{4,}\.[0-9]{1,4})\b/);
+  const reference = refM ? refM[1] : undefined;
+  const text = reference ? normalized.replace(reference, " ") : normalized;
 
-  /* ---------- مبلغ ---------- */
+  /* ================= مبلغ ================= */
   let rawAmount = 0;
   let unit: SmsParse["unit"] = "unknown";
-  let explicitSign: "+" | "-" | undefined;
+  let explicitSign: "+" | "-" | "" = "";
   let amountFound = false;
-  let m: RegExpMatchArray | null;
 
-  /* ۱) «مبلغ: X [واحد]» */
-  m = text.match(/مبلغ\s*[:\-–]?\s*([+-]?)\s*([0-9][0-9,.]*)\s*(میلیون\s*)?(هزار\s*)?(ریال|تومان|تومن|توم)?/);
+  const unitAt = (s: string): "rial" | "toman" | "unknown" =>
+    /ریال|ر‌یال/.test(s) ? "rial" : /تومان|تومن/.test(s) ? "toman" : "unknown";
+
+  /* ۱) «مبلغ ۱٬۲۳۴ ریال» — صریح‌ترین حالت */
+  let m = text.match(
+    /مبلغ\s*[:\-–]?\s*([+-]?)\s*([0-9][0-9,.]*)\s*([+-]?)\s*(میلیون\s*)?(هزار\s*)?(ریال|تومان|تومن)?/
+  );
   if (m && parseFloat(m[2]) > 0) {
     rawAmount = parseFloat(m[2].replace(/,/g, ""));
-    if (m[1]) explicitSign = m[1] as "+" | "-";
-    rawAmount *= m[3] ? 1_000_000 : m[4] ? 1_000 : 1;
-    unit = m[5] ? unitAt(m[5]) : unitAt(text);
+    explicitSign = (m[1] || m[3]) as "+" | "-" | "";
+    rawAmount *= m[4] ? 1_000_000 : m[5] ? 1_000 : 1;
+    unit = m[6] ? unitAt(m[6]) : unitAt(text);
     amountFound = true;
   }
 
-  /* ۲) «کلیدواژه: X-» (فرمت ملی: انتقال:4,509,000-) — علامت چسبیدهٔ بعد از عدد */
+  /* ۲) «انتقال:4,509,000-» / «برداشت: 500,000-» / «واریز: +1,000,000» — فرمت بانک ملی */
   if (!amountFound) {
     m = text.match(
-      /(?:انتقال|واریز|برداشت|خرید|پرداخت|دریافت|کارمزد|برگشت|تسویه|شارژ)\s*[:\-–]?\s*([0-9][0-9,.]*)\s*([+-])/
+      /(انتقال|برداشت|واریز|خرید|پرداخت|کسر|دریافت|بستانکار|بدهکار)\s*[:\-–]?\s*([+-]?)\s*([0-9][0-9,.]*)\s*([+-]?)\s*(میلیون\s*)?(هزار\s*)?(ریال|تومان|تومن)?/
     );
-    if (m && parseFloat(m[1]) > 0) {
-      rawAmount = parseFloat(m[1].replace(/,/g, ""));
-      explicitSign = m[2] as "+" | "-";
-      unit = unitAt(text);
+    if (m && parseFloat(m[3]) > 0) {
+      rawAmount = parseFloat(m[3].replace(/,/g, ""));
+      explicitSign = (m[2] || m[4]) as "+" | "-" | "";
+      rawAmount *= m[5] ? 1_000_000 : m[6] ? 1_000 : 1;
+      unit = m[7] ? unitAt(m[7]) : unitAt(text);
       amountFound = true;
     }
   }
@@ -110,138 +121,143 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
-  /* ---------- تاریخ شمسی ---------- */
+  /* واحد نامشخص → عرف بانک‌های ایران «ریال» است */
+  const unitInferred = amountFound && unit === "unknown";
+  if (unitInferred) {
+    unit = "rial";
+    notes.push("واحد پول در پیام نبود — «ریال» (عرف پیامک‌های بانکی) در نظر گرفته شد؛ اگر تومان است مبلغ را دستی اصلاح کن.");
+  }
+
+  /* ================= تاریخ و ساعت ================= */
   let dateISO: string | undefined;
   let jalali: string | undefined;
-  const t = jalaliToday();
 
-  /* تاریخ کامل: 1403/05/12 */
-  const dm = text.match(/\b(1[34][0-9]{2})[\/\-.]([0-9]{1,2})[\/\-.]([0-9]{1,2})\b/);
+  /* الف) تاریخ کامل شمسی: 1403/05/12 */
+  const dm = text.match(/(1[34][0-9]{2})[\/\-.]([0-9]{1,2})[\/\-.]([0-9]{1,2})/);
   if (dm) {
     const jy = +dm[1], jm = +dm[2], jd = +dm[3];
-    if (jm >= 1 && jm <= 12 && jd >= 1 && jd <= jalaliMonthLen(jy, jm)) {
+    if (jm >= 1 && jm <= 12 && jd >= 1 && jd <= 31) {
       jalali = `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`;
       try { dateISO = jalaliToISO(jy, jm, jd); } catch { /* نامعتبر */ }
     }
   }
 
-  /* تاریخ کوتاه بدون سال (ملی: 0531-20:40 | رسالت: 06/01_15:08) — حدس سال از امروز */
-  if (!dateISO) {
-    const sm = text.match(/\b([01][0-9])([0-3][0-9])\s*[-_\/]\s*([012]?[0-9]):([0-5][0-9])\b/);
-    if (sm) {
-      const jm = +sm[1], jd = +sm[2];
-      if (jm >= 1 && jm <= 12) {
-        /* اگر ماه از ماه جاری جلوتر است، حتماً سال قبل است */
-        let jy = jm > t.jm ? t.jy - 1 : t.jy;
-        if (jd >= 1 && jd <= jalaliMonthLen(jy, jm)) {
-          jalali = `${jy}/${String(jm).padStart(2, "0")}/${String(jd).padStart(2, "0")}`;
-          try { dateISO = jalaliToISO(jy, jm, jd); } catch { /* نامعتبر */ }
-          if (jy !== t.jy) notes.push(`تاریخ بدون سال بود — سال ${jy} حدس زده شد.`);
-        }
-      }
+  /* ب) تاریخ کوتاه بدون سال + ساعت — دو فرمت رایج:
+        ملی:    0531-20:40   (MMDD-HH:MM)
+        رسالت:  06/01_15:08  (MM/DD_HH:MM) */
+  let time: string | undefined;
+  const mmdd = text.match(/\b(0[1-9]|1[0-2])\s*[/\-.]?\s*(0[1-9]|[12][0-9]|3[01])\s*[_\-–]\s*([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
+  if (mmdd) {
+    const jm = +mmdd[1], jd = +mmdd[2];
+    time = `${mmdd[3].padStart(2, "0")}:${mmdd[4]}`;
+    const today = jalaliToday();
+    let jy = today.jy;
+    if (jm > today.jm) {
+      jy -= 1; /* پیام نمی‌تواند از ماه آینده باشد؛ پس سال قبل است */
+      notes.push("سالِ تاریخ از امروز حدس زده شد.");
     }
+    if (jd <= jalaliMonthLen(jy, jm)) {
+      jalali = `${jy}/${mmdd[1]}/${mmdd[2]}`;
+      try { dateISO = jalaliToISO(jy, jm, jd); } catch { /* نامعتبر */ }
+    }
+  } else {
+    /* ج) فقط ساعت: 20:40 */
+    const tm = text.match(/\b([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
+    if (tm) time = `${tm[1].padStart(2, "0")}:${tm[2]}`;
   }
 
-  /* ---------- ساعت ---------- */
-  const tm = text.match(/\b([01]?[0-9]|2[0-3]):([0-5][0-9])(?::([0-5][0-9]))?\b/);
-  const time = tm ? `${tm[1].padStart(2, "0")}:${tm[2]}` : undefined;
+  /* ================= حساب و کارت ================= */
+  const acctM = text.match(/حساب\s*[:\-–]?\s*([0-9]{3,16})/);
+  const accountNo = acctM ? acctM[1] : undefined;
 
-  /* ---------- شمارهٔ حساب (فرمت ملی: حساب:83008) ---------- */
-  const accM = text.match(/حساب\s*[:\-–]?\s*#?\s*([0-9]{4,20})/);
-  const accountNo = accM ? accM[1] : undefined;
-
-  /* ---------- چهار رقم آخر کارت ---------- */
   const cardM =
     text.match(/\b[0-9]{4}[-\s]?[0-9xX*]{4}[-\s]?[0-9xX*]{4}[-\s]?([0-9]{4})\b/) ||
-    text.match(/(?:کارت|شماره کارت)[^0-9]{0,14}?([0-9]{4})(?![0-9])/) ||
+    text.match(/(?:کارت|شماره)[^0-9]{0,14}?([0-9]{4})(?![0-9])/) ||
     text.match(/\*{2,}\s*([0-9]{4})(?![0-9])/) ||
     text.match(/انتهای\s*([0-9]{4})/);
   const cardTail = cardM ? cardM[1] : undefined;
 
-  /* ---------- طرف مقابل ---------- */
+  /* ================= طرف مقابل ================= */
   const merM = text.match(
     /(?:خرید(?:\s+اینترنتی)?\s+از|پرداخت\s+به|برداشت\s+از|واریز\s+از|انتقال\s+به|دریافت\s+از)\s*[:\-–]?\s*([^\n]{2,40}?)(?=\s+(?:مبلغ|کارت|شماره|به|در|زمان|تاریخ|مانده|با|برای)|[,،]|\s*$)/
   );
   const merchant = merM ? merM[1].trim().replace(/[.،,]+$/, "") : undefined;
 
-  /* ---------- مانده ---------- */
+  /* ================= مانده ================= */
   let balanceToman: number | undefined;
-  const bm = text.match(/مانده[^0-9]{0,12}([0-9][0-9,.]*)\s*(ریال|تومان|تومن)?/);
+  const bm = text.match(/مانده\s*[:\-–]?\s*([0-9][0-9,.]*)\s*(ریال|تومان|تومن)?/);
   if (bm) {
     const u = bm[2] ? unitAt(bm[2]) : unit;
     balanceToman = toToman(parseFloat(bm[1].replace(/,/g, "")) || 0, u);
   }
 
-  /* ---------- نوع تراکنش ----------
-     ۱) علامت صریحِ مبلغ، ۲) کلیدواژه‌ها، ۳) پیش‌فرض: هزینه */
+  /* ================= نوع تراکنش =================
+     اولویت: علامت صریح (+/−) > کلیدواژه‌ها > پیش‌فرض هزینه */
   let type: "income" | "expense";
-  if (explicitSign) type = explicitSign === "+" ? "income" : "expense";
-  else if (/(واریز|دریافت|افزایش موجودی|برگشت وجه|عایدی)/.test(text)) type = "income";
-  else type = "expense"; /* خرید، برداشت، پرداخت، انتقال */
+  if (explicitSign === "-") type = "expense";
+  else if (explicitSign === "+") type = "income";
+  else if (/(واریز|دریافت|افزایش موجودی|برگشت وجه|بستانکار)/.test(text)) type = "income";
+  else type = "expense"; /* خرید، برداشت، پرداخت، انتقال: …- و پیش‌فرض */
 
-  /* ---------- یادداشت‌های تحلیلی ---------- */
-  if (amountFound && unit === "unknown") {
-    notes.push("واحد پول در پیام نبود — «ریال» فرض و به تومان تبدیل شد؛ مبلغ را چک کن.");
-  }
-
-  /* ---------- اطمینان ---------- */
-  const confidence: SmsParse["confidence"] =
-    rawAmount > 0 && unit !== "unknown" ? "high" : rawAmount > 0 ? "medium" : "low";
+  const confidence: SmsParse["confidence"] = !amountFound
+    ? "low"
+    : unitInferred || (!dateISO && !time) ? "medium" : "high";
 
   return {
-    type,
-    amountToman: toToman(rawAmount, unit),
-    rawAmount: Math.round(rawAmount),
-    unit,
-    dateISO,
-    jalali,
-    time,
-    cardTail,
-    accountNo,
-    merchant,
-    balanceToman,
-    reference,
-    confidence,
-    notes,
+    type, amountToman: toToman(rawAmount, unit), rawAmount: Math.round(rawAmount),
+    unit, unitInferred, dateISO, jalali, time, cardTail, accountNo,
+    merchant, balanceToman, reference, confidence, notes,
   };
 }
 
-/** پیدا کردن حساب از روی چهار رقم آخر کارت یا شمارهٔ حساب — اگر در نام حساب باشد */
+/* ---------- تطبیق حساب ---------- */
+
+/** از روی چهار رقم آخر کارت یا شمارهٔ حسابِ پیام */
 export function matchAccountByCard<T extends { name: string }>(
   accounts: T[],
   cardTail?: string,
   accountNo?: string
 ): T | undefined {
-  if (cardTail) {
-    const byCard = accounts.find((a) => {
+  const hit = (tail: string) =>
+    accounts.find((a) => {
       const digits = a.name.replace(/[^0-9]/g, "");
-      return digits.endsWith(cardTail) || a.name.includes(`*${cardTail}`);
+      return digits.length >= 4 && (digits.endsWith(tail) || digits.includes(tail));
     });
-    if (byCard) return byCard;
-  }
-  if (accountNo) {
-    const byAcc = accounts.find((a) => a.name.replace(/[^0-9]/g, "").includes(accountNo));
-    if (byAcc) return byAcc;
-  }
-  return undefined;
+  return (cardTail && hit(cardTail)) || (accountNo && accountNo.length >= 5 && hit(accountNo)) || undefined;
 }
 
-/** پیدا کردن حساب از نام بانکِ داخل پیام (مثلاً «بانك ملي» ← حسابی که «ملی» دارد) */
+/** از روی نام بانکِ داخل پیام (مثلاً «ملی» در نام حساب «بانک ملی») */
+const GENERIC_WORDS = ["بانک", "حساب", "کارت", "اصلی", "جاری", "پس‌انداز", "ریال", "تومان", "ایران"];
 export function matchAccountByBankName<T extends { name: string }>(
   accounts: T[],
   smsText: string
 ): T | undefined {
-  const text = clean(smsText);
-  const BANK_WORDS = [
-    "ملی", "ملت", "صادرات", "سپه", "کشاورزی", "مسکن", "توسعه تعاون", "پست بانک",
-    "رسالت", "مهر ایران", "قرض الحسنه", "سامان", "پارسیان", "پاسارگاد", "اقتصاد نوین",
-    "کارآفرین", "سرمایه", "سینا", "شهر", "دی", "ایران زمین", "خاورمیانه", "گردشگری",
-    "آینده", "انصار", "حکمت ایرانیان", "ایرانیان", "تجارت", "رفاه", "قرض‌الحسنه",
-  ];
-  for (const w of BANK_WORDS) {
-    if (!text.includes(w)) continue;
-    const hit = accounts.find((a) => a.name.includes(w));
-    if (hit) return hit;
+  const text = normalize(smsText);
+  for (const a of accounts) {
+    const tokens = normalize(a.name)
+      .split(/[\s\-–٬,.0-9]+/)
+      .filter((w) => w.length >= 3 && !GENERIC_WORDS.includes(w));
+    if (tokens.some((w) => text.includes(w))) return a;
   }
   return undefined;
 }
+
+/* ---------- نمونه‌های واقعی برای تست سریع ---------- */
+export const SMS_SAMPLES: { label: string; text: string }[] = [
+  {
+    label: "برداشت — بانک ملی",
+    text: "بانك ملي ايران\nانتقال:4,509,000-\nحساب:83008\nمانده:220,654,858\n0531-20:40",
+  },
+  {
+    label: "خرید — با ریال و کارت",
+    text: "خرید از هایپر استار\nمبلغ 1,234,567 ریال\nکارت *4321\n1403/05/12 14:30\nمانده: 220,000,000 ریال",
+  },
+  {
+    label: "واریز حقوق — بانک ملت",
+    text: "بانک ملت\nواریز: +185,000,000\nحساب: 112233\nمانده: 197,320,000\n0601-08:15",
+  },
+  {
+    label: "برداشت — بانک رسالت",
+    text: "10.10070145.1\n-10,314,000\n06/01_15:08\nمانده: 2,876,564,356",
+  },
+];
