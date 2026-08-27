@@ -1,0 +1,27 @@
+{
+  "name": "فایننس‌پرو — دفترکل دیجیتال شخصی",
+  "short_name": "فایننس‌پرو",
+  "description": "دفترکل دیجیتال شخصی برای کاربران فارسی‌زبان — تقویم شمسی، اعداد فارسی، ربات تلگرام",
+  "dir": "rtl",
+  "lang": "fa",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#081c16",
+  "theme_color": "#081c16",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
