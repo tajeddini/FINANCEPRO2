@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { AppState, Tx } from "./lib/data";
 import {
-  addDaysISO, addJalaliMonths, faNum, inRange, jalaliMonthRange,
+  addDaysISO, addJalaliMonths, faNum, groupInt, inRange, jalaliMonthRange,
   jalaliToday, jalaliMonthKey, weekdayOfISO, isoToJalali, MONTHS_FA,
 } from "./lib/utils";
 import { useInView } from "./lib/utils";
@@ -40,7 +40,7 @@ export function Heatmap({ txs }: { txs: Tx[] }) {
           return (
             <span
               key={i}
-              title={`${c.date} — ${c.amount ? faNum(c.amount.toLocaleString()) : "بدون خرج"}`}
+              title={`${c.date} — ${c.amount ? `${faNum(groupInt(c.amount))} تومان` : "بدون خرج"}`}
               className="w-3.5 h-3.5 rounded-[4px] transition-transform duration-150 hover:scale-125"
               style={{
                 background: lvl === 0 ? "var(--fp-bg3)"
@@ -84,7 +84,11 @@ export function computeHealthScore(s: AppState, monthTxs: Tx[], lastMonthTxs: Tx
   }
 
   const trendPct = lastExpense > 0 ? Math.round(Math.min(1, Math.max(0, 1 - (expense - lastExpense) / lastExpense)) * 100) : 70;
-  const goalPct = s.savings_goals.length ? Math.round(Math.min(1, Math.max(...s.savings_goals.map((g) => g.saved / g.target))) * 100) : 0;
+  /* فقط اهدافی که target>0 دارند را بشمار — وگرنه تقسیم بر صفر → ۱۰۰٪ اشتباه */
+  const validGoals = s.savings_goals.filter((g) => g.target > 0);
+  const goalPct = validGoals.length
+    ? Math.round(Math.min(1, Math.max(0, Math.max(...validGoals.map((g) => g.saved / g.target)))) * 100)
+    : 0;
 
   const score = Math.round(savePct * 0.35 + budgetPct * 0.25 + trendPct * 0.2 + goalPct * 0.2);
   return {

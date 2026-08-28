@@ -84,8 +84,16 @@ export function addDaysISO(iso: string, n: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/** تاریخ ISO از اجزای **محلی** — نه UTC.
+    ⚠️ هرگز از toISOString() برای «امروز» استفاده نشود: ایران UTC+3:30 است و بین
+    ۰۰:۰۰ تا ۰۳:۳۰ بامداد، toISOString روز قبل را برمی‌گرداند. */
+export function localISODate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function todayISO(): string {
-  return addDaysISO(new Date().toISOString().slice(0, 10), 0);
+  return localISODate(new Date());
 }
 
 export function inRange(iso: string, r: { from: string; to: string }): boolean {
@@ -130,13 +138,13 @@ export function relTime(at: number | string): string {
   if (h < 24) return `${faNum(h)} ساعت پیش`;
   const d = Math.floor(h / 24);
   if (d < 31) return `${faNum(d)} روز پیش`;
-  return jalaliShort(new Date(t).toISOString().slice(0, 10));
+  return jalaliShort(localISODate(new Date(t)));
 }
 
 /* ---------- بازه‌های زمانی (۹ فیلتر) ---------- */
 export type PeriodKey =
   | "today" | "yesterday" | "week" | "thisMonth" | "lastMonth"
-  | "last3" | "thisYear" | "lastYear" | "all";
+  | "last3" | "thisYear" | "lastYear" | "all" | "custom";
 
 export const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: "today", label: "امروز" },
@@ -148,6 +156,7 @@ export const PERIODS: { key: PeriodKey; label: string }[] = [
   { key: "thisYear", label: "امسال" },
   { key: "lastYear", label: "سال گذشته" },
   { key: "all", label: "همه" },
+  { key: "custom", label: "بازهٔ دلخواه" },
 ];
 
 export function periodRange(key: PeriodKey): { from: string; to: string } {
@@ -178,9 +187,13 @@ export function periodRange(key: PeriodKey): { from: string; to: string } {
     case "thisYear":
       return { from: jalaliMonthRange(t.jy, 1).from, to: end };
     case "lastYear": {
+      /* کل سال قبل — از ۱ فروردین تا ۲۹/۳۰ اسفند (نه فقط اسفند) */
       const ly = t.jy - 1;
-      return ms(ly, 12);
+      return { from: jalaliMonthRange(ly, 1).from, to: jalaliMonthRange(ly, 12).to };
     }
+    case "custom":
+      /* بازهٔ دلخواه — توسط هوک usePeriod با تاریخ‌های انتخابی کاربر ساخته می‌شود */
+      return { from: end, to: end };
     default:
       return { from: "2000-01-01", to: end };
   }
@@ -266,6 +279,54 @@ export function useInView<T extends HTMLElement>(threshold = 0.12): [React.Mutab
     return () => io.disconnect();
   }, [threshold]);
   return [ref, inView];
+}
+
+/** پخش زنگ یادآور — سه نُت با تکرار */
+export function playChime(times = 3) {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const notes = [880, 1174.7, 1567.98]; // لا، ر، سل
+    for (let r = 0; r < times; r++) {
+      notes.forEach((f, i) => {
+        const t = ctx.currentTime + r * 0.9 + i * 0.16;
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.28, t + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+        o.connect(g).connect(ctx.destination);
+        o.start(t);
+        o.stop(t + 0.32);
+      });
+    }
+    window.setTimeout(() => ctx.close(), times * 900 + 600);
+  } catch { /* بدون صدا */ }
+}
+
+/** اعلان سیستمی — از Service Worker تا حتی وقتی تب در پس‌زمینه است */
+export async function fireNotification(title: string, body: string) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const opts: NotificationOptions = {
+    body,
+    icon: "/icon.svg",
+    badge: "/icon.svg",
+    tag: title,
+    requireInteraction: true,
+  };
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.showNotification(title, { ...opts, vibrate: [220, 120, 220] } as NotificationOptions & { vibrate: number[] });
+      return;
+    }
+  } catch { /* fallback */ }
+  try {
+    new Notification(title, opts);
+  } catch { /* ignore */ }
 }
 
 /** کپی در کلیپ‌بورد با fallback */

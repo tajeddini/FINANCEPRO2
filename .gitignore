@@ -3,3 +3,9 @@ node_modules/
 dist/
 build/
 *.log
+
+# Capacitor — پوشهٔ پروژهٔ اندروید فقط روی کامپیوتر ساخته می‌شود و نباید به ریپازیتوری برود
+/android
+/ios
+*.keystore
+*.jks

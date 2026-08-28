@@ -8,10 +8,32 @@ import {
 export type ID = string;
 
 export interface Account { id: ID; name: string; type: string; initial: number; color: string; balance: number; }
-export interface Category { id: ID; name: string; type: "income" | "expense"; color: string; }
+export interface Category { id: ID; name: string; type: "income" | "expense"; color: string; icon?: string; }
+
+/* آیکون پیش‌فرض هر دسته — بر اساس نام (مهاجرت داده‌های قدیمی هم از همین استفاده می‌کند) */
+export const CATEGORY_ICON_BY_NAME: Record<string, string> = {
+  "خوراک": "utensils", "رفت‌وآمد": "car", "خانه و اجاره": "home", "سلامت": "heart-pulse",
+  "تفریح": "gamepad-2", "پوشاک": "shirt", "آموزش": "graduation-cap", "اشتراک": "tv",
+  "متفرقه": "wallet", "حقوق": "banknote", "پروژه": "briefcase", "هدیه": "gift",
+  /* آیکون‌های جدید (v1.9) */
+  "میوه": "apple", "قهوه": "coffee", "دانه قهوه": "coffee", "کافه": "cup-soda",
+  "نان": "croissant", "شیرینی": "croissant", "پراپ تریدینگ": "candlestick", "ترید": "candlestick",
+  "معامله‌گری": "candlestick", "قبوض": "receipt", "قبض": "receipt", "گوشت": "beef",
+  "پروتئین": "beef", "اینترنت": "wifi", "مرد": "male", "زن": "female",
+  "وام": "landmark", "تسهیلات": "landmark", "قسط": "landmark",
+};
+/* تگ‌های تراکنش — نوع خرج را مشخص می‌کنند و کاربر می‌تواند تگ دلخواه بسازد */
+export interface TagDef { id: ID; label: string; color: string; desc?: string; builtin?: boolean; }
+export const DEFAULT_TAGS: TagDef[] = [
+  { id: "essential", label: "ضروری", color: "#ff7a6b", desc: "خرجی که چاره‌ای جز پرداختش نبود", builtin: true },
+  { id: "fun", label: "تفریحی", color: "#e8b04b", desc: "برای خوش‌گذرانی و تفریح", builtin: true },
+  { id: "later", label: "میشد بعدا هم خرید", color: "#5ec8de", desc: "عجله‌ای نداشت؛ می‌شد عقب انداخت", builtin: true },
+  { id: "cheap", label: "معمولی و قیمتش کم بود خریدم", color: "#57d9a3", desc: "ارزان بود و نیاز معمولی", builtin: true },
+];
+
 export interface Tx {
   id: ID; date: string; type: "income" | "expense"; amount: number; title: string;
-  note?: string; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
+  note?: string; tag?: ID; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
@@ -21,6 +43,7 @@ export interface PayMethod { id: ID; name: string; }
 export interface Recurring { id: ID; title: string; type: "income" | "expense"; amount: number; categoryId: ID; accountId: ID; dayOfMonth: number; lastRun?: string; }
 export interface Goal { id: ID; title: string; target: number; saved: number; deadline?: string; }
 export interface Appointment { id: ID; date: string; time: string; title: string; note?: string; done?: boolean; }
+export interface Note { id: ID; title: string; body: string; date: string; color: string; createdAt: number; cat?: string; pinned?: boolean; }
 export interface Cheque { id: ID; kind: "in" | "out"; bank: string; amount: number; date: string; person: string; status: "pending" | "cashed" | "bounced"; }
 export interface Challenge { id: ID; title: string; target: number; saved: number; perDay: number; }
 export interface Currency { id: ID; name: string; symbol: string; rate: number; qty: number; }
@@ -33,30 +56,35 @@ export interface TrashEntry { key: string; table: string; item: any; until: numb
 export interface Prefs {
   theme: "dark" | "light";
   accent?: string;
+  notifyEnabled?: boolean;
   pin?: string;
   pinEnabled?: boolean;
   botToken?: string;
   syncId?: string;
   syncUrl?: string;
   syncKey?: string;
+  aiApiUrl?: string;
+  aiApiKey?: string;
+  aiModel?: string;
 }
 
 export interface AppState {
   accounts: Account[]; categories: Category[]; transactions: Tx[]; transfers: Transfer[];
+  tags: TagDef[];
   debts: Debt[]; installments: Installment[]; budgets: Budget[]; payment_methods: PayMethod[];
-  recurring: Recurring[]; savings_goals: Goal[]; appointments: Appointment[]; cheques: Cheque[];
+  recurring: Recurring[]; savings_goals: Goal[]; appointments: Appointment[]; notes: Note[]; cheques: Cheque[];
   splits: { id: ID; title: string; total: number; parts: number }[];
   challenges: Challenge[]; currencies: Currency[]; assets: Asset[]; subscriptions: Subscription[];
   activity_logs: ActivityLog[]; telegram_users: TelegramUser[];
   trash: TrashEntry[]; prefs: Prefs; lastSync: number;
+  /** شمارندهٔ نسخه — با هر تغییر بالا می‌رود تا سینک چنددستگاهه «آخرین نوشتن برنده» درست کار کند */
+  rev: number;
 }
 
-/* ---------- دادهٔ اولیه ---------- */
+/* ---------- دادهٔ اولیه — فقط ساختار پایه، بدون تراکنش ---------- */
 function seed(): AppState {
-  const t = todayISO();
-  const d = (n: number) => addDaysISO(t, -n);
   const cat = (name: string, type: "income" | "expense", color: string): Category => ({
-    id: uid(), name, type, color,
+    id: uid(), name, type, color, icon: CATEGORY_ICON_BY_NAME[name] ?? "wallet",
   });
   const cFood = cat("خوراک", "expense", "#e8b04b");
   const cTrans = cat("رفت‌وآمد", "expense", "#5ec8de");
@@ -72,16 +100,93 @@ function seed(): AppState {
   const iGift = cat("هدیه", "income", "#f28fc0");
   const categories = [cFood, cTrans, cHome, cHealth, cFun, cCloth, cEdu, cSub, cMisc, iSalary, iProject, iGift];
 
-  const a1: Account = { id: uid(), name: "بانک ملت", type: "کارت بانکی", initial: 5200000, color: "#57d9a3", balance: 0 };
-  const a2: Account = { id: uid(), name: "بانک سامان", type: "کارت بانکی", initial: 1800000, color: "#5ec8de", balance: 0 };
-  const a3: Account = { id: uid(), name: "صندوق طلا", type: "سرمایه‌گذاری", initial: 2500000, color: "#e8b04b", balance: 0 };
-  const accounts = [a1, a2, a3];
+  const a1: Account = { id: uid(), name: "حساب اصلی", type: "کارت بانکی", initial: 0, color: "#57d9a3", balance: 0 };
 
-  const tx = (n: number, type: "income" | "expense", title: string, amount: number, categoryId: Category, accountId: Account, payMethod = "کارت", source: "app" | "bot" = "app"): Tx => ({
-    id: uid(), date: d(n), type, title, amount, categoryId: categoryId.id, accountId: accountId.id, payMethod, createdAt: Date.now() - n * 86400000, source,
+  const state: AppState = {
+    accounts: [a1],
+    categories,
+    transactions: [],
+    transfers: [],
+    tags: DEFAULT_TAGS.map((t) => ({ ...t })),
+    debts: [],
+    installments: [],
+    budgets: [],
+    payment_methods: [{ id: uid(), name: "کارت" }, { id: uid(), name: "نقد" }, { id: uid(), name: "شبا" }, { id: uid(), name: "ارز دیجیتال" }],
+    recurring: [],
+    savings_goals: [],
+    appointments: [],
+    notes: [],
+    cheques: [],
+    splits: [],
+    challenges: [],
+    currencies: [],
+    assets: [],
+    subscriptions: [],
+    activity_logs: [],
+    telegram_users: [],
+    trash: [],
+    prefs: { theme: "dark" },
+    lastSync: Date.now(),
+    rev: 0,
+  };
+  recomputeBalances(state);
+  return state;
+}
+
+/* ---------- پاک‌سازی همهٔ داده‌ها (ساختار می‌ماند) ---------- */
+export function clearData(d: AppState) {
+  d.transactions = [];
+  d.transfers = [];
+  d.debts = [];
+  d.installments = [];
+  d.budgets = [];
+  d.recurring = [];
+  d.savings_goals = [];
+  d.appointments = [];
+  d.notes = [];
+  d.cheques = [];
+  d.splits = [];
+  d.challenges = [];
+  d.currencies = [];
+  d.assets = [];
+  d.subscriptions = [];
+  d.activity_logs = [];
+  d.trash = [];
+  for (const a of d.accounts) a.initial = 0;
+}
+
+/* ---------- بارگذاری دادهٔ نمونه ---------- */
+export function sampleFill(d: AppState) {
+  const t = todayISO();
+  const dd = (n: number) => addDaysISO(t, -n);
+  const catN = (name: string) => d.categories.find((c) => c.name === name);
+  if (!catN("خوراک")) {
+    const extra: [string, "income" | "expense", string][] = [
+      ["خوراک", "expense", "#e8b04b"], ["رفت‌وآمد", "expense", "#5ec8de"], ["خانه و اجاره", "expense", "#8f7ae8"],
+      ["سلامت", "expense", "#ff7a6b"], ["تفریح", "expense", "#57d9a3"], ["پوشاک", "expense", "#f28fc0"],
+      ["آموزش", "expense", "#7ab8f2"], ["اشتراک", "expense", "#c0e85e"], ["متفرقه", "expense", "#a3b8ac"],
+      ["حقوق", "income", "#57d9a3"], ["پروژه", "income", "#e8b04b"], ["هدیه", "income", "#f28fc0"],
+    ];
+    for (const [n, ty, co] of extra) if (!d.categories.some((c) => c.name === n)) d.categories.push({ id: uid(), name: n, type: ty, color: co, icon: CATEGORY_ICON_BY_NAME[n] ?? "wallet" });
+  }
+  const cFood = catN("خوراک")!; const cTrans = catN("رفت‌وآمد")!; const cHome = catN("خانه و اجاره")!;
+  const cHealth = catN("سلامت")!; const cFun = catN("تفریح")!; const cCloth = catN("پوشاک")!;
+  const cEdu = catN("آموزش")!; const cSub = catN("اشتراک")!; const cMisc = catN("متفرقه")!;
+  const iSalary = catN("حقوق")!; const iProject = catN("پروژه")!; const iGift = catN("هدیه")!;
+
+  /* حساب‌های نمونه */
+  if (!d.accounts.some((a) => /ملت/.test(a.name))) d.accounts.push({ id: uid(), name: "بانک ملت", type: "کارت بانکی", initial: 5200000, color: "#57d9a3", balance: 0 });
+  if (!d.accounts.some((a) => /سامان/.test(a.name))) d.accounts.push({ id: uid(), name: "بانک سامان", type: "کارت بانکی", initial: 1800000, color: "#5ec8de", balance: 0 });
+  if (!d.accounts.some((a) => /طلا/.test(a.name))) d.accounts.push({ id: uid(), name: "صندوق طلا", type: "سرمایه‌گذاری", initial: 2500000, color: "#e8b04b", balance: 0 });
+  const a1 = d.accounts.find((a) => /ملت/.test(a.name)) ?? d.accounts[0];
+  const a2 = d.accounts.find((a) => /سامان/.test(a.name)) ?? d.accounts[0];
+  const a3 = d.accounts.find((a) => /طلا/.test(a.name)) ?? d.accounts[0];
+
+  const tx = (n: number, type: "income" | "expense", note: string, amount: number, c: Category, a: Account, payMethod = "کارت", source: "app" | "bot" = "app"): Tx => ({
+    id: uid(), date: dd(n), type, title: c.name, note, amount, categoryId: c.id, accountId: a.id, payMethod, createdAt: Date.now() - n * 86400000, source,
   });
 
-  const transactions: Tx[] = [
+  const sampleTxs: Tx[] = [
     tx(85, "income", "واریز حقوق", 18500000, iSalary, a1, "شبا"),
     tx(83, "expense", "اجارهٔ خانه", 4500000, cHome, a1, "شبا"),
     tx(80, "expense", "خرید سوپرمارکت", 680000, cFood, a1),
@@ -115,75 +220,62 @@ function seed(): AppState {
     tx(1, "expense", "سوپرمارکت یاس", 265000, cFood, a1, "کارت"),
     tx(0, "expense", "اسنپ — جلسه", 88000, cTrans, a1, "نقد", "bot"),
   ];
+  d.transactions.unshift(...sampleTxs);
 
+  d.transfers.push({ id: uid(), date: dd(12), from: a1.id, to: a3.id, amount: 1000000, note: "پس‌انداز طلا" });
+  d.debts.push(
+    { id: uid(), kind: "debt", person: "رضا محمدی", amount: 1500000, paid: 500000, due: addDaysISO(t, 12), note: "قرض تعمیر ماشین" },
+    { id: uid(), kind: "credit", person: "مریم احمدی", amount: 800000, paid: 0, due: addDaysISO(t, 5), note: "پول بلیت کنسرت" },
+  );
+  d.installments.push({ id: uid(), title: "وام خرید لپ‌تاپ", total: 14500000, months: 10, amountPerMonth: 1450000, start: dd(150), paidCount: 5, accountId: a1.id });
+  d.budgets.push(
+    { id: uid(), categoryId: cFood.id, limit: 3000000 },
+    { id: uid(), categoryId: cTrans.id, limit: 1200000 },
+    { id: uid(), categoryId: cFun.id, limit: 800000 },
+    { id: uid(), categoryId: cHome.id, limit: 5500000 },
+  );
+  d.recurring.push(
+    { id: uid(), title: "اجارهٔ خانه", type: "expense", amount: 4500000, categoryId: cHome.id, accountId: a1.id, dayOfMonth: 1 },
+    { id: uid(), title: "اشتراک فیلم", type: "expense", amount: 79000, categoryId: cSub.id, accountId: a1.id, dayOfMonth: 5 },
+  );
+  d.savings_goals.push(
+    { id: uid(), title: "سفر شیراز", target: 6000000, saved: 3850000, deadline: addDaysISO(t, 60) },
+    { id: uid(), title: "لپ‌تاپ جدید", target: 45000000, saved: 12000000 },
+  );
+  d.appointments.push(
+    { id: uid(), date: t, time: "20:00", title: "ورزش — دویدن" },
+    { id: uid(), date: addDaysISO(t, 2), time: "10:00", title: "ویزیت دندانپزشکی", note: "کلینیک دکتر راد" },
+    { id: uid(), date: addDaysISO(t, 5), time: "18:00", title: "شام با مریم و رضا", note: "رستوران شاندیز" },
+  );
+  d.notes.push(
+    { id: uid(), title: "ایدهٔ پس‌انداز", body: "هر ماه ۱۰٪ از حقوق را همان روز واریز به صندوق طلا منتقل کنم تا قبل از خرج شدن، پس‌انداز شده باشد.", date: dd(3), color: "#e8b04b", createdAt: Date.now() - 3 * 86400000 },
+    { id: uid(), title: "لیست خرید هفته", body: "شیر، نان، میوه، قهوه — خرید بزرگ ماهانه را به اول هفته موکول کنم که تخفیف‌ها تازه هستند.", date: dd(1), color: "#57d9a3", createdAt: Date.now() - 86400000 },
+  );
+  d.cheques.push(
+    { id: uid(), kind: "out", bank: "ملت", amount: 1450000, date: addDaysISO(t, 9), person: "بانک ملت — قسط ۶", status: "pending" },
+    { id: uid(), kind: "in", bank: "صادرات", amount: 2200000, date: addDaysISO(t, -6), person: "شرکت آریا", status: "cashed" },
+  );
+  d.splits.push({ id: uid(), title: "شام تیم", total: 1200000, parts: 4 });
+  d.challenges.push({ id: uid(), title: "چالش ۳۰ روزهٔ پس‌انداز", target: 1500000, saved: 950000, perDay: 50000 });
+  d.currencies.push(
+    { id: uid(), name: "دلار آمریکا", symbol: "USD", rate: 625000, qty: 40 },
+    { id: uid(), name: "یورو", symbol: "EUR", rate: 678000, qty: 15 },
+  );
+  d.assets.push(
+    { id: uid(), name: "سکهٔ بهار آزادی", buyPrice: 42000000, nowPrice: 51000000, qty: 1 },
+    { id: uid(), name: "پراید ۱۳۹۸", buyPrice: 180000000, nowPrice: 260000000, qty: 1 },
+  );
   const jt = jalaliToday();
-  const ap = (n: number, time: string, title: string, note?: string, done?: boolean): Appointment => ({
-    id: uid(), date: addDaysISO(t, n), time, title, note, done,
-  });
-
-  const state: AppState = {
-    accounts, categories, transactions,
-    transfers: [{ id: uid(), date: d(12), from: a1.id, to: a3.id, amount: 1000000, note: "پس‌انداز طلا" }],
-    debts: [
-      { id: uid(), kind: "debt", person: "رضا محمدی", amount: 1500000, paid: 500000, due: addDaysISO(t, 12), note: "قرض تعمیر ماشین" },
-      { id: uid(), kind: "credit", person: "مریم احمدی", amount: 800000, paid: 0, due: addDaysISO(t, 5), note: "پول بلیت کنسرت" },
-    ],
-    installments: [
-      { id: uid(), title: "وام خرید لپ‌تاپ", total: 14500000, months: 10, amountPerMonth: 1450000, start: d(150), paidCount: 5, accountId: a1.id },
-    ],
-    budgets: [
-      { id: uid(), categoryId: cFood.id, limit: 3000000 },
-      { id: uid(), categoryId: cTrans.id, limit: 1200000 },
-      { id: uid(), categoryId: cFun.id, limit: 800000 },
-      { id: uid(), categoryId: cHome.id, limit: 5500000 },
-    ],
-    payment_methods: [{ id: uid(), name: "کارت" }, { id: uid(), name: "نقد" }, { id: uid(), name: "شبا" }, { id: uid(), name: "ارز دیجیتال" }],
-    recurring: [
-      { id: uid(), title: "اجارهٔ خانه", type: "expense", amount: 4500000, categoryId: cHome.id, accountId: a1.id, dayOfMonth: 1 },
-      { id: uid(), title: "اشتراک فیلم", type: "expense", amount: 79000, categoryId: cSub.id, accountId: a1.id, dayOfMonth: 5 },
-    ],
-    savings_goals: [
-      { id: uid(), title: "سفر شیراز", target: 6000000, saved: 3850000, deadline: addDaysISO(t, 60) },
-      { id: uid(), title: "لپ‌تاپ جدید", target: 45000000, saved: 12000000 },
-    ],
-    appointments: [
-      ap(0, "17:30", "جلسه با تیم محصول", "لینک جلسه در تلگرام"),
-      ap(0, "20:00", "ورزش — دویدن"),
-      ap(2, "10:00", "ویزیت دندانپزشکی", "کلینیک دکتر راد"),
-      ap(5, "18:00", "شام با مریم و رضا", "رستوران شاندیز"),
-      ap(-3, "09:00", "تحویل پروژهٔ فریلنسری", "تحویل شد", true),
-    ],
-    cheques: [
-      { id: uid(), kind: "out", bank: "ملت", amount: 1450000, date: addDaysISO(t, 9), person: "بانک ملت — قسط ۶", status: "pending" },
-      { id: uid(), kind: "in", bank: "صادرات", amount: 2200000, date: addDaysISO(t, -6), person: "شرکت آریا", status: "cashed" },
-    ],
-    splits: [{ id: uid(), title: "شام تیم", total: 1200000, parts: 4 }],
-    challenges: [{ id: uid(), title: "چالش ۳۰ روزهٔ پس‌انداز", target: 1500000, saved: 950000, perDay: 50000 }],
-    currencies: [
-      { id: uid(), name: "دلار آمریکا", symbol: "USD", rate: 625000, qty: 40 },
-      { id: uid(), name: "یورو", symbol: "EUR", rate: 678000, qty: 15 },
-    ],
-    assets: [
-      { id: uid(), name: "سکهٔ بهار آزادی", buyPrice: 42000000, nowPrice: 51000000, qty: 1 },
-      { id: uid(), name: "پراید ۱۳۹۸", buyPrice: 180000000, nowPrice: 260000000, qty: 1 },
-    ],
-    subscriptions: [
-      { id: uid(), name: "فیلم‌نت", amount: 79000, cycle: "monthly", renew: jalaliToISO(jt.jy, jt.jm, Math.min(28, jalaliMonthLen(jt.jy, jt.jm))) },
-      { id: uid(), name: "اسپاتیفای", amount: 145000, cycle: "monthly", renew: addDaysISO(t, 11) },
-    ],
-    activity_logs: [
-      { id: uid(), at: Date.now() - 3600000, text: "تراکنش «اسنپ — جلسه» از ربات تلگرام ثبت شد" },
-      { id: uid(), at: Date.now() - 86400000, text: "سینک ابری با موفقیت انجام شد" },
-    ],
-    telegram_users: [{ id: uid(), name: "شما", username: "@shoma", joined: Date.now() - 30 * 86400000 }],
-    trash: [],
-    prefs: { theme: "dark" },
-    lastSync: Date.now(),
-  };
-  recomputeBalances(state);
-  return state;
+  d.subscriptions.push(
+    { id: uid(), name: "فیلم‌نت", amount: 79000, cycle: "monthly", renew: jalaliToISO(jt.jy, jt.jm, Math.min(28, jalaliMonthLen(jt.jy, jt.jm))) },
+    { id: uid(), name: "اسپاتیفای", amount: 145000, cycle: "monthly", renew: addDaysISO(t, 11) },
+  );
+  d.activity_logs.unshift(
+    { id: uid(), at: Date.now(), text: "دادهٔ نمونه بارگذاری شد" },
+    { id: uid(), at: Date.now() - 3600000, text: "تراکنش «اسنپ — جلسه» از ربات تلگرام ثبت شد" },
+  );
+  d.telegram_users.push({ id: uid(), name: "شما", username: "@shoma", joined: Date.now() - 30 * 86400000 });
 }
-
 /* ---------- بازمحاسبهٔ ماندهٔ حساب‌ها ---------- */
 export function recomputeBalances(s: AppState) {
   const map = new Map(s.accounts.map((a) => [a.id, a.initial]));
@@ -212,19 +304,76 @@ const CAT_HINTS: [string, string[]][] = [
   ["هدیه", ["هدیه", "عیدی", "تولد"]],
 ];
 
-export function detectSmart(text: string, categories: Category[]): { amount: number; categoryId?: ID } {
+const AMOUNT_HINTS: [string, string[]][] = [
+  ["خوراک", ["سوپر", "رستوران", "کافه", "قهوه", "میوه", "نان", "غذا", "فست‌فود", "پیتزا", "کباب", "شیرینی"]],
+  ["رفت‌وآمد", ["اسنپ", "تاکسی", "مترو", "اتوبوس", "بنزین", "پمپ بنزین", "پارکینگ", "قطار", "هواپیما"]],
+  ["خانه و اجاره", ["اجاره", "قبض", "برق", "گاز", "آب", "شارژ", "اینترنت"]],
+  ["سلامت", ["دارو", "داروخانه", "دکتر", "ویزیت", "بیمارستان", "باشگاه", "ورزش", "دندان"]],
+  ["تفریح", ["سینما", "کنسرت", "بازی", "سفر", "تئاتر", "شهربازی"]],
+  ["پوشاک", ["لباس", "کفش", "پیراهن", "مانتو", "پوشاک"]],
+  ["آموزش", ["کتاب", "کلاس", "دوره", "آموزش", "زبان", "شهریه"]],
+  ["اشتراک", ["اشتراک", "فیلم", "موزیک", "اسپاتیفای", "فیلیمو", "فیلم‌نت"]],
+  ["حقوق", ["حقوق", "دستمزد", "واریز شرکت"]],
+  ["پروژه", ["پروژه", "فریلنس", "طراحی سایت", "قرارداد"]],
+  ["هدیه", ["هدیه", "عیدی", "تولد"]],
+];
+
+export interface SmartDetect {
+  amount: number;
+  categoryId?: ID;
+  accountId?: ID;
+  income?: boolean;
+}
+
+/**
+ * تشخیص هوشمند مبلغ، دسته و حساب از متن توضیح
+ * مثال: «اسنپ ۵۰ هزار از کارت ملت» → مبلغ ۵۰٬۰۰۰، دسته رفت‌وآمد، حساب ملت
+ */
+export function detectSmart(text: string, categories: Category[], accounts?: Account[]): SmartDetect {
   const en = toEnDigits(text);
-  const m = en.match(/([\d,،٬]+(?:\.\d+)?)/);
-  let amount = 0;
-  if (m) amount = parseFloat(m[1].replace(/[,،٬]/g, "")) || 0;
   const lower = text.toLowerCase();
-  for (const [name, hints] of CAT_HINTS) {
+
+  /* مبلغ: عدد + واحد (هزار، میلیون، میلیارد) */
+  let amount = 0;
+  const m = en.match(/([\d,،٬]+(?:\.\d+)?)\s*(میلیارد|میلیون|هزار|هزارت|تومن|تومان|توم|ت)?/);
+  if (m) {
+    const base = parseFloat(m[1].replace(/[,،٬]/g, "")) || 0;
+    const unit = m[2] ?? "";
+    if (unit.startsWith("میلیارد")) amount = base * 1_000_000_000;
+    else if (unit.startsWith("میلیون")) amount = base * 1_000_000;
+    else if (unit.startsWith("هزار")) amount = base * 1_000;
+    else amount = base;
+  }
+
+  /* دسته */
+  let categoryId: ID | undefined;
+  for (const [name, hints] of AMOUNT_HINTS) {
     if (hints.some((h) => lower.includes(h))) {
-      const c = categories.find((c) => c.name === name);
-      if (c) return { amount, categoryId: c.id };
+      const c = categories.find((x) => x.name === name);
+      if (c) { categoryId = c.id; break; }
     }
   }
-  return { amount };
+
+  /* نوع: درآمد یا هزینه */
+  const income = /(درآمد|واریز|حقوق|دریافت|طلب|فروش)/.test(lower);
+
+  /* حساب بانکی */
+  let accountId: ID | undefined;
+  if (accounts?.length) {
+    for (const a of accounts) {
+      const name = a.name.toLowerCase();
+      if (lower.includes(name)) { accountId = a.id; break; }
+      /* کلمات کلیدی بانک‌ها */
+      const bankHints = name.replace(/بانک|کارت/g, "").trim();
+      if (bankHints.length > 1 && lower.includes(bankHints)) { accountId = a.id; break; }
+    }
+    if (!accountId && /نقد/.test(lower)) {
+      const cash = accounts.find((a) => /نقد/.test(a.name));
+      if (cash) accountId = cash.id;
+    }
+  }
+
+  return { amount, categoryId, accountId, income: income || undefined };
 }
 
 /* ---------- اجرای تراکنش‌های دوره‌ای سررسیدشده ---------- */
@@ -233,8 +382,10 @@ function applyRecurring(s: AppState) {
   const monthKey = `${t.jy}-${String(t.jm).padStart(2, "0")}`;
   for (const r of s.recurring) {
     if (r.lastRun === monthKey) continue;
-    if (t.jd >= r.dayOfMonth) {
-      const day = Math.min(r.dayOfMonth, jalaliMonthLen(t.jy, t.jm));
+    /* روز مؤثر: در ماه‌های کوتاه (۲۹/۳۰ روزه)، آخرین روز ماه.
+       اول روز مؤثر را حساب کن بعد مقایسه کن — وگرنه dayOfMonth=31 در ماه ۳۰ روزه هرگز اجرا نمی‌شود. */
+    const day = Math.min(r.dayOfMonth, jalaliMonthLen(t.jy, t.jm));
+    if (t.jd >= day) {
       s.transactions.unshift({
         id: uid(), date: jalaliToISO(t.jy, t.jm, day), type: r.type, amount: r.amount,
         title: `${r.title} (دوره‌ای)`, categoryId: r.categoryId, accountId: r.accountId,
@@ -246,11 +397,23 @@ function applyRecurring(s: AppState) {
   }
 }
 
+/** مهاجرت دادهٔ بارگذاری‌شده (پشتیبان / کد انتقال / ابر / localStorage قدیمی) —
+    جدول‌های جدید (notes, tags, trash) و آیکون دسته‌ها را پر می‌کند تا نسخه‌های قدیمی کرش نکنند */
+export function migrateLoadedState(s: AppState): AppState {
+  if (typeof s.rev !== "number") s.rev = 0;
+  if (!Array.isArray(s.notes)) s.notes = [];
+  if (!Array.isArray(s.tags)) s.tags = DEFAULT_TAGS.map((t) => ({ ...t }));
+  if (!Array.isArray(s.trash)) s.trash = [];
+  if (!Array.isArray(s.activity_logs)) s.activity_logs = [];
+  for (const c of s.categories ?? []) if (!c.icon) c.icon = CATEGORY_ICON_BY_NAME[c.name] ?? "wallet";
+  return s;
+}
+
 /* ---------- Store ---------- */
 export type TableName = keyof Pick<
   AppState,
-  "accounts" | "categories" | "transactions" | "transfers" | "debts" | "installments" |
-  "budgets" | "payment_methods" | "recurring" | "savings_goals" | "appointments" |
+  "accounts" | "categories" | "transactions" | "transfers" | "tags" | "debts" | "installments" |
+  "budgets" | "payment_methods" | "recurring" | "savings_goals" | "appointments" | "notes" |
   "cheques" | "challenges" | "currencies" | "assets" | "subscriptions"
 >;
 
@@ -271,7 +434,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
-        const parsed = JSON.parse(raw) as AppState;
+        const parsed = migrateLoadedState(JSON.parse(raw) as AppState);
         applyRecurring(parsed);
         recomputeBalances(parsed);
         return parsed;
@@ -293,6 +456,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       const draft: AppState = JSON.parse(JSON.stringify(prev));
       fn(draft);
       recomputeBalances(draft);
+      draft.rev = (draft.rev ?? 0) + 1;
       if (log) {
         draft.activity_logs.unshift({ id: uid(), at: Date.now(), text: log });
         draft.activity_logs = draft.activity_logs.slice(0, 80);
@@ -311,7 +475,7 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       d[table] = arr.filter((x) => x.id !== id) as never;
       d.trash = [...d.trash.filter((e) => e.table !== table || e.item.id !== id), {
         key: uid(), table, item, until: Date.now() + 30000, label,
-      }].slice(-3);
+      }].slice(-8); /* تا ۸ حذف همزمان قابل بازگشت */
     });
   };
 
@@ -321,7 +485,8 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       if (!entry) return;
       (d[entry.table as TableName] as unknown[]).push(entry.item);
       d.trash = d.trash.filter((e) => e.key !== key);
-    }, `«${arguments_label(key, state)}» بازگردانی شد`);
+      d.activity_logs.unshift({ id: uid(), at: Date.now(), text: `«${entry.label}» بازگردانی شد` });
+    });
   };
 
   const purgeTrash = () => {
@@ -341,16 +506,15 @@ export function DataProvider({ userId, children }: { userId: string; children: R
   );
 }
 
-function arguments_label(key: string, state: AppState): string {
-  return state.trash.find((e) => e.key === key)?.label ?? "مورد";
-}
-
 /* ---------- گزینش‌گرها ---------- */
 export const sumTx = (txs: Tx[], type?: "income" | "expense") =>
   txs.filter((t) => !type || t.type === type).reduce((s, t) => s + t.amount, 0);
 
 export const catById = (s: AppState, id: ID) => s.categories.find((c) => c.id === id);
 export const accById = (s: AppState, id: ID) => s.accounts.find((a) => a.id === id);
+/** تگ‌های تراکنش — اگر state تگی نداشت (دادهٔ خیلی قدیمی) به پیش‌فرض‌ها برمی‌گردد */
+export const getTags = (s: AppState): TagDef[] => (s.tags?.length ? s.tags : DEFAULT_TAGS);
+export const tagById = (s: AppState, id: ID | undefined) => (id ? getTags(s).find((t) => t.id === id) : undefined);
 
 export { jalaliToday, todayISO };
 export const monthKeyOf = (jy: number, jm: number) => `${jy}-${String(jm).padStart(2, "0")}`;
