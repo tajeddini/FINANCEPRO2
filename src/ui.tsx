@@ -126,11 +126,16 @@ export function AmountInput({ value, onChange, placeholder }: { value: string; o
 export const hiddenMoney = "••••••";
 
 /* ================= نوار درصد ================= */
-export function Bar({ pct, color }: { pct: number; color: string }) {
+export function Bar({ pct, color, delay = 0 }: { pct: number; color: string; delay?: number }) {
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const id = window.setTimeout(() => setW(Math.min(100, Math.max(0, pct))), 30 + delay);
+    return () => window.clearTimeout(id);
+  }, [pct, delay]);
   return (
     <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--fp-bg3)" }}>
-      <div className="h-full rounded-full transition-all duration-700"
-        style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }} />
+      <div className="h-full rounded-full transition-all duration-700 ease-out"
+        style={{ width: `${w}%`, background: color }} />
     </div>
   );
 }

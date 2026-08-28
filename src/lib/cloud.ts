@@ -129,11 +129,13 @@ export function localOnlyTx(local: AppState, remote: AppState): Tx[] {
 /**
  * ادغام دادهٔ ابری با محلی: دادهٔ ابری مبناست، ولی تراکنش‌های محلیِ
  * سینک‌نشده حفظ می‌شوند (dedupe بر اساس id) و prefs محلی دست نمی‌خورد.
+ * پارامتر keep اختیاری است — اگر داده نشود، خودکار محاسبه می‌شود.
  */
-export function mergePulledState(d: AppState, pulled: AppState, keep: Tx[]) {
+export function mergePulledState(d: AppState, pulled: AppState, keep?: Tx[]) {
   const merged = migrateLoadedState({ ...pulled });
+  const toKeep = keep ?? localOnlyTx(d, merged);
   const pulledIds = new Set(merged.transactions.map((t) => t.id));
-  merged.transactions = [...keep.filter((t) => !pulledIds.has(t.id)), ...merged.transactions];
+  merged.transactions = [...toKeep.filter((t) => !pulledIds.has(t.id)), ...merged.transactions];
   const prefs = d.prefs;
   Object.assign(d, merged, { prefs });
 }
