@@ -1,19 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import App from "./App";
+import App from "./App.tsx";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
 
-/* ثبت Service Worker برای PWA (آفلاین + اعلان‌های پس‌زمینه) */
-if ("serviceWorker" in navigator) {
+/* ثبت Service Worker — فقط در نسخهٔ تولید (PWA / کش آفلاین / اعلان‌های پس‌زمینه) */
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
-      /* در محیط توسعه یا در صورت نبود sw.js، بی‌صدا رد شو */
-    });
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
   });
 }

@@ -2,12 +2,14 @@
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0d2620" />
-    <meta name="description" content="فایننس‌پرو — دفترکل دیجیتال شخصی برای کاربران فارسی‌زبان؛ تقویم شمسی، اعداد فارسی، ربات تلگرام" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#081c16" />
+    <meta
+      name="description"
+      content="فایننس‌پرو — دفترکل دیجیتال شخصی برای کاربران فارسی‌زبان؛ تقویم شمسی، اعداد فارسی، ربات تلگرام"
+    />
     <title>فایننس‌پرو — دفترکل دیجیتال شخصی</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,13 +18,13 @@
       rel="stylesheet"
     />
     <script>
-      /* اعمال تم ذخیره‌شده قبل از رندر — جلوگیری از فلش تم اشتباه */
+      /* اعمال تم پیش از رندر — جلوگیری از فلش رنگ اشتباه */
       (function () {
         try {
           var t = localStorage.getItem("fp_theme") || "dark";
           if (t === "light") document.documentElement.classList.add("light");
           var a = localStorage.getItem("fp_accent");
-          if (a) document.documentElement.setAttribute("data-accent", a);
+          if (a) document.documentElement.dataset.accent = a;
         } catch (e) {}
       })();
     </script>

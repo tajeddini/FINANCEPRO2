@@ -1,4 +1,6 @@
-/* ---------- احراز هویت چندکاربره (ثبت‌نام، ورود، هش رمز، مهمان) ---------- */
+/* ---------- احراز هویت چندکاربره (ثبت‌نام، ورود، هش رمز، مهمان) ----------
+   حساب‌ها علاوه بر مرورگر، در جدول fp_users سوپابیس هم ثبت می‌شوند تا
+   ورود با همان نام کاربری/رمز از هر دستگاهی ممکن باشد. */
 import { uid } from "./utils";
 import { getCloud, pushUser, pullUser } from "./cloud";
 
@@ -48,6 +50,12 @@ function setSession(u: User | null) {
   else localStorage.removeItem(SESSION_KEY);
 }
 
+/** ثبت حساب در ابر (بدون انتظار — خطا مانع ثبت‌نام محلی نمی‌شود) */
+function cloudRegister(user: User) {
+  const cfg = getCloud();
+  if (cfg) void pushUser({ username: user.username, name: user.name, hash: user.hash, created: user.created }, cfg);
+}
+
 export function signup(name: string, username: string, pass: string): { user?: User; error?: string } {
   const un = username.trim().toLowerCase();
   if (!name.trim()) return { error: "نام را وارد کنید." };
@@ -59,16 +67,15 @@ export function signup(name: string, username: string, pass: string): { user?: U
   users.push(user);
   saveUsers(users);
   setSession(user);
-  // حساب را در ابر هم ثبت کن تا در دستگاه‌های دیگر قابل ورود باشد
-  const cfg = getCloud();
-  if (cfg) void pushUser({ username: un, name: user.name, hash: user.hash, created: user.created }, cfg);
+  cloudRegister(user);
   return { user };
 }
 
 export async function login(username: string, pass: string): Promise<{ user?: User; error?: string }> {
   const un = username.trim().toLowerCase();
   let user = loadUsers().find((u) => u.username === un);
-  // اگر این دستگاه حساب را نمی‌شناسد، از ابر (Supabase) پیدایش کن
+
+  /* اگر این دستگاه حساب را نمی‌شناسد، از ابر (Supabase) پیدایش کن */
   if (!user) {
     const cfg = getCloud();
     if (cfg) {
@@ -81,17 +88,13 @@ export async function login(username: string, pass: string): Promise<{ user?: Us
       }
     }
   }
-  if (!user)
-    return {
-      error: getCloud()
-        ? "کاربری با این نام کاربری پیدا نشد."
-        : "کاربر پیدا نشد — اتصال ابری غیرفعال است. اگر حساب را در دستگاه دیگری ساخته‌اید، اول «اتصال Supabase» را در همین صفحه فعال کنید.",
-    };
+  if (!user) return { error: "کاربری با این نام کاربری پیدا نشد. اگر از دستگاه دیگری ثبت‌نام کرده‌اید، ابتدا در تنظیمات، اتصال Supabase را فعال کنید." };
   if (user.hash !== hashPass(pass)) return { error: "رمز عبور اشتباه است." };
+
+  /* بک‌فیل: حساب‌های قدیمی که قبل از fp_users ساخته شده‌اند، در ابر ثبت شوند */
+  cloudRegister(user);
+
   setSession(user);
-  // حساب‌های قدیمی را هم در ابر تازه کن تا در بقیهٔ دستگاه‌ها قابل ورود باشند
-  const backfill = getCloud();
-  if (backfill) void pushUser({ username: user.username, name: user.name, hash: user.hash, created: user.created }, backfill);
   return { user };
 }
 

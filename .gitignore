@@ -1,5 +1,12 @@
 node_modules/
-.next/
 dist/
+.env
+*.local
+.DS_Store
+/android
+/ios
+*.keystore
+*.jks
+.next/
 build/
 *.log
