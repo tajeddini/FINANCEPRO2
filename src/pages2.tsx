@@ -6,7 +6,7 @@ import {
   StickyNote, Sun, Target, Trash2, TrendingUp, Upload, X,
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
+import { migrateLoadedState, useStore, type AppState, type ID, type Appointment, type Note } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faDate, faMoney, faNum, faTime, inRange, isoToJalali,
   jalaliDateStr, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange,
@@ -14,7 +14,10 @@ import {
   todayISO, useNow, WEEKDAYS_MIN,
 } from "./lib/utils";
 import { THEMES, applyAccent } from "./lib/themes";
-import { encodeState, decodeState, pushToCloud, pullFromCloud } from "./lib/cloud";
+import {
+  encodeState, decodeState, pushToCloud, pullFromCloud,
+  effectivePrefs, localOnlyTx, mergePulledState, sameLedgerContent,
+} from "./lib/cloud";
 import { listUsers } from "./lib/auth";
 import {
   AmountInput, Bar, CatGlyph, Confirm, Empty, Field, JalaliPicker, MicButton, Modal,
@@ -786,15 +789,28 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const setPrefs = (patch: Partial<typeof p>, log?: string) =>
     mutate((d) => { d.prefs = { ...d.prefs, ...patch }; }, log);
 
+  /* سینک دستی — همان منطق امنِ سینک خودکار:
+     مقایسه بر اساس نسخهٔ زمانی (rev)، ادغام تراکنش‌محور، و حفظ تنظیمات محلی */
+  const cloudSyncId = "fp-user-" + user.username;
   const doSync = async () => {
-    if (!p.syncUrl || !p.syncKey) return toast("warn", "ابتدا آدرس پروژه و کلید anon را پر کنید.");
+    const ep = effectivePrefs(p);
+    if (!ep.syncUrl || !ep.syncKey) return toast("warn", "ابتدا آدرس پروژه و کلید anon را پر کنید.");
     setSyncing(true);
-    const pull = await pullFromCloud(p);
-    if (pull.ok && pull.state && pull.updatedAt && pull.updatedAt > new Date(state.lastSync).toISOString()) {
-      mutate((d) => { Object.assign(d, pull.state, { prefs: d.prefs }); }, "دریافت داده از ابر");
-      toast("ok", "نسخهٔ جدیدتر از Supabase دریافت شد.");
+    const pull = await pullFromCloud(ep, cloudSyncId);
+    if (!pull.ok) {
+      toast("err", pull.message);
+    } else if (pull.state && (pull.state.rev ?? 0) > (state.rev ?? 0)) {
+      if (sameLedgerContent(state, pull.state)) {
+        toast("ok", "داده‌ها از قبل همگام بودند.");
+      } else {
+        const keepCount = localOnlyTx(state, pull.state).length;
+        mutate((d) => { mergePulledState(d, pull.state!); }, "دریافت داده از ابر");
+        toast("ok", keepCount > 0
+          ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
+          : "نسخهٔ جدیدتر از Supabase دریافت شد.");
+      }
     } else {
-      const push = await pushToCloud(state, p);
+      const push = await pushToCloud(state, ep, cloudSyncId);
       toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد — در هر مرورگری همین داده را می‌بینید." : push.message);
     }
     setSyncing(false);
@@ -982,7 +998,8 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                 if (!transferIn.trim()) return toast("warn", "کدی وارد نشده است.");
                 const d = decodeState(transferIn);
                 if (!d) return toast("err", "کد معتبر نیست — دوباره از ابتدا کپی کنید.");
-                mutate((s) => { Object.assign(s, d, { prefs: s.prefs }); }, "انتقال داده از مرورگر دیگر");
+                /* مهاجرت نسخه‌های قدیمی تا جدول‌های جدید (یادداشت‌ها/تگ‌ها) خالی نمانند */
+                mutate((s) => { Object.assign(s, migrateLoadedState(d), { prefs: s.prefs }); }, "انتقال داده از مرورگر دیگر");
                 setTransferIn(""); setTransferOut("");
                 toast("ok", "اطلاعات با موفقیت منتقل شد.");
               }}>وارد کردن اطلاعات</button>
@@ -1041,8 +1058,9 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
                   try {
                     const data = JSON.parse(String(r.result));
                     if (!data.transactions || !data.accounts) throw new Error("bad");
-                    mutate((d) => Object.assign(d, data), "بازیابی از پشتیبان");
-                    toast("ok", "دادهٔ پشتیبان بازیابی شد.");
+                    /* تنظیمات محلی (تم، پین، اتصال ابری) حفظ شود + مهاجرت نسخه‌های قدیمی */
+                    mutate((d) => Object.assign(d, migrateLoadedState(data), { prefs: d.prefs }), "بازیابی از پشتیبان");
+                    toast("ok", "دادهٔ پشتیبان بازیابی شد — تنظیمات و اتصال ابری این دستگاه حفظ شد.");
                   } catch { toast("err", "فایل پشتیبان معتبر نیست."); }
                 };
                 r.readAsText(f);

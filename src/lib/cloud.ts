@@ -133,12 +133,37 @@ export function localOnlyTx(local: AppState, remote: AppState): Tx[] {
  */
 export function mergePulledState(d: AppState, pulled: AppState, keep?: Tx[]) {
   const merged = migrateLoadedState({ ...pulled });
+  /* برای تراکنش‌های مشترک، «نسخهٔ جدیدترِ هر تراکنش» برنده است —
+     نه اینکه کورکورانه کل دادهٔ ابر جایگزین محلی شود. در مساوی، محلی می‌ماند. */
+  const localTxById = new Map(d.transactions.map((t) => [t.id, t]));
+  merged.transactions = merged.transactions.map((pt) => {
+    const lt = localTxById.get(pt.id);
+    if (!lt) return pt;
+    const localTime = lt.updatedAt ?? lt.createdAt ?? 0;
+    const pulledTime = pt.updatedAt ?? pt.createdAt ?? 0;
+    return localTime >= pulledTime ? lt : pt;
+  });
+  /* تراکنش‌های فقط-محلی (هنوز سینک‌نشده) هم حفظ می‌شوند (dedupe بر اساس id) */
   const toKeep = keep ?? localOnlyTx(d, merged);
-  const pulledIds = new Set(merged.transactions.map((t) => t.id));
-  merged.transactions = [...toKeep.filter((t) => !pulledIds.has(t.id)), ...merged.transactions];
+  const mergedIds = new Set(merged.transactions.map((t) => t.id));
+  merged.transactions = [...toKeep.filter((t) => !mergedIds.has(t.id)), ...merged.transactions];
   const prefs = d.prefs;
   Object.assign(d, merged, { prefs });
 }
+
+/* ===== تشخیص برابری محتوای دفترکل =====
+   برای جلوگیری از ادغام و لاگِ بیهوده وقتی دادهٔ ابر از نظر محتوایی
+   همان دادهٔ محلی است (مثلاً وقتی ساعت دو دستگاه کمی اختلاف دارد) */
+const ledgerFingerprint = (s: AppState): string =>
+  JSON.stringify([
+    s.transactions, s.transfers, s.accounts, s.categories, s.tags, s.debts,
+    s.installments, s.budgets, s.payment_methods, s.recurring, s.savings_goals,
+    s.appointments, s.notes, s.cheques, s.splits, s.challenges, s.currencies,
+    s.assets, s.subscriptions,
+  ]);
+
+export const sameLedgerContent = (a: AppState, b: AppState): boolean =>
+  ledgerFingerprint(a) === ledgerFingerprint(b);
 
 /* ===== کاربران ابری — جدول fp_users (username, data, updated_at) =====
    فقط نام کاربری، نام نمایشی، هش رمز و تاریخ ساخت — برای ورود چنددستگاهی */

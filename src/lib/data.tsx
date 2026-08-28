@@ -22,7 +22,9 @@ export const DEFAULT_TAGS: TagDef[] = [
 
 export interface Tx {
   id: ID; date: string; type: "income" | "expense"; amount: number; title: string;
-  note?: string; tag?: ID; categoryId: ID; accountId: ID; payMethod?: string; createdAt: number; source?: "app" | "bot";
+  note?: string; tag?: ID; categoryId: ID; accountId: ID; payMethod?: string;
+  createdAt: number; /** مهر زمانیِ آخرین ویرایش — مبنای ادغام صحیح بین دستگاه‌ها */ updatedAt?: number;
+  source?: "app" | "bot";
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
@@ -239,6 +241,9 @@ export function migrateLoadedState(parsed: AppState): AppState {
 }
 
 /* ---------- بازمحاسبهٔ ماندهٔ حساب‌ها ---------- */
+/** JSON محتوای تراکنش بدون مهر زمانی — برای تشخیص «تغییر واقعی» در ادغام چنددستگاهه */
+const txContentJson = (t: Tx): string => JSON.stringify({ ...t, updatedAt: 0 });
+
 export function recomputeBalances(s: AppState) {
   const map = new Map(s.accounts.map((a) => [a.id, a.initial]));
   for (const tr of s.transfers) {
@@ -383,7 +388,18 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       const draft: AppState = JSON.parse(JSON.stringify(prev));
       fn(draft);
       recomputeBalances(draft);
-      draft.rev = (draft.rev ?? 0) + 1;
+      /* مهر زمانی برای تراکنش‌های «جدید یا واقعاً تغییرکرده» —
+         مقایسهٔ محتوا بدون خودِ updatedAt انجام می‌شود تا تغییرات صوری مهر نخورند */
+      {
+        const prevTxs = new Map(prev.transactions.map((t) => [t.id, txContentJson(t)]));
+        const stamp = Date.now();
+        for (const t of draft.transactions) {
+          if (prevTxs.get(t.id) !== txContentJson(t)) t.updatedAt = stamp;
+        }
+      }
+      /* نسخهٔ داده = مهر زمانیِ آخرین تغییر — بر خلاف شمارندهٔ محلی،
+         بین همهٔ دستگاه‌ها قابل مقایسه است (ریشهٔ باگ «خودبه‌خود عوض شدن») */
+      draft.rev = Date.now();
       if (log) {
         draft.activity_logs.unshift({ id: uid(), at: Date.now(), text: log });
         draft.activity_logs = draft.activity_logs.slice(0, 80);
