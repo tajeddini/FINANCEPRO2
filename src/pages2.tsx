@@ -1044,7 +1044,7 @@ export function ManagePage() {
   const startNew = () => {
     setEditing(null);
     const init: Record<string, string> = {};
-    if (activeTool) for (const f of activeTool.fields) init[f.key] = f.type === "select" ? (f.options?.[0]?.v ?? "") : f.type === "number" ? "1" : "";
+    if (activeTool) for (const f of activeTool.fields) init[f.key] = f.type === "select" ? (f.options?.[0]?.v ?? "") : f.type === "number" ? "1" : f.type === "date" ? todayISO() : "";
     if (activeTool?.id === "categories") { init.icon = "wallet"; init.type = "expense"; init.color = "#57d9a3"; }
     if (activeTool?.id === "accounts") init.color = "#57d9a3";
     setForm(init);
@@ -1054,7 +1054,11 @@ export function ManagePage() {
   const startEdit = (row: Record<string, unknown>) => {
     setEditing(row);
     const init: Record<string, string> = {};
-    if (activeTool) for (const f of activeTool.fields) init[f.key] = row[f.key] != null ? String(row[f.key]) : "";
+    if (activeTool) for (const f of activeTool.fields) {
+      const v = row[f.key] != null ? String(row[f.key]) : "";
+      /* فیلد تاریخِ خالی → امروز؛ وگرنه تقویم با مقدار نامعتبر باز می‌شود */
+      init[f.key] = f.type === "date" && !/^\d{4}-\d{2}-\d{2}/.test(v) ? todayISO() : v;
+    }
     setForm(init);
     setOpenForm(true);
   };
@@ -1064,8 +1068,14 @@ export function ManagePage() {
     const firstText = activeTool.fields.find((f) => f.type === "text");
     if (firstText && !form[firstText.key]?.trim()) return toast("warn", "عنوان را کامل کنید.");
     const numericKeys = new Set(activeTool.fields.filter((f) => f.type === "amount" || f.type === "number").map((f) => f.key));
+    const dateKeys = activeTool.fields.filter((f) => f.type === "date").map((f) => f.key);
     const payload: Record<string, unknown> = { ...form };
     for (const k of numericKeys) payload[k] = Number(form[k]) || 0;
+    /* تاریخ خالی/نامعتبر → undefined (نه رشتهٔ خالی که بعداً تقویم را خراب کند) */
+    for (const k of dateKeys) {
+      const v = String(payload[k] ?? "");
+      payload[k] = /^\d{4}-\d{2}-\d{2}/.test(v) ? v : undefined;
+    }
     if (activeTool.id === "accounts" && !editing) payload.balance = payload.initial;
 
     if (editing) {
@@ -1162,7 +1172,7 @@ export function ManagePage() {
             <button className="btn btn-gold btn-sm" onClick={startNew}><Plus className="w-4 h-4" strokeWidth={3} /> جدید</button>
           </div>
           {(() => {
-            const rows = (state[activeTool.table] as Record<string, unknown>[]);
+            const rows = (state[activeTool.table] as Record<string, unknown>[]) ?? [];
             if (rows.length === 0) return <Empty text="موردی ثبت نشده — اولین را بسازید." />;
             return (
               <div className="grid sm:grid-cols-2 gap-2">
@@ -1214,7 +1224,7 @@ export function ManagePage() {
               {f.type === "text" && <TInput value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />}
               {f.type === "amount" && <AmountInput value={form[f.key] ?? ""} onChange={(v) => setForm({ ...form, [f.key]: v })} />}
               {f.type === "number" && <TInput dir="ltr" type="number" value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />}
-              {f.type === "date" && <JalaliPicker value={form[f.key] ?? todayISO()} onChange={(v) => setForm({ ...form, [f.key]: v })} />}
+              {f.type === "date" && <JalaliPicker value={form[f.key] || todayISO()} onChange={(v) => setForm({ ...form, [f.key]: v })} />}
               {f.type === "color" && <TInput dir="ltr" value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} placeholder="#57d9a3" />}
               {f.type === "select" && (
                 <TSelect value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>

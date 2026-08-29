@@ -158,11 +158,11 @@ export function JalaliPicker({ value, onChange }: { value: string; onChange: (is
   const [view, setView] = useState(() => {
     try {
       const j = isoToJalali(value);
-      return { jy: j.jy, jm: j.jm };
-    } catch {
-      const t = jalaliToday();
-      return { jy: t.jy, jm: t.jm };
-    }
+      /* مقدار نامعتبر (رشتهٔ خالی/خراب) → NaN می‌شود؛ در این حالت ماه جاری */
+      if (Number.isFinite(j.jy) && Number.isFinite(j.jm)) return { jy: j.jy, jm: j.jm };
+    } catch { /* مقدار غیرقابل‌تبدیل */ }
+    const t = jalaliToday();
+    return { jy: t.jy, jm: t.jm };
   });
   const t = jalaliToday();
   const len = jalaliMonthLen(view.jy, view.jm);
