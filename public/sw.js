@@ -1,6 +1,6 @@
 /* ---------- فایننس‌پرو — Service Worker ----------
    کش آفلاین + نمایش اعلان‌ها در پس‌زمینه */
-const CACHE = "financepro-v1";
+const CACHE = "financepro-v2";
 const PRECACHE = [".", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {

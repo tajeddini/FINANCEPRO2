@@ -231,11 +231,31 @@ function toJalaliSafe(iso: string) {
   return isoToJalali(iso);
 }
 
+/* ---------- افزودن هوشمند (idempotent) ----------
+   هم‌پوشانی متن قبلی و متن جدید را پیدا می‌کند تا تکرار پیش نیاید.
+   اگر موتور تشخیص، جمله‌ای را دوباره تحویل دهد، خروجی تغییر نمی‌کند. */
+export function appendSmart(base: string, add: string): string {
+  const b = base.trim();
+  const a = add.trim();
+  if (!a) return b;
+  if (!b) return a;
+  if (b.endsWith(a)) return b;
+  let overlap = 0;
+  const maxK = Math.min(b.length, a.length);
+  for (let k = maxK; k > 0; k--) {
+    if (b.endsWith(a.slice(0, k))) { overlap = k; break; }
+  }
+  const rest = a.slice(overlap).trim();
+  if (!rest) return b;
+  return (b + " " + rest).trim();
+}
+
 /* ================= دستیار صوتی (fa-IR) — معماری نهایی =================
    - هر نشست = نمونهٔ تازهٔ SpeechRecognition (نتایج قبلی باقی نمی‌مانند)
-   - گارد نشست یکتا (sessionId) — دو نمونهٔ همزمان هرگز متن تحویل نمی‌دهند
+   - گارد نشست یکتا (sessionId) — رویدادهای نشست‌های قدیمی نادیده گرفته می‌شوند
+   - بازسازی متن نهایی از صفر: در هر رویداد، همهٔ e.results پیمایش و فقط isFinalها به هم می‌چسبند
    - حالت افزودنی: گفته‌های جدید به انتهای متن فعلی اضافه می‌شوند، متن قبلی پاک نمی‌شود
-   - حذف تکرار جمله (appendSmart) — اگر موتور جمله‌ای را دوباره فرستاد، تکرار نمی‌شود
+   - حذف تکرار (appendSmart) + ارسال فقط هنگام تغییر واقعی — تکرار کلمات غیرممکن است
    - حلقهٔ restart ممنوع — عامل اصلی تکرار کلمات در نسخه‌های قدیمی بود */
 export function MicButton({
   onText, baseText = "", disabled,
@@ -254,14 +274,8 @@ export function MicButton({
   const supported = typeof window !== "undefined" &&
     !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition);
   const toast = useToast();
-
-  const appendSmart = (base: string, addition: string): string => {
-    const a = addition.trim();
-    if (!a) return base;
-    const b = base.trim();
-    if (b && (b === a || b.endsWith(a))) return base;
-    return (b ? b + " " : "") + a;
-  };
+  /* آخرین مقدار ارسال‌شده — فقط وقتی نتیجهٔ ادغام واقعاً عوض شد onText صدا زده می‌شود */
+  const lastEmittedRef = useRef("");
 
   useEffect(() => () => {
     activeRef.current = false;
@@ -292,26 +306,30 @@ export function MicButton({
     rec.maxAlternatives = 1;
     const myId = ++sessionIdRef.current;
     startBaseRef.current = fieldRef.current.trim();
-    const finals: string[] = [];
-    let committedUpTo = -1;
+    lastEmittedRef.current = "";
 
     rec.onresult = (e: unknown) => {
-      if (myId !== sessionIdRef.current) return; /* نشست باطل شده */
+      if (myId !== sessionIdRef.current) return; /* رویداد نشستِ باطل‌شده — نادیده بگیر */
       const ev = e as { results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> };
+      /* بازسازی کامل متن نهایی از صفر در هر رویداد: همهٔ e.results پیمایش و فقط
+         isFinalها به هم می‌چسبند. تحویلِ دوبارهٔ یک نتیجهٔ قبلی توسط موتور، خروجی را
+         تغییر نمی‌دهد — همین idempotent بودن، ریشهٔ تکرار کلمات را می‌خشکاند. */
+      let finalText = "";
       let interim = "";
       for (let i = 0; i < ev.results.length; i++) {
         const txt = ev.results[i][0].transcript;
-        if (ev.results[i].isFinal) {
-          /* هر ایندکس فقط یک‌بار تحویل می‌شود — حتی اگر موتور آن را دوباره بفرستد */
-          if (i > committedUpTo) {
-            finals.push(txt);
-            committedUpTo = i;
-          }
-        } else interim += txt;
+        if (ev.results[i].isFinal) finalText += (finalText ? " " : "") + txt;
+        else interim += txt;
       }
-      const finalText = finals.join(" ").trim();
+      finalText = finalText.trim();
       setHeard((finalText + (interim ? " " + interim : "")).trim());
-      if (finalText) onText(appendSmart(startBaseRef.current, finalText));
+      if (finalText) {
+        const merged = appendSmart(startBaseRef.current, finalText);
+        if (merged !== lastEmittedRef.current) {
+          lastEmittedRef.current = merged;
+          onText(merged);
+        }
+      }
     };
     rec.onend = () => {
       if (myId !== sessionIdRef.current) return;
