@@ -5,7 +5,11 @@ import {
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Sunrise, Target, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
-import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState, sameLedgerContent } from "./lib/cloud";
+import {
+  pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud,
+  localOnlyTx, mergePulledState, sameLedgerContent,
+  readSyncStatus, writeSyncStatus, type SyncStatus,
+} from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
@@ -490,15 +494,33 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudSyncId]);
 
-  /* سازش‌گیری: اول از ابر بخوان؛ اگر ابر جدیدتر بود جایگزین کن، وگرنه محلی را بفرست */
-  const reconcile = useCallback(async () => {
+  /* گزارش وضعیت سینک + توست فقط هنگام «تغییر وضعیت» (موفق ↔ ناموفق) تا اسپم نشود */
+  const lastSyncOkRef = useRef<boolean | null>(null);
+  const reportSync = useCallback((ok: boolean, message: string) => {
+    writeSyncStatus({ ok, at: Date.now(), message });
+    if (lastSyncOkRef.current === true && !ok)
+      toastRef.current("err", `سینک ابری ناموفق — ${message}`);
+    else if (lastSyncOkRef.current === false && ok)
+      toastRef.current("ok", "سینک ابری دوباره برقرار شد ✅");
+    lastSyncOkRef.current = ok;
+  }, []);
+
+  /* سازش‌گیری: اول از ابر بخوان؛ اگر ابر جدیدتر بود ادغام کن، وگرنه محلی را بفرست.
+     خروجی boolean = موفقیت — تا ارسالِ شکست‌خورده «فرستاده‌شده» علامت نخورد و بعداً دوباره تلاش شود */
+  const reconcilingRef = useRef(false);
+  const reconcile = useCallback(async (): Promise<boolean> => {
+    if (reconcilingRef.current) return false; /* اجرای همزمانِ پولینگ و دیباونس ممنوع */
     const s = stateRef.current;
     const ep = effectivePrefs(s.prefs);
-    if (!ep.syncUrl || !ep.syncKey) return;
+    if (!ep.syncUrl || !ep.syncKey) return false;
+    reconcilingRef.current = true;
+    let ok = false;
+    let message = "";
     try {
       const pull = await pullFromCloud(ep, cloudSyncId);
       if (!pull.ok) {
-        /* خطای واقعی (شبکه/کلید) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
+        /* خطای واقعی (شبکه/کلید/جدول) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
+        message = pull.message;
       } else if (pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
         if (sameLedgerContent(s, pull.state)) {
           /* محتوای ابر با محلی یکسان است و فقط شمارهٔ نسخه جلوتر است —
@@ -514,15 +536,23 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
             ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
             : "تراکنش‌های شما از ابر بازیابی شد.");
         }
+        ok = true; message = "دریافت از ابر انجام شد.";
       } else {
-        /* ابر خالی یا قدیمی‌تر است — فرستادن محلی امن است */
-        await pushToCloud(s, ep, cloudSyncId);
+        /* ابر «خالی» یا «قدیمی‌تر» است — در هر دو حالت فرستادن محلی امن است
+           (ابر خالی = اولین سینک؛ pull با ok:true و state=undefined برمی‌گردد) */
+        const push = await pushToCloud(s, ep, cloudSyncId);
+        ok = push.ok;
+        message = push.ok ? "ارسال به ابر انجام شد." : push.message;
       }
-    } catch { /* شبکه قطع است — از دادهٔ محلی استفاده می‌شود */ }
+    } catch {
+      message = "خطای شبکه — اتصال اینترنت را بررسی کنید.";
+    } finally {
+      reconcilingRef.current = false;
+    }
     reconciledRef.current = true;
-    pushedRef.current = JSON.stringify(stateRef.current);
-  }, [cloudSyncId]);
-
+    reportSync(ok, message);
+    return ok;
+  }, [cloudSyncId, reportSync]);
   /* هنگام فعال شدن سینک و هر ۹۰ ثانیه، سازش‌گیری کن */
   useEffect(() => {
     if (!syncOn) return;
@@ -541,8 +571,10 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     const id = setTimeout(async () => {
       const json = JSON.stringify(stateRef.current);
       if (json === pushedRef.current) return;
-      pushedRef.current = json;
-      await reconcile();
+      const ok = await reconcile();
+      /* فقط وقتی ارسال واقعاً موفق بود «فرستاده‌شده» علامت بزن —
+         وگرنه تغییر بعدی (یا پولینگ ۹۰ ثانیه) دوباره تلاش می‌کند و داده پشت شبکهٔ قطع نمی‌ماند */
+      if (ok) pushedRef.current = JSON.stringify(stateRef.current);
     }, 3500);
     return () => clearTimeout(id);
   }, [state, syncOn, reconcile]);
