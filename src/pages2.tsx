@@ -20,7 +20,7 @@ import {
 import { THEMES, applyAccent } from "./lib/themes";
 import {
   encodeState, decodeState, pushToCloud, pullFromCloud, saveCloud, effectivePrefs,
-  localOnlyTx, mergePulledState, sameLedgerContent,
+  localOnlyTx, mergePulledState, sameLedgerContent, testConnection,
 } from "./lib/cloud";
 import { listUsers, type User } from "./lib/auth";
 import {
@@ -1340,6 +1340,16 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
     setSyncing(false);
   };
 
+  /* آزمایش اتصال — یک GET سبک به جدول؛ می‌گوید مشکل از آدرس/کلید/جدول است یا اینترنت */
+  const [testing, setTesting] = useState(false);
+  const doTest = async () => {
+    const epp = effectivePrefs(p);
+    setTesting(true);
+    const r = await testConnection(epp, cloudSyncId);
+    setTesting(false);
+    toast(r.ok ? "ok" : "err", r.message);
+  };
+
   return (
     <div className="grid gap-5">
       <h1 className="font-display text-3xl md:text-4xl rise-in">تنظیمات</h1>
@@ -1470,13 +1480,20 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
               )}
               <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
                 <span className="text-[12px] font-black" style={{ color: "var(--fp-text2)" }}>آخرین سینک: {relTime(state.lastSync)}</span>
-                <button className="btn btn-mint btn-sm" disabled={syncing} onClick={doSync}>
-                  <RefreshCw className={`w-4 h-4 ${syncing ? "spin-slow" : ""}`} /> {syncing ? "در حال سینک…" : "سینک اکنون"}
-                </button>
+                <div className="flex gap-2">
+                  <button className="btn btn-mint btn-sm" disabled={syncing || testing} onClick={doSync}>
+                    <RefreshCw className={`w-4 h-4 ${syncing ? "spin-slow" : ""}`} /> {syncing ? "در حال سینک…" : "سینک اکنون"}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" disabled={syncing || testing} onClick={doTest}
+                    title="یک درخواست سبک می‌فرستد تا بگوید مشکل از آدرس/کلید/جدول است یا اینترنت">
+                    {testing ? <RefreshCw className="w-4 h-4 spin-slow" /> : <Cloud className="w-4 h-4" />}
+                    {testing ? "در حال آزمایش…" : "آزمایش اتصال"}
+                  </button>
+                </div>
               </div>
               <p className="text-[11px] font-bold leading-6" style={{ color: "var(--fp-text3)" }}>
                 پس از اتصال، تغییرات با ۳ ثانیه تأخیر خودکار به ابر فرستاده و هر ۹۰ ثانیه بررسی می‌شود —
-                در مرورگر دیگر با همان نام کاربری، همین دفترکل را دارید.
+                در مرورگر دیگر با همان نام کاربری، همین دفترکل را دارید. اگر سینک کار نکرد، اول «آزمایش اتصال» را بزنید.
               </p>
               <div className="rounded-xl p-3.5 border mt-1"
                 style={{ borderColor: "color-mix(in srgb, var(--fp-mint) 40%, transparent)", background: "color-mix(in srgb, var(--fp-mint) 6%, transparent)" }}>

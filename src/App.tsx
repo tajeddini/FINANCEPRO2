@@ -559,7 +559,10 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     reconciledRef.current = false;
     reconcile();
     const id = setInterval(reconcile, 90000);
-    return () => clearInterval(id);
+    /* کلیک روی نشانگرِ سینک → رویداد fp-sync-now → سینک فوری (بیرون از نوبت ۹۰ ثانیه) */
+    const onNow = () => { void reconcile(); };
+    window.addEventListener("fp-sync-now", onNow);
+    return () => { clearInterval(id); window.removeEventListener("fp-sync-now", onNow); };
   }, [syncOn, reconcile]);
 
   /* بعد از سازش‌گیری اولیه، هر تغییر محلی با دیباونس «سازش‌گیری» می‌کند —
@@ -766,17 +769,54 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
 }
 
 /* تگ سینک */
+/* نشانگر وضعیت واقعی سینک ابری — سه حالت:
+   خاکستریِ چشمک‌زن = سینک غیرفعال (آدرس/کلید تنظیم نیست)
+   سبزِ پالس‌دار = آخرین تلاش سینک موفق — با زمانِ آن
+   قرمز = آخرین تلاش ناموفق — دلیل در title و با کلیک، سینک دستی */
 function SyncBadge() {
   const { state } = useStore();
   const e = effectivePrefs(state.prefs);
   const on = !!e.syncUrl && !!e.syncKey;
+  const [status, setStatus] = useState<SyncStatus | null>(() => readSyncStatus());
+  const now = useNow(15000); /* برای تازه‌ماندن «چند دقیقه پیش» */
+  void now;
+
+  useEffect(() => {
+    const h = () => setStatus(readSyncStatus());
+    window.addEventListener("fp-sync-status", h);
+    return () => window.removeEventListener("fp-sync-status", h);
+  }, []);
+
+  if (!on) {
+    return (
+      <span className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border"
+        style={{ borderColor: "var(--fp-border)", color: "var(--fp-text3)" }}
+        title="سینک ابری غیرفعال — از تنظیمات وصل کنید">
+        <span className="w-1.5 h-1.5 rounded-full blink-dot" style={{ background: "currentColor" }} />
+        آفلاین
+      </span>
+    );
+  }
+
+  const ok = status?.ok !== false; /* اگر هنوز گزارشی نیست، خوش‌بینانه سبز */
+  const ago = status ? relTime(status.at) : relTime(state.lastSync);
   return (
-    <span className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border"
-      style={{ borderColor: "var(--fp-border)", color: on ? "var(--fp-mint)" : "var(--fp-text3)" }}
-      title={on ? `آخرین سینک: ${relTime(state.lastSync)}` : "سینک ابری غیرفعال — از تنظیمات وصل کنید"}>
-      <span className={`w-1.5 h-1.5 rounded-full ${on ? "pulse-soft" : "blink-dot"}`} style={{ background: "currentColor" }} />
-      {on ? "سینک" : "آفلاین"}
-    </span>
+    <button
+      onClick={() => window.dispatchEvent(new CustomEvent("fp-sync-now"))}
+      className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border cursor-pointer transition-transform hover:scale-105 active:scale-95"
+      style={{
+        borderColor: ok ? "color-mix(in srgb, var(--fp-mint) 45%, transparent)" : "color-mix(in srgb, var(--fp-coral) 55%, transparent)",
+        color: ok ? "var(--fp-mint)" : "var(--fp-coral)",
+        background: ok ? "color-mix(in srgb, var(--fp-mint) 7%, transparent)" : "color-mix(in srgb, var(--fp-coral) 9%, transparent)",
+      }}
+      title={ok
+        ? `آخرین سینک موفق: ${ago}${status?.message ? " — " + status.message : ""} · برای سینک دستی کلیک کنید`
+        : `سینک ناموفق (${ago}) — ${status?.message ?? "خطای نامشخص"} · برای تلاش دوباره کلیک کنید`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${ok ? "pulse-soft" : ""}`} style={{ background: "currentColor" }} />
+      {ok ? "همگام" : "خطای سینک"}
+      {!ok && <RotateCcw className="w-3 h-3" />}
+    </button>
   );
 }
 
