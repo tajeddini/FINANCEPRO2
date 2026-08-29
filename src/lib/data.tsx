@@ -44,6 +44,13 @@ export interface ActivityLog { id: ID; at: number; text: string; }
 export interface TelegramUser { id: ID; name: string; username: string; joined: number; }
 export interface TrashEntry { key: string; table: string; item: unknown; until: number; label: string; }
 
+/* سنگ‌قبر (Tombstone): رکورد دائمیِ حذف —
+   چون سینک «کل‌نگر» است، حذفِ یک تراکنش در یک مرورگر نباید در مرورگر دیگر
+   به‌صورت «تراکنش محلیِ جدید» تفسیر و زنده شود. هر حذف یک سنگ‌قبر می‌سازد که
+   همراه داده سینک می‌شود و هنگام ادغام، تراکنشِ حذف‌شده را حذف‌شده نگه می‌دارد
+   (مگر اینکه بعداً عمداً بازگردانی شده باشد — updatedAt جدیدتر از سنگ‌قبر). */
+export interface Tombstone { table: "transactions"; id: ID; at: number; }
+
 export interface Prefs {
   theme: "dark" | "light";
   accent?: string;
@@ -66,7 +73,7 @@ export interface AppState {
   splits: { id: ID; title: string; total: number; parts: number }[];
   challenges: Challenge[]; currencies: Currency[]; assets: Asset[]; subscriptions: Subscription[];
   activity_logs: ActivityLog[]; telegram_users: TelegramUser[];
-  trash: TrashEntry[]; prefs: Prefs; lastSync: number; rev: number;
+  trash: TrashEntry[]; tombstones: Tombstone[]; prefs: Prefs; lastSync: number; rev: number;
 }
 
 /* ---------- نگاشت نام دسته به آیکون پیش‌فرض ---------- */
@@ -218,9 +225,40 @@ function seed(): AppState {
     ],
     telegram_users: [{ id: uid(), name: "شما", username: "@shoma", joined: Date.now() - 30 * 86400000 }],
     trash: [],
+    tombstones: [],
     prefs: { theme: "dark" },
     lastSync: Date.now(),
     rev: 0,
+  };
+  recomputeBalances(state);
+  return state;
+}
+
+/* ---------- حالت خالی (بدون دادهٔ نمونه) ----------
+   برای «کاربر موجودی» که در مرورگر/دستگاه جدید وارد می‌شود: ساختار آماده است،
+   داده‌های واقعی از ابر می‌آیند — دادهٔ نمونه جای دادهٔ واقعی را نمی‌گیرد. */
+export function emptyState(): AppState {
+  const cat = (name: string, type: "income" | "expense", color: string): Category => ({
+    id: uid(), name, type, color, icon: CATEGORY_ICON_BY_NAME[name] ?? "wallet",
+  });
+  const a1: Account = { id: uid(), name: "بانک ملت", type: "کارت بانکی", initial: 0, color: "#57d9a3", balance: 0 };
+  const state: AppState = {
+    accounts: [a1],
+    categories: [
+      cat("خوراک", "expense", "#e8b04b"), cat("رفت‌وآمد", "expense", "#5ec8de"),
+      cat("خانه و اجاره", "expense", "#8f7ae8"), cat("سلامت", "expense", "#ff7a6b"),
+      cat("تفریح", "expense", "#57d9a3"), cat("پوشاک", "expense", "#f28fc0"),
+      cat("آموزش", "expense", "#7ab8f2"), cat("اشتراک", "expense", "#c0e85e"),
+      cat("متفرقه", "expense", "#a3b8ac"),
+      cat("حقوق", "income", "#57d9a3"), cat("پروژه", "income", "#e8b04b"), cat("هدیه", "income", "#f28fc0"),
+    ],
+    tags: JSON.parse(JSON.stringify(DEFAULT_TAGS)),
+    transactions: [], transfers: [], debts: [], installments: [], budgets: [],
+    payment_methods: [{ id: uid(), name: "کارت" }, { id: uid(), name: "نقد" }, { id: uid(), name: "شبا" }],
+    recurring: [], savings_goals: [], appointments: [], notes: [], cheques: [], splits: [],
+    challenges: [], currencies: [], assets: [], subscriptions: [],
+    activity_logs: [], telegram_users: [], trash: [], tombstones: [],
+    prefs: { theme: "dark" }, lastSync: Date.now(), rev: 0,
   };
   recomputeBalances(state);
   return state;
@@ -230,6 +268,10 @@ function seed(): AppState {
 export function migrateLoadedState(parsed: AppState): AppState {
   if (typeof parsed.rev !== "number") parsed.rev = 0;
   if (!Array.isArray(parsed.notes)) parsed.notes = [];
+  if (!Array.isArray(parsed.tombstones)) parsed.tombstones = [];
+  /* پاک‌سازی سنگ‌قبرهای خیلی قدیمی (بیش از ۱۸۰ روز) تا داده بی‌نهایت رشد نکند */
+  const cutoff = Date.now() - 180 * 86400000;
+  parsed.tombstones = parsed.tombstones.filter((tb) => tb.at > cutoff);
   if (!Array.isArray(parsed.tags) || parsed.tags.length === 0) {
     parsed.tags = JSON.parse(JSON.stringify(DEFAULT_TAGS));
   }
@@ -359,7 +401,14 @@ interface Store {
 const Ctx = createContext<Store>(null!);
 export const useStore = () => useContext(Ctx);
 
-export function DataProvider({ userId, children }: { userId: string; children: ReactNode }) {
+export function DataProvider({ userId, fresh = false, children }: {
+  userId: string;
+  /** فقط برای حسابی که «همین الان ساخته شده» — دادهٔ نمونه می‌گیرد.
+      کاربر موجودی که در مرورگر جدید وارد می‌شود false است تا دادهٔ نمونه
+      جای دادهٔ واقعیِ ابری را نگیرد (ریشهٔ باگ «تراکنش‌های مالِ من نیست») */
+  fresh?: boolean;
+  children: ReactNode;
+}) {
   const storageKey = `fp_data_${userId}`;
   const [state, setState] = useState<AppState>(() => {
     try {
@@ -372,9 +421,9 @@ export function DataProvider({ userId, children }: { userId: string; children: R
         return parsed;
       }
     } catch { /* دادهٔ خراب — از نو */ }
-    const fresh = seed();
-    localStorage.setItem(storageKey, JSON.stringify(fresh));
-    return fresh;
+    const init = fresh ? seed() : emptyState();
+    localStorage.setItem(storageKey, JSON.stringify(init));
+    return init;
   });
 
   const persist = (s: AppState) => {
@@ -419,6 +468,10 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       d.trash = [...d.trash.filter((e) => e.table !== table || (e.item as { id: ID }).id !== id), {
         key: uid(), table, item, until: Date.now() + 30000, label,
       }].slice(-5);
+      /* سنگ‌قبر: حذف در همهٔ مرورگرها ماندگار می‌شود (ریشهٔ باگ «برگشتن تراکنش حذف‌شده») */
+      if (table === "transactions") {
+        d.tombstones = [...d.tombstones.filter((tb) => tb.id !== id), { table: "transactions", id, at: Date.now() }];
+      }
     });
   };
 
@@ -428,6 +481,13 @@ export function DataProvider({ userId, children }: { userId: string; children: R
       if (!entry) return;
       (d[entry.table as TableName] as unknown[]).push(entry.item);
       d.trash = d.trash.filter((e) => e.key !== key);
+      /* بازگردانی = تغییر جدید: مهر زمانی می‌گیرد و سنگ‌قبرش پاک می‌شود
+         تا در مرورگرهای دیگر «بازگردانی» بر «حذف قدیمی» برنده شود */
+      if (entry.table === "transactions") {
+        const tx = entry.item as Tx;
+        tx.updatedAt = Date.now();
+        d.tombstones = d.tombstones.filter((tb) => tb.id !== tx.id);
+      }
       d.activity_logs.unshift({ id: uid(), at: Date.now(), text: `«${entry.label}» بازگردانی شد` });
     });
   };
