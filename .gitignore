@@ -1,11 +1,12 @@
 node_modules/
-.next/
 dist/
-build/
-*.log
-
-# Capacitor — پوشهٔ پروژهٔ اندروید فقط روی کامپیوتر ساخته می‌شود و نباید به ریپازیتوری برود
+.env
+*.local
+.DS_Store
 /android
 /ios
 *.keystore
 *.jks
+.next/
+build/
+*.log

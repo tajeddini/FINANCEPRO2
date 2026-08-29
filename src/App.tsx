@@ -5,7 +5,7 @@ import {
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Sunrise, Target, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
-import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState } from "./lib/cloud";
+import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState, sameLedgerContent } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
@@ -456,14 +456,20 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       if (!pull.ok) {
         /* خطای واقعی (شبکه/کلید) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
       } else if (pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
-        /* ابر جدیدتر است — دادهٔ دستگاه اصلی را بازیابی کن،
-           اما تراکنش‌های محلیِ سینک‌نشده را حفظ کن (جلوگیری از گم شدن تغییرات) */
-        const pulled = pull.state;
-        const keepCount = localOnlyTx(s, pulled).length;
-        mutateRef.current((d) => { mergePulledState(d, pulled); }, "بازیابی داده‌ها از ابر");
-        toastRef.current("ok", keepCount > 0
-          ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
-          : "تراکنش‌های شما از ابر بازیابی شد.");
+        if (sameLedgerContent(s, pull.state)) {
+          /* محتوای ابر با محلی یکسان است و فقط شمارهٔ نسخه جلوتر است —
+             کاری لازم نیست. این گارد جلوی چرخهٔ بی‌پایانِ «ادغام + لاگ + ارسال»
+             بین دستگاه‌هایی را می‌گیرد که ساعتشان چند ثانیه اختلاف دارد. */
+        } else {
+          /* ابر جدیدتر است — دادهٔ دستگاه اصلی را بازیابی کن،
+             اما تراکنش‌های محلیِ سینک‌نشده را حفظ کن (جلوگیری از گم شدن تغییرات) */
+          const pulled = pull.state;
+          const keepCount = localOnlyTx(s, pulled).length;
+          mutateRef.current((d) => { mergePulledState(d, pulled); }, "بازیابی داده‌ها از ابر");
+          toastRef.current("ok", keepCount > 0
+            ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
+            : "تراکنش‌های شما از ابر بازیابی شد.");
+        }
       } else {
         /* ابر خالی یا قدیمی‌تر است — فرستادن محلی امن است */
         await pushToCloud(s, ep, cloudSyncId);
@@ -482,18 +488,20 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     return () => clearInterval(id);
   }, [syncOn, reconcile]);
 
-  /* بعد از سازش‌گیری اولیه، هر تغییر محلی با دیباونس به ابر فرستاده می‌شود */
+  /* بعد از سازش‌گیری اولیه، هر تغییر محلی با دیباونس «سازش‌گیری» می‌کند —
+     نه ارسال کورکورانه: ابتدا ابر خوانده می‌شود و اگر ابر جدیدتر باشد ادغام
+     می‌شود، وگرنه محلی فرستاده می‌شود. این‌طوری نسخهٔ قدیمیِ یک دستگاه هرگز
+     جای دادهٔ جدیدترِ دستگاه دیگر را نمی‌گیرد (ریشهٔ باگ عوض‌شدن خودبه‌خود). */
   useEffect(() => {
     if (!syncOn || !reconciledRef.current) return;
     const id = setTimeout(async () => {
-      const s = stateRef.current;
-      const json = JSON.stringify(s);
+      const json = JSON.stringify(stateRef.current);
       if (json === pushedRef.current) return;
       pushedRef.current = json;
-      await pushToCloud(s, effectivePrefs(s.prefs), cloudSyncId);
+      await reconcile();
     }, 3500);
     return () => clearTimeout(id);
-  }, [state, syncOn, cloudSyncId]);
+  }, [state, syncOn, reconcile]);
 
   /* قفل پین */
   useEffect(() => {

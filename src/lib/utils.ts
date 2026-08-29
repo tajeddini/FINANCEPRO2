@@ -84,11 +84,9 @@ export function addDaysISO(iso: string, n: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-/** تاریخ ISO از اجزای **محلی** — نه UTC.
-    ⚠️ هرگز از toISOString() برای «امروز» استفاده نشود: ایران UTC+3:30 است و بین
-    ۰۰:۰۰ تا ۰۳:۳۰ بامداد، toISOString روز قبل را برمی‌گرداند. */
+/** تاریخ امروز به وقت محلی (نه UTC) — برای ایران بین ۰۰:۰۰ تا ۰۳:۳۰ حیاتی است */
 export function localISODate(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
+  const p = (x: number) => String(x).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
@@ -141,7 +139,7 @@ export function relTime(at: number | string): string {
   return jalaliShort(localISODate(new Date(t)));
 }
 
-/* ---------- بازه‌های زمانی (۹ فیلتر) ---------- */
+/* ---------- بازه‌های زمانی (۹ فیلتر آماده + بازهٔ دلخواه) ---------- */
 export type PeriodKey =
   | "today" | "yesterday" | "week" | "thisMonth" | "lastMonth"
   | "last3" | "thisYear" | "lastYear" | "all" | "custom";
@@ -187,13 +185,12 @@ export function periodRange(key: PeriodKey): { from: string; to: string } {
     case "thisYear":
       return { from: jalaliMonthRange(t.jy, 1).from, to: end };
     case "lastYear": {
-      /* کل سال قبل — از ۱ فروردین تا ۲۹/۳۰ اسفند (نه فقط اسفند) */
       const ly = t.jy - 1;
       return { from: jalaliMonthRange(ly, 1).from, to: jalaliMonthRange(ly, 12).to };
     }
     case "custom":
-      /* بازهٔ دلخواه — توسط هوک usePeriod با تاریخ‌های انتخابی کاربر ساخته می‌شود */
-      return { from: end, to: end };
+      /* بازهٔ دلخواه توسط usePeriod مدیریت می‌شود؛ این fallback است */
+      return { from: "2000-01-01", to: end };
     default:
       return { from: "2000-01-01", to: end };
   }
@@ -210,6 +207,41 @@ export function calcEMI(principal: number, annualPct: number, months: number) {
     total: Math.round(monthly * months),
     interest: Math.round(monthly * months - principal),
   };
+}
+
+/* ---------- زنگ صوتی (Web Audio — بدون فایل خارجی) ---------- */
+export function playChime(times = 3) {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new Ctx();
+    for (let i = 0; i < times; i++) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.value = i % 2 === 0 ? 880 : 1174.7;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.45);
+      g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + i * 0.45 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.45 + 0.4);
+      o.connect(g).connect(ctx.destination);
+      o.start(ctx.currentTime + i * 0.45);
+      o.stop(ctx.currentTime + i * 0.45 + 0.42);
+    }
+    window.setTimeout(() => ctx.close().catch(() => {}), times * 450 + 500);
+  } catch { /* مرورگر اجازه نداد — بی‌صدا */ }
+}
+
+/* ---------- اعلان سیستم (با Service Worker برای پس‌زمینه) ---------- */
+export async function fireNotification(title: string, body: string) {
+  if (!("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.showNotification(title, { body, dir: "rtl", lang: "fa", icon: "/icon.svg" });
+      return;
+    }
+  } catch { /* fallback پایین */ }
+  try { new Notification(title, { body, dir: "rtl" }); } catch { /* ignore */ }
 }
 
 /* ---------- هوک‌ها ---------- */
@@ -279,54 +311,6 @@ export function useInView<T extends HTMLElement>(threshold = 0.12): [React.Mutab
     return () => io.disconnect();
   }, [threshold]);
   return [ref, inView];
-}
-
-/** پخش زنگ یادآور — سه نُت با تکرار */
-export function playChime(times = 3) {
-  try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const notes = [880, 1174.7, 1567.98]; // لا، ر، سل
-    for (let r = 0; r < times; r++) {
-      notes.forEach((f, i) => {
-        const t = ctx.currentTime + r * 0.9 + i * 0.16;
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.type = "sine";
-        o.frequency.value = f;
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.28, t + 0.03);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
-        o.connect(g).connect(ctx.destination);
-        o.start(t);
-        o.stop(t + 0.32);
-      });
-    }
-    window.setTimeout(() => ctx.close(), times * 900 + 600);
-  } catch { /* بدون صدا */ }
-}
-
-/** اعلان سیستمی — از Service Worker تا حتی وقتی تب در پس‌زمینه است */
-export async function fireNotification(title: string, body: string) {
-  if (!("Notification" in window) || Notification.permission !== "granted") return;
-  const opts: NotificationOptions = {
-    body,
-    icon: "/icon.svg",
-    badge: "/icon.svg",
-    tag: title,
-    requireInteraction: true,
-  };
-  try {
-    const reg = await navigator.serviceWorker?.getRegistration();
-    if (reg) {
-      await reg.showNotification(title, { ...opts, vibrate: [220, 120, 220] } as NotificationOptions & { vibrate: number[] });
-      return;
-    }
-  } catch { /* fallback */ }
-  try {
-    new Notification(title, opts);
-  } catch { /* ignore */ }
 }
 
 /** کپی در کلیپ‌بورد با fallback */

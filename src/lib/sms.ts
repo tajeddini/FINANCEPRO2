@@ -17,7 +17,8 @@
         -10,314,000
         06/01_15:08
         مانده: 2,876,564,356
- */import { toEnDigits, jalaliToISO, jalaliToday, jalaliMonthLen } from "./utils";
+*/
+import { toEnDigits, jalaliToISO, jalaliToday, jalaliMonthLen } from "./utils";
 
 export interface SmsParse {
   type: "income" | "expense";
