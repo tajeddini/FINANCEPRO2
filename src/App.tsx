@@ -32,14 +32,24 @@ const NAV: { id: PageId; label: string; icon: React.ReactNode }[] = [
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => getSession());
+  /* نسلِ نشست: با هر ورود عوض می‌شود تا DataProvider دوباره mount شود و
+      نشانهٔ «ثبت‌نام تازه» را دقیقاً همان لحظه بخواند (نه قبل از آن) */
+  const [gen, setGen] = useState(0);
+  const consumeFresh = () => {
+    try {
+      const f = sessionStorage.getItem("fp_fresh_signup") === "1";
+      sessionStorage.removeItem("fp_fresh_signup");
+      return f;
+    } catch { return false; }
+  };
   return (
     <ToastProvider>
       {user ? (
-        <DataProvider key={user.id} userId={user.id}>
+        <DataProvider key={`${user.id}:${gen}`} userId={user.id} fresh={consumeFresh()}>
           <Shell user={user} onLogout={() => { logout(); setUser(null); }} onDelete={() => { deleteAccount(user.id); setUser(null); }} />
         </DataProvider>
       ) : (
-        <AuthScreen onAuthed={setUser} />
+        <AuthScreen onAuthed={(u) => { setUser(u); setGen((g) => g + 1); }} />
       )}
     </ToastProvider>
   );
@@ -60,7 +70,14 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
     const r = mode === "login" ? await login(username, pass) : signup(name, username, pass);
     setBusy(false);
     if (r.error) return toast("err", r.error);
-    toast("ok", mode === "login" ? `خوش آمدید، ${r.user!.name}!` : "حساب ساخته شد — دفترکل نمونه برایتان آماده است.");
+    try {
+      /* فقط «ثبت‌نام تازه» نشانه می‌گیرد — ورودِ کاربر موجود در مرورگر جدید نه */
+      if (mode === "signup") sessionStorage.setItem("fp_fresh_signup", "1");
+      else sessionStorage.removeItem("fp_fresh_signup");
+    } catch { /* ignore */ }
+    toast("ok", mode === "login"
+      ? `خوش آمدید، ${r.user!.name}!`
+      : "حساب ساخته شد — دفترکل نمونه برایتان آماده است (از مدیریت قابل پاک‌کردن است).");
     onAuthed(r.user!);
   };
 
@@ -143,7 +160,8 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
 function CloudConnectBox() {
   const toast = useToast();
   const [cfg, setCfg] = useState(() => getCloud());
-  const [open, setOpen] = useState(() => !getCloud());
+  /* پیش‌فرض جمع است — اتصال ابری «اختیاری» است و ورود بدون آن کار می‌کند */
+  const [open, setOpen] = useState(false);
   const [url, setUrl] = useState(cfg?.url ?? "");
   const [key, setKey] = useState(cfg?.key ?? "");
 
@@ -171,7 +189,7 @@ function CloudConnectBox() {
           style={{ color: cfg ? "var(--fp-mint)" : "var(--fp-accent)" }}
         >
           <span className={`w-1.5 h-1.5 rounded-full ${cfg ? "pulse-soft" : "blink-dot"}`} style={{ background: "currentColor" }} />
-          {cfg ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها" : "اتصال Supabase تنظیم نیست"}
+          {cfg ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها" : "اتصال ابری (اختیاری) — برای سینک بین دستگاه‌ها"}
         </span>
         <button
           className="text-[10.5px] font-black underline underline-offset-2 cursor-pointer"

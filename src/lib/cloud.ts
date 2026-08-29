@@ -133,8 +133,16 @@ export function localOnlyTx(local: AppState, remote: AppState): Tx[] {
  */
 export function mergePulledState(d: AppState, pulled: AppState, keep?: Tx[]) {
   const merged = migrateLoadedState({ ...pulled });
-  /* برای تراکنش‌های مشترک، «نسخهٔ جدیدترِ هر تراکنش» برنده است —
-     نه اینکه کورکورانه کل دادهٔ ابر جایگزین محلی شود. در مساوی، محلی می‌ماند. */
+
+  /* ۱) ادغام سنگ‌قبرها: برای هر id، جدیدترین زمان حذف (از هر دو طرف) */
+  const tombById = new Map<string, number>();
+  for (const tb of [...(d.tombstones ?? []), ...merged.tombstones]) {
+    tombById.set(tb.id, Math.max(tombById.get(tb.id) ?? 0, tb.at));
+  }
+  merged.tombstones = [...tombById.entries()].map(([id, at]) => ({ table: "transactions" as const, id, at }));
+
+  /* ۲) برای تراکنش‌های مشترک، «نسخهٔ جدیدترِ هر تراکنش» برنده است —
+        نه اینکه کورکورانه کل دادهٔ ابر جایگزین محلی شود. در مساوی، محلی می‌ماند. */
   const localTxById = new Map(d.transactions.map((t) => [t.id, t]));
   merged.transactions = merged.transactions.map((pt) => {
     const lt = localTxById.get(pt.id);
@@ -143,12 +151,25 @@ export function mergePulledState(d: AppState, pulled: AppState, keep?: Tx[]) {
     const pulledTime = pt.updatedAt ?? pt.createdAt ?? 0;
     return localTime >= pulledTime ? lt : pt;
   });
-  /* تراکنش‌های فقط-محلی (هنوز سینک‌نشده) هم حفظ می‌شوند (dedupe بر اساس id) */
+
+  /* ۳) تراکنش‌های فقط-محلی (هنوز سینک‌نشده) هم حفظ می‌شوند (dedupe بر اساس id) */
   const toKeep = keep ?? localOnlyTx(d, merged);
   const mergedIds = new Set(merged.transactions.map((t) => t.id));
   merged.transactions = [...toKeep.filter((t) => !mergedIds.has(t.id)), ...merged.transactions];
+
+  /* ۴) حذفِ ماندگار: تراکنشی که سنگ‌قبرش جدیدتر از آخرین ویرایشش است،
+        حذف‌شده می‌ماند — حتی اگر مرورگر دیگر هنوز آن را داشته باشد.
+        (اگر عمداً بازگردانی شده باشد، updatedAt جدیدتر از سنگ‌قبر است و می‌ماند.) */
+  merged.transactions = merged.transactions.filter((t) => {
+    const deletedAt = tombById.get(t.id);
+    if (deletedAt === undefined) return true;
+    return (t.updatedAt ?? t.createdAt ?? 0) > deletedAt;
+  });
+
+  /* ۵) سطل زبالهٔ محلی (پنجرهٔ بازگشت ۳۰ ثانیه) دست‌نخورده می‌ماند */
   const prefs = d.prefs;
-  Object.assign(d, merged, { prefs });
+  const trash = d.trash;
+  Object.assign(d, merged, { prefs, trash });
 }
 
 /* ===== تشخیص برابری محتوای دفترکل =====
@@ -159,7 +180,7 @@ const ledgerFingerprint = (s: AppState): string =>
     s.transactions, s.transfers, s.accounts, s.categories, s.tags, s.debts,
     s.installments, s.budgets, s.payment_methods, s.recurring, s.savings_goals,
     s.appointments, s.notes, s.cheques, s.splits, s.challenges, s.currencies,
-    s.assets, s.subscriptions,
+    s.assets, s.subscriptions, s.tombstones ?? [],
   ]);
 
 export const sameLedgerContent = (a: AppState, b: AppState): boolean =>
