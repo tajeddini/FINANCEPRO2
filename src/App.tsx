@@ -5,7 +5,11 @@ import {
   PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Sunrise, Target, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
-import { pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, localOnlyTx, mergePulledState, sameLedgerContent } from "./lib/cloud";
+import {
+  pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud,
+  localOnlyTx, mergePulledState, sameLedgerContent,
+  readSyncStatus, writeSyncStatus, type SyncStatus,
+} from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
@@ -490,15 +494,33 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cloudSyncId]);
 
-  /* سازش‌گیری: اول از ابر بخوان؛ اگر ابر جدیدتر بود جایگزین کن، وگرنه محلی را بفرست */
-  const reconcile = useCallback(async () => {
+  /* گزارش وضعیت سینک + توست فقط هنگام «تغییر وضعیت» (موفق ↔ ناموفق) تا اسپم نشود */
+  const lastSyncOkRef = useRef<boolean | null>(null);
+  const reportSync = useCallback((ok: boolean, message: string) => {
+    writeSyncStatus({ ok, at: Date.now(), message });
+    if (lastSyncOkRef.current === true && !ok)
+      toastRef.current("err", `سینک ابری ناموفق — ${message}`);
+    else if (lastSyncOkRef.current === false && ok)
+      toastRef.current("ok", "سینک ابری دوباره برقرار شد ✅");
+    lastSyncOkRef.current = ok;
+  }, []);
+
+  /* سازش‌گیری: اول از ابر بخوان؛ اگر ابر جدیدتر بود ادغام کن، وگرنه محلی را بفرست.
+     خروجی boolean = موفقیت — تا ارسالِ شکست‌خورده «فرستاده‌شده» علامت نخورد و بعداً دوباره تلاش شود */
+  const reconcilingRef = useRef(false);
+  const reconcile = useCallback(async (): Promise<boolean> => {
+    if (reconcilingRef.current) return false; /* اجرای همزمانِ پولینگ و دیباونس ممنوع */
     const s = stateRef.current;
     const ep = effectivePrefs(s.prefs);
-    if (!ep.syncUrl || !ep.syncKey) return;
+    if (!ep.syncUrl || !ep.syncKey) return false;
+    reconcilingRef.current = true;
+    let ok = false;
+    let message = "";
     try {
       const pull = await pullFromCloud(ep, cloudSyncId);
       if (!pull.ok) {
-        /* خطای واقعی (شبکه/کلید) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
+        /* خطای واقعی (شبکه/کلید/جدول) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
+        message = pull.message;
       } else if (pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
         if (sameLedgerContent(s, pull.state)) {
           /* محتوای ابر با محلی یکسان است و فقط شمارهٔ نسخه جلوتر است —
@@ -514,22 +536,33 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
             ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
             : "تراکنش‌های شما از ابر بازیابی شد.");
         }
+        ok = true; message = "دریافت از ابر انجام شد.";
       } else {
-        /* ابر خالی یا قدیمی‌تر است — فرستادن محلی امن است */
-        await pushToCloud(s, ep, cloudSyncId);
+        /* ابر «خالی» یا «قدیمی‌تر» است — در هر دو حالت فرستادن محلی امن است
+           (ابر خالی = اولین سینک؛ pull با ok:true و state=undefined برمی‌گردد) */
+        const push = await pushToCloud(s, ep, cloudSyncId);
+        ok = push.ok;
+        message = push.ok ? "ارسال به ابر انجام شد." : push.message;
       }
-    } catch { /* شبکه قطع است — از دادهٔ محلی استفاده می‌شود */ }
+    } catch {
+      message = "خطای شبکه — اتصال اینترنت را بررسی کنید.";
+    } finally {
+      reconcilingRef.current = false;
+    }
     reconciledRef.current = true;
-    pushedRef.current = JSON.stringify(stateRef.current);
-  }, [cloudSyncId]);
-
+    reportSync(ok, message);
+    return ok;
+  }, [cloudSyncId, reportSync]);
   /* هنگام فعال شدن سینک و هر ۹۰ ثانیه، سازش‌گیری کن */
   useEffect(() => {
     if (!syncOn) return;
     reconciledRef.current = false;
     reconcile();
     const id = setInterval(reconcile, 90000);
-    return () => clearInterval(id);
+    /* کلیک روی نشانگرِ سینک → رویداد fp-sync-now → سینک فوری (بیرون از نوبت ۹۰ ثانیه) */
+    const onNow = () => { void reconcile(); };
+    window.addEventListener("fp-sync-now", onNow);
+    return () => { clearInterval(id); window.removeEventListener("fp-sync-now", onNow); };
   }, [syncOn, reconcile]);
 
   /* بعد از سازش‌گیری اولیه، هر تغییر محلی با دیباونس «سازش‌گیری» می‌کند —
@@ -541,8 +574,10 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     const id = setTimeout(async () => {
       const json = JSON.stringify(stateRef.current);
       if (json === pushedRef.current) return;
-      pushedRef.current = json;
-      await reconcile();
+      const ok = await reconcile();
+      /* فقط وقتی ارسال واقعاً موفق بود «فرستاده‌شده» علامت بزن —
+         وگرنه تغییر بعدی (یا پولینگ ۹۰ ثانیه) دوباره تلاش می‌کند و داده پشت شبکهٔ قطع نمی‌ماند */
+      if (ok) pushedRef.current = JSON.stringify(stateRef.current);
     }, 3500);
     return () => clearTimeout(id);
   }, [state, syncOn, reconcile]);
@@ -734,17 +769,54 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
 }
 
 /* تگ سینک */
+/* نشانگر وضعیت واقعی سینک ابری — سه حالت:
+   خاکستریِ چشمک‌زن = سینک غیرفعال (آدرس/کلید تنظیم نیست)
+   سبزِ پالس‌دار = آخرین تلاش سینک موفق — با زمانِ آن
+   قرمز = آخرین تلاش ناموفق — دلیل در title و با کلیک، سینک دستی */
 function SyncBadge() {
   const { state } = useStore();
   const e = effectivePrefs(state.prefs);
   const on = !!e.syncUrl && !!e.syncKey;
+  const [status, setStatus] = useState<SyncStatus | null>(() => readSyncStatus());
+  const now = useNow(15000); /* برای تازه‌ماندن «چند دقیقه پیش» */
+  void now;
+
+  useEffect(() => {
+    const h = () => setStatus(readSyncStatus());
+    window.addEventListener("fp-sync-status", h);
+    return () => window.removeEventListener("fp-sync-status", h);
+  }, []);
+
+  if (!on) {
+    return (
+      <span className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border"
+        style={{ borderColor: "var(--fp-border)", color: "var(--fp-text3)" }}
+        title="سینک ابری غیرفعال — از تنظیمات وصل کنید">
+        <span className="w-1.5 h-1.5 rounded-full blink-dot" style={{ background: "currentColor" }} />
+        آفلاین
+      </span>
+    );
+  }
+
+  const ok = status?.ok !== false; /* اگر هنوز گزارشی نیست، خوش‌بینانه سبز */
+  const ago = status ? relTime(status.at) : relTime(state.lastSync);
   return (
-    <span className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border"
-      style={{ borderColor: "var(--fp-border)", color: on ? "var(--fp-mint)" : "var(--fp-text3)" }}
-      title={on ? `آخرین سینک: ${relTime(state.lastSync)}` : "سینک ابری غیرفعال — از تنظیمات وصل کنید"}>
-      <span className={`w-1.5 h-1.5 rounded-full ${on ? "pulse-soft" : "blink-dot"}`} style={{ background: "currentColor" }} />
-      {on ? "سینک" : "آفلاین"}
-    </span>
+    <button
+      onClick={() => window.dispatchEvent(new CustomEvent("fp-sync-now"))}
+      className="hidden md:flex items-center gap-1.5 text-[10.5px] font-black px-2.5 py-1.5 rounded-full border cursor-pointer transition-transform hover:scale-105 active:scale-95"
+      style={{
+        borderColor: ok ? "color-mix(in srgb, var(--fp-mint) 45%, transparent)" : "color-mix(in srgb, var(--fp-coral) 55%, transparent)",
+        color: ok ? "var(--fp-mint)" : "var(--fp-coral)",
+        background: ok ? "color-mix(in srgb, var(--fp-mint) 7%, transparent)" : "color-mix(in srgb, var(--fp-coral) 9%, transparent)",
+      }}
+      title={ok
+        ? `آخرین سینک موفق: ${ago}${status?.message ? " — " + status.message : ""} · برای سینک دستی کلیک کنید`
+        : `سینک ناموفق (${ago}) — ${status?.message ?? "خطای نامشخص"} · برای تلاش دوباره کلیک کنید`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${ok ? "pulse-soft" : ""}`} style={{ background: "currentColor" }} />
+      {ok ? "همگام" : "خطای سینک"}
+      {!ok && <RotateCcw className="w-3 h-3" />}
+    </button>
   );
 }
 

@@ -1,7 +1,7 @@
 /* ---------- مدل داده + Store مرکزی + تشخیص هوشمند + تگ‌ها و یادداشت‌ها ---------- */
 import { createContext, useContext, useState, type ReactNode } from "react";
 import {
-  addDaysISO, jalaliMonthLen, jalaliToISO, jalaliToday,
+  addDaysISO, addJalaliMonths, isoToJalali, jalaliMonthLen, jalaliToISO, jalaliToday,
   toEnDigits, todayISO, uid,
 } from "./utils";
 
@@ -28,7 +28,51 @@ export interface Tx {
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
-export interface Installment { id: ID; title: string; total: number; months: number; amountPerMonth: number; start: string; paidCount: number; accountId: ID; }
+/* ---------- اقساط با برنامهٔ ماهانه ---------- */
+export interface InstallmentMonth {
+  due: string;        /* سررسید این قسط (ISO) */
+  amount: number;     /* مبلغ این قسط — قسط آخر مابه‌التفاوت گردکردن را جذب می‌کند */
+  paidAt?: number;    /* مهر زمانی پرداخت — اگر نباشد یعنی پرداخت نشده */
+}
+export interface Installment {
+  id: ID; title: string; total: number; months: number; amountPerMonth: number;
+  start: string; accountId: ID; categoryId?: ID;
+  paidCount: number;            /* تعداد قسط‌های پرداخت‌شده — از schedule مشتق می‌شود (سازگاری با اکسل/گزارش‌ها) */
+  schedule: InstallmentMonth[]; /* برنامهٔ ماه‌به‌ماه */
+}
+
+/**
+ * ساخت برنامهٔ ماهانهٔ اقساط: هر ماه همان روزِ سررسیدِ ماه اول (با clamp در ماه‌های کوتاه)
+ * و قسطِ آخر، مابه‌التفاوت گردکردنِ مبلغ کل را جذب می‌کند تا جمع دقیقاً برابر total شود.
+ */
+export function buildSchedule(
+  inst: { start: string; months: number; amountPerMonth: number; total: number },
+  paidCount = 0
+): InstallmentMonth[] {
+  const out: InstallmentMonth[] = [];
+  const j = isoToJalali(inst.start);
+  const n = Math.max(1, inst.months | 0);
+  for (let i = 0; i < n; i++) {
+    const m = addJalaliMonths(j.jy, j.jm, i);
+    const day = Math.min(j.jd, jalaliMonthLen(m.jy, m.jm));
+    const due = jalaliToISO(m.jy, m.jm, day);
+    const isLast = i === n - 1;
+    const rest = inst.total - inst.amountPerMonth * (n - 1);
+    const amount = isLast && rest > 0 ? rest : inst.amountPerMonth;
+    out.push({ due, amount, paidAt: i < paidCount ? new Date(due + "T12:00:00").getTime() : undefined });
+  }
+  return out;
+}
+
+/** پر کردن schedule برای اقساطِ ساخته‌شده قبل از این نسخه + همگام‌سازی paidCount */
+export function normalizeInstallments(s: AppState) {
+  for (const inst of s.installments) {
+    if (!Array.isArray(inst.schedule) || inst.schedule.length !== inst.months) {
+      inst.schedule = buildSchedule(inst, inst.paidCount ?? 0);
+    }
+    inst.paidCount = inst.schedule.filter((m) => !!m.paidAt).length;
+  }
+}
 export interface Budget { id: ID; categoryId: ID; limit: number; }
 export interface PayMethod { id: ID; name: string; }
 export interface Recurring { id: ID; title: string; type: "income" | "expense"; amount: number; categoryId: ID; accountId: ID; dayOfMonth: number; lastRun?: string; }
@@ -173,7 +217,7 @@ function seed(): AppState {
       { id: uid(), kind: "credit", person: "مریم احمدی", amount: 800000, paid: 0, due: addDaysISO(t, 5), note: "پول بلیت کنسرت" },
     ],
     installments: [
-      { id: uid(), title: "وام خرید لپ‌تاپ", total: 14500000, months: 10, amountPerMonth: 1450000, start: d(150), paidCount: 5, accountId: a1.id },
+      { id: uid(), title: "وام خرید لپ‌تاپ", total: 14500000, months: 10, amountPerMonth: 1450000, start: d(150), paidCount: 5, accountId: a1.id, schedule: [] },
     ],
     budgets: [
       { id: uid(), categoryId: cFood.id, limit: 3000000 },
@@ -230,6 +274,7 @@ function seed(): AppState {
     lastSync: Date.now(),
     rev: 0,
   };
+  normalizeInstallments(state);
   recomputeBalances(state);
   return state;
 }
@@ -279,6 +324,7 @@ export function migrateLoadedState(parsed: AppState): AppState {
   for (const c of parsed.categories ?? []) {
     if (!c.icon) c.icon = CATEGORY_ICON_BY_NAME[c.name] ?? "wallet";
   }
+  if (Array.isArray(parsed.installments)) normalizeInstallments(parsed);
   return parsed;
 }
 

@@ -52,7 +52,11 @@ export const decodeState = (code: string): AppState | null => {
 };
 
 /* ===== سینک Supabase (REST) ===== */
-const restBase = (url: string) => url.replace(/\/+$/, "") + "/rest/v1";
+/* اگر کاربر آدرس را با /rest/v1 کپی کرده باشد، تکراری نشود */
+const restBase = (url: string) => {
+  const u = url.replace(/\/+$/, "");
+  return u.endsWith("/rest/v1") ? u : u + "/rest/v1";
+};
 
 const authHeaders = (key: string, extra: Record<string, string> = {}) => ({
   apikey: key,
@@ -109,16 +113,75 @@ export async function pullFromCloud(
       `${restBase(p.syncUrl)}/financepro_state?id=eq.${encodeURIComponent(id)}&select=data,updated_at`,
       { headers: authHeaders(p.syncKey) }
     );
-    if (!res.ok) return { ok: false, message: `خطای ${res.status} از Supabase.` };
+    if (!res.ok)
+      return { ok: false, message: httpDiagnosis(res.status, "خواندن از ابر") };
     const rows = (await res.json()) as { data: string; updated_at?: string }[];
-    if (!rows.length) return { ok: false, message: "هنوز داده‌ای در ابر نیست." };
+    /* ⚠️ ابر «خالی» یک موفقیت است (HTTP درست کار کرده) — نه خطا!
+       این تمایز، بن‌بست «اولین سینک» را می‌شکند: دستگاه تازه باید بتواند
+       اولین push را انجام دهد تا ردیف ساخته شود. فقط خطای واقعی جلوی ارسال را می‌گیرد. */
+    if (!rows.length)
+      return { ok: true, message: "ابر خالی است — آمادهٔ دریافت اولین ارسال.", state: undefined };
     const st = decodeState(rows[0].data);
-    if (!st) return { ok: false, message: "دادهٔ ابر قابل‌خواندن نیست." };
+    if (!st) return { ok: false, message: "دادهٔ ابر قابل‌خواندن نیست (فرمت قدیمی یا خراب)." };
     return { ok: true, message: "داده از ابر خوانده شد.", state: st, updatedAt: rows[0].updated_at };
   } catch {
-    return { ok: false, message: "اتصال برقرار نشد." };
+    return { ok: false, message: "اتصال برقرار نشد — اینترنت را بررسی کنید (یا آدرس پروژه اشتباه است)." };
   }
 }
+
+/* ---------- تشخیص خطاهای HTTP با راهنمای عملی ---------- */
+export function httpDiagnosis(status: number, action: string): string {
+  if (status === 401 || status === 403)
+    return `کلید anon اشتباه یا منقضی است (${status}) — آن را دوباره از Settings → API سوپابیس کپی کنید.`;
+  if (status === 404)
+    return `جدول یا آدرس پیدا نشد (${status}) — آدرس پروژه و وجود جدول financepro_state را بررسی کنید (SQL آن در سند پروژه است).`;
+  if (status === 400)
+    return `درخواست نامعتبر (${status}) — احتمالاً آدرس پروژه را اشتباه وارد کرده‌اید (با https://xxx.supabase.co).`;
+  if (status >= 500)
+    return `خطای سمت سرور سوپابیس (${status}) — چند لحظه دیگر دوباره تلاش می‌شود.`;
+  return `خطای ${status} هنگام ${action} از Supabase.`;
+}
+
+/* ---------- آزمایش اتصال — برای دکمهٔ «آزمایش اتصال» در تنظیمات ---------- */
+export async function testConnection(
+  p: Prefs,
+  syncId?: string
+): Promise<{ ok: boolean; message: string }> {
+  const id = syncId ?? p.syncId ?? "fp-connection-test";
+  if (!p.syncUrl || !p.syncKey)
+    return { ok: false, message: "آدرس پروژه و کلید anon را کامل وارد کنید." };
+  try {
+    const res = await fetch(
+      `${restBase(p.syncUrl)}/financepro_state?select=id&limit=1`,
+      { headers: authHeaders(p.syncKey) }
+    );
+    if (res.ok)
+      return { ok: true, message: `اتصال برقرار است ✅ — جدول financepro_state پاسخ داد (شناسهٔ سینک: ${id}).` };
+    return { ok: false, message: httpDiagnosis(res.status, "آزمایش اتصال") };
+  } catch {
+    return { ok: false, message: "اتصال برقرار نشد — اینترنت را بررسی کنید. اگر از فیلترشکن استفاده می‌کنید، برای سوپابیس هم فعال باشد." };
+  }
+}
+
+/* ---------- وضعیت سینک (برای نمایش در نشانگر و تنظیمات) ---------- */
+export interface SyncStatus { ok: boolean; at: number; message: string; }
+const STATUS_KEY = "fp_sync_status";
+
+export const readSyncStatus = (): SyncStatus | null => {
+  try {
+    const raw = localStorage.getItem(STATUS_KEY);
+    return raw ? (JSON.parse(raw) as SyncStatus) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const writeSyncStatus = (s: SyncStatus): void => {
+  try {
+    localStorage.setItem(STATUS_KEY, JSON.stringify(s));
+    window.dispatchEvent(new CustomEvent("fp-sync-status"));
+  } catch { /* ignore */ }
+};
 
 /* ===== تراکنش‌های محلیِ سینک‌نشده (برای جلوگیری از گم‌شدن هنگام pull) ===== */
 export function localOnlyTx(local: AppState, remote: AppState): Tx[] {
