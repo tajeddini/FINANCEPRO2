@@ -11,7 +11,7 @@ import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
 import { faDate, faMoney, faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
-import { ToastProvider, useToast, Modal, TInput, Field, CatGlyph } from "./ui";
+import { ToastProvider, useToast, Modal, TInput, Field, CatGlyph, appendSmart } from "./ui";
 import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
 import { AppointmentsPage, DailyPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
 
@@ -234,29 +234,55 @@ function GlobalSearch({ onNavigate }: {
   const [listening, setListening] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   const activeRecRef = useRef(false);
+  /* توکن نشست + آخرین مقدار ارسال‌شده — الگوی idempotent، همان MicButton */
+  const vsSessionRef = useRef(0);
+  const vsLastEmittedRef = useRef("");
 
-  /* جست‌وجوی صوتی: گفتن عبارت به‌جای تایپ */
+  /* جست‌وجوی صوتی: گفتن عبارت به‌جای تایپ —
+     بازنویسی با الگوی دفاعی: بازسازی متن از صفر، حذف تکرار، ارسال فقط هنگام تغییر */
   const voiceSearch = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const W = window as unknown as Record<string, unknown>;
+    const SR = (W.SpeechRecognition || W.webkitSpeechRecognition) as (new () => {
+      lang: string; interimResults: boolean; continuous: boolean;
+      onresult: ((e: unknown) => void) | null; onend: (() => void) | null; onerror: ((e: unknown) => void) | null;
+      start: () => void; abort: () => void;
+    }) | undefined;
     if (!SR) return toast("warn", "مرورگر شما از جست‌وجوی صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
     if (activeRecRef.current) return;
     const rec = new SR();
     rec.lang = "fa-IR";
     rec.interimResults = true;
     rec.continuous = false;
-    let heard = "";
+    const myId = ++vsSessionRef.current;
+    vsLastEmittedRef.current = "";
     activeRecRef.current = true;
-    rec.onresult = (e: any) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) heard += e.results[i][0].transcript;
+    rec.onresult = (e: unknown) => {
+      if (myId !== vsSessionRef.current) return; /* رویداد نشستِ باطل‌شده */
+      const ev = e as { results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> };
+      /* بازسازی کامل متن از صفر: همهٔ نتایج پیمایش و فقط isFinalها به هم می‌چسبند */
+      let finalText = "";
+      for (let i = 0; i < ev.results.length; i++) {
+        if (ev.results[i].isFinal) finalText += (finalText ? " " : "") + ev.results[i][0].transcript;
       }
-      if (heard.trim()) { setQ(heard.trim()); setOpen(true); }
+      finalText = finalText.trim();
+      if (!finalText) return;
+      const merged = appendSmart("", finalText);
+      if (merged !== vsLastEmittedRef.current) {
+        vsLastEmittedRef.current = merged;
+        setQ(merged);
+        setOpen(true);
+      }
     };
-    rec.onend = () => { setListening(false); activeRecRef.current = false; };
-    rec.onerror = (e: any) => {
+    rec.onend = () => {
+      if (myId !== vsSessionRef.current) return;
       setListening(false); activeRecRef.current = false;
-      if (e.error === "not-allowed") toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس اجازه بده.");
-      else if (e.error === "no-speech") toast("warn", "صدایی شنیده نشد — دوباره بزن و صحبت کن.");
+    };
+    rec.onerror = (e: unknown) => {
+      if (myId !== vsSessionRef.current) return;
+      setListening(false); activeRecRef.current = false;
+      const err = (e as { error?: string }).error;
+      if (err === "not-allowed") toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس اجازه بده.");
+      else if (err === "no-speech") toast("warn", "صدایی شنیده نشد — دوباره بزن و صحبت کن.");
     };
     try { rec.start(); setListening(true); } catch { activeRecRef.current = false; }
   };
