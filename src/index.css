@@ -83,6 +83,75 @@ html[data-accent="emerald-dark"].light {
   --fp-shadow: 0 10px 30px -14px rgba(11, 53, 39, 0.22);
 }
 
+/* ================= تم شیشه‌ای تیره (Glassmorphism Dark) =================
+   کارت‌ها و نوارها «شیشهٔ یخ‌زده» می‌شوند: پس‌زمینهٔ نیمه‌شفاف + blur +
+   حاشیهٔ مویی روشن + گوشه‌های گردتر؛ روی زمینه‌ای با دو هالهٔ نور (طلایی و سبز) */
+html[data-accent="glass-dark"] {
+  --fp-bg: rgba(13, 18, 31, 0.55);      /* پایهٔ نیمه‌شفاف برای اینپوت‌ها و فرورفتگی‌ها */
+  --fp-bg2: rgba(255, 255, 255, 0.05);  /* پایهٔ کارت */
+  --fp-bg3: rgba(255, 255, 255, 0.09);  /* هاور / حالت‌های تو در تو */
+  --fp-text: #F3F1EA;
+  --fp-text2: #9CA3B4;
+  --fp-text3: #6B7180;
+  --fp-accent: #D4AF37;                 /* طلایی */
+  --fp-mint: #3ECF8E;                   /* سبز درآمد */
+  --fp-coral: #E8695A;                  /* مرجانی هزینه */
+  --fp-sky: #6FA8DC;
+  --fp-border: rgba(255, 255, 255, 0.09);
+  --fp-border2: rgba(255, 255, 255, 0.16);
+  --fp-shadow: 0 18px 48px -16px rgba(0, 0, 0, 0.55);
+  --fp-glass: rgba(255, 255, 255, 0.045);
+  --fp-glass-border: rgba(255, 255, 255, 0.09);
+}
+
+/* پس‌زمینه: دو هالهٔ نور نرم روی گرادیان خطی تیره */
+html[data-accent="glass-dark"] body,
+html[data-accent="glass-dark"] .app-texture {
+  background:
+    radial-gradient(900px 620px at 85% -10%, rgba(212, 175, 55, 0.16), transparent 62%),
+    radial-gradient(820px 700px at 8% 112%, rgba(62, 207, 142, 0.11), transparent 62%),
+    linear-gradient(160deg, #0A0E17 0%, #121826 55%, #0A0E17 100%);
+  background-attachment: fixed;
+}
+
+/* کارت‌ها: شیشهٔ یخ‌زده */
+html[data-accent="glass-dark"] .card {
+  background: var(--fp-glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--fp-glass-border);
+  border-radius: 22px;
+  box-shadow: var(--fp-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+/* نوار بالا و پایین و کناری: شیشه */
+html[data-accent="glass-dark"] header,
+html[data-accent="glass-dark"] aside,
+html[data-accent="glass-dark"] nav {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(10, 14, 23, 0.55) !important;
+  border-color: var(--fp-glass-border) !important;
+}
+/* چیپ‌ها و دکمه‌های شبح: شیشه‌ای */
+html[data-accent="glass-dark"] .chip {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+html[data-accent="glass-dark"] .chip-on {
+  background: var(--fp-accent);
+  border-color: var(--fp-accent);
+  color: #0A0E17;
+}
+/* اینپوت‌ها: شیشه */
+html[data-accent="glass-dark"] .input {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+html[data-accent="glass-dark"] select.input option { background: #121826; color: #F3F1EA; }
+/* اعداد بزرگ پررنگ‌تر */
+html[data-accent="glass-dark"] .font-display { font-weight: 800; }
+/* کاهش حرکت: blur را هم خاموش نکن (ثابت است) — فقط انیمیشن‌ها کم می‌شوند */
+
 /* ================= پایه ================= */
 html { scroll-behavior: smooth; }
 body {

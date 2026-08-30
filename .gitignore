@@ -10,3 +10,6 @@ dist/
 .next/
 build/
 *.log
+
+# ربات تلگرام — فایل نگاشت chatId→username (روی VPS ساخته می‌شود)
+bot/bot-state.json

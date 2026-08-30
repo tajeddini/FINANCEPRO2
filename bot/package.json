@@ -1,0 +1,13 @@
+{
+  "name": "financepro-telegram-bot",
+  "version": "1.0.0",
+  "description": "ربات تلگرام فایننس‌پرو — دفترکل مشترک با سایت (بدون وابستگی npm)",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

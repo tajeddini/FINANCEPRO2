@@ -13,6 +13,7 @@ export const THEMES: ThemeDef[] = [
   { id: "ruby", name: "یاقوتی و صورتی", accent: "#ff5e7e", mint: "#ff9db4" },
   { id: "royal", name: "آبی سلطنتی و آسمان", accent: "#7aa2f7", mint: "#54d6e8" },
   { id: "copper", name: "مسی و زیتونی", accent: "#dd9460", mint: "#b3c968" },
+  { id: "glass-dark", name: "شیشه‌ای تیره", accent: "#D4AF37", mint: "#3ECF8E" },
 ];
 
 export const readAccent = (): string => {
