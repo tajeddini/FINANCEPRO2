@@ -30,14 +30,17 @@ const path = require("path");
 
 const ANDROID = path.join(__dirname, "android");
 
-/* میرورها به ترتیب اولویت — اگر یکی قطع بود، Gradle بعدی را امتحان می‌کند */
+/* میرورها به ترتیب اولویت — اگر یکی قطع بود، Gradle بعدی را امتحان می‌کند.
+   Huawei اول است چون از ایران معمولاً پایدارتر از Aliyun است. */
 const MIRRORS = [
+  /* تجمیعی Huawei — google + central + gradle-plugin را یکجا دارد (پایدار از ایران) */
+  "maven { url 'https://repo.huaweicloud.com/repository/maven/' }",
   "maven { url 'https://maven.aliyun.com/repository/google' }",
   "maven { url 'https://maven.aliyun.com/repository/public' }",
   "maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }",
-  /* تجمیعی Huawei — معمولاً google + central + gradle-plugin را یکجا دارد */
-  "maven { url 'https://repo.huaweicloud.com/repository/maven/' }",
-  /* میرور maven central روی Amazon — اغلب از ایران باز است */
+  /* سرور مستقیم گوگل — گاهی باز است */
+  "maven { url 'https://maven.google.com/' }",
+  /* میرور maven central روی Amazon */
   "maven { url 'https://maven-central.storage-download.amazonaws.com/maven2/' }",
 ];
 
@@ -97,8 +100,8 @@ function patchProps() {
   if (!text.includes("internal.http.connectionTimeout")) {
     add.push("");
     add.push("# --- patch-android-mirror: رد شدن سریع از میرورهای قطع‌شده ---");
-    add.push("systemProp.org.gradle.internal.http.connectionTimeout=10000");
-    add.push("systemProp.org.gradle.internal.http.socketTimeout=20000");
+    add.push("systemProp.org.gradle.internal.http.connectionTimeout=8000");
+    add.push("systemProp.org.gradle.internal.http.socketTimeout=15000");
   }
 
   const proxy = process.env.FP_PROXY;
