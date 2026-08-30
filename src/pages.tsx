@@ -1193,8 +1193,11 @@ export function DebtsPage() {
   const [loan, setLoan] = useState({ p: "10000000", r: "23", n: "12" });
   const [qr, setQr] = useState<string | null>(null);
   const [editDebt, setEditDebt] = useState<{ id: string; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string } | null>(null);
-  /* فرم ثبت/ویرایش قسط */
-  const [instForm, setInstForm] = useState<null | { id?: string; title: string; total: string; months: string; start: string; accountId: string; categoryId: string }>(null);
+  /* فرم ثبت/ویرایش قسط — مبلغ هر قسط را خود کاربر وارد می‌کند (محاسبهٔ خودکار ندارد) */
+  const [instForm, setInstForm] = useState<null | { id?: string; title: string; total: string; months: string; amountPerMonth: string; start: string; accountId: string; categoryId: string }>(null);
+  /* انتخاب حساب هنگام پرداخت قسط: «پرداخت شد» → پرسش «از کدام کارت؟» */
+  const [payInst, setPayInst] = useState<{ inst: Installment; idx: number } | null>(null);
+  const [payInstAcc, setPayInstAcc] = useState("");
 
   const debts = state.debts.filter((d) => d.kind === tab);
 
@@ -1211,7 +1214,9 @@ export function DebtsPage() {
     return { paidAmt, remaining, next, overdue, pct };
   };
 
-  const payMonth = (inst: Installment, idx: number) => {
+  const payMonth = (inst: Installment, idx: number, accountId?: ID) => {
+    const accId = accountId ?? inst.accountId;
+    const accName = accById(state, accId)?.name ?? "حساب";
     mutate((d) => {
       const x = d.installments.find((y) => y.id === inst.id);
       if (!x) return;
@@ -1222,13 +1227,16 @@ export function DebtsPage() {
       const catId = x.categoryId
         ?? d.categories.find((c) => c.name === "متفرقه")?.id
         ?? d.categories.find((c) => c.type === "expense")?.id ?? "";
+      /* روش پرداخت از نوع حساب انتخابی حدس زده می‌شود */
+      const acc = d.accounts.find((a) => a.id === accId);
+      const method = acc && /کارت/.test(acc.type) ? "کارت" : "شبا";
       d.transactions.unshift({
         id: Math.random().toString(36).slice(2, 10), date: todayISO(), type: "expense",
         amount: m.amount, title: `قسط ${faNum(idx + 1)} «${x.title}»`, categoryId: catId,
-        accountId: x.accountId, payMethod: "شبا", createdAt: Date.now(), source: "app",
+        accountId: accId, payMethod: method, createdAt: Date.now(), source: "app",
       });
     }, `قسط ${faNum(idx + 1)} «${inst.title}» پرداخت شد`);
-    toast("ok", `قسط ${faNum(idx + 1)} پرداخت و به‌عنوان تراکنش ثبت شد.`);
+    toast("ok", `قسط ${faNum(idx + 1)} از «${accName}» پرداخت و به‌عنوان تراکنش ثبت شد.`);
   };
 
   const unpayMonth = (inst: Installment, idx: number) => {
@@ -1248,11 +1256,13 @@ export function DebtsPage() {
     const title = instForm.title.trim();
     const total = Number(instForm.total) || 0;
     const months = Math.max(1, Number(instForm.months) || 1);
+    const apm = Math.round(Number(instForm.amountPerMonth) || 0);
     if (!title) return toast("warn", "عنوان قسط را بنویسید.");
     if (total <= 0) return toast("warn", "مبلغ کل باید بزرگ‌تر از صفر باشد.");
+    if (apm <= 0) return toast("warn", "مبلغ هر قسط را خودت وارد کن.");
     const base = {
       title, total, months,
-      amountPerMonth: Math.ceil(total / months),
+      amountPerMonth: apm,
       start: instForm.start, accountId: instForm.accountId,
       categoryId: instForm.categoryId || undefined,
     };
@@ -1282,8 +1292,8 @@ export function DebtsPage() {
 
   const startInstForm = (i?: Installment) => {
     setInstForm(i
-      ? { id: i.id, title: i.title, total: String(i.total), months: String(i.months), start: i.start, accountId: i.accountId, categoryId: i.categoryId ?? "" }
-      : { title: "", total: "", months: "12", start: todayISO(), accountId: state.accounts[0]?.id ?? "", categoryId: "" });
+      ? { id: i.id, title: i.title, total: String(i.total), months: String(i.months), amountPerMonth: String(i.amountPerMonth), start: i.start, accountId: i.accountId, categoryId: i.categoryId ?? "" }
+      : { title: "", total: "", months: "12", amountPerMonth: "", start: todayISO(), accountId: state.accounts[0]?.id ?? "", categoryId: "" });
   };
 
   /* جمع‌بندی کل اقساط برای نوار خلاصه */
@@ -1461,7 +1471,7 @@ export function DebtsPage() {
                               <Check className="w-3.5 h-3.5" strokeWidth={3} /> پرداخت شد
                             </button>
                           ) : (
-                            <button onClick={() => payMonth(i, idx)}
+                            <button onClick={() => { setPayInst({ inst: i, idx }); setPayInstAcc(i.accountId); }}
                               className="flex items-center gap-1 text-[10.5px] font-black px-2 py-1 rounded-md cursor-pointer transition-transform hover:scale-105 shrink-0"
                               style={{ background: overdue ? "var(--fp-coral)" : "var(--fp-accent)", color: "#071b16" }}>
                               <Wallet className="w-3.5 h-3.5" /> {overdue ? "پرداخت معوق" : "پرداخت"}
@@ -1482,21 +1492,108 @@ export function DebtsPage() {
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="عنوان (مثلاً وام خرید لپ‌تاپ)"><TInput value={instForm.title} onChange={(e) => setInstForm({ ...instForm, title: e.target.value })} autoFocus /></Field>
                 <Field label="مبلغ کل (تومان)"><AmountInput value={instForm.total} onChange={(v) => setInstForm({ ...instForm, total: v })} /></Field>
+                <Field label="مبلغ هر قسط (تومان) — دستی">
+                  <AmountInput value={instForm.amountPerMonth} onChange={(v) => setInstForm({ ...instForm, amountPerMonth: v })} placeholder="مثلاً ۱٬۵۰۰٬۰۰۰" />
+                </Field>
                 <Field label="تعداد ماه"><TInput dir="ltr" value={faNum(instForm.months)} onChange={(e) => setInstForm({ ...instForm, months: e.target.value.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))) })} /></Field>
                 <Field label="اولین سررسید (شمسی)"><JalaliPicker value={instForm.start} onChange={(v) => setInstForm({ ...instForm, start: v })} /></Field>
-                <Field label="حساب پرداخت"><TSelect value={instForm.accountId} onChange={(e) => setInstForm({ ...instForm, accountId: e.target.value })}>{state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</TSelect></Field>
+                <Field label="حساب پیش‌فرض پرداخت"><TSelect value={instForm.accountId} onChange={(e) => setInstForm({ ...instForm, accountId: e.target.value })}>{state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</TSelect></Field>
                 <Field label="دستهٔ هزینه (اختیاری)"><TSelect value={instForm.categoryId} onChange={(e) => setInstForm({ ...instForm, categoryId: e.target.value })}><option value="">— متفرقه —</option>{state.categories.filter((c) => c.type === "expense").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</TSelect></Field>
-                {(Number(instForm.total) > 0 && Number(instForm.months) > 0) && (
-                  <p className="sm:col-span-2 text-[12px] font-black px-3 py-2 rounded-lg" style={{ background: "color-mix(in srgb, var(--fp-accent) 10%, transparent)", color: "var(--fp-accent)" }}>
-                    هر ماه ≈ {faMoney(Math.ceil((Number(instForm.total) || 0) / (Number(instForm.months) || 1)))} تومان — قسط آخر مابه‌التفاوت را جذب می‌کند تا جمع دقیق شود.
-                  </p>
-                )}
+                {(() => {
+                  const total = Number(instForm.total) || 0;
+                  const months = Math.max(1, Number(instForm.months) || 1);
+                  const apm = Number(instForm.amountPerMonth) || 0;
+                  const sum = apm * months;
+                  const diff = sum - total;
+                  const split = total > 0 ? Math.ceil(total / months) : 0;
+                  if (apm <= 0) return split > 0 ? (
+                    <p className="sm:col-span-2 text-[11.5px] font-bold px-3 py-2 rounded-lg" style={{ background: "var(--fp-bg)", color: "var(--fp-text3)", border: "1px dashed var(--fp-border2)" }}>
+                      تقسیم مساویِ مبلغ کل می‌شود ماهی {faMoney(split)} تومان — ولی مبلغ دلخواه خودت را وارد کن؛ قسط آخر مابه‌التفاوت را جذب می‌کند.
+                    </p>
+                  ) : null;
+                  return (
+                    <p className="sm:col-span-2 text-[12px] font-black px-3 py-2 rounded-lg leading-6" style={{ background: "color-mix(in srgb, var(--fp-accent) 10%, transparent)", color: "var(--fp-accent)" }}>
+                      جمع برنامه: {faNum(months)} × {faMoney(apm)} = {faMoney(sum)} تومان
+                      {total > 0 && (
+                        diff === 0
+                          ? " — دقیقاً برابر مبلغ کل ✅"
+                          : <span style={{ color: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                              {" "}(تفاوت با مبلغ کل: {diff > 0 ? "+" : "−"}{faMoney(Math.abs(diff))} — قسط آخر {diff > 0 ? "کمتر" : "بیشتر"} می‌شود)
+                            </span>
+                      )}
+                    </p>
+                  );
+                })()}
                 <div className="sm:col-span-2 flex justify-end gap-2 mt-2">
                   <button className="btn btn-ghost" onClick={() => setInstForm(null)}>انصراف</button>
                   <button className="btn btn-gold" onClick={saveInst}><Plus className="w-4 h-4" strokeWidth={3} /> {instForm.id ? "ذخیرهٔ تغییرات" : "ثبت قسط"}</button>
                 </div>
               </div>
             )}
+          </Modal>
+
+          {/* مودال پرداخت قسط — انتخاب حساب (کارت) */}
+          <Modal open={!!payInst} onClose={() => setPayInst(null)}
+            title={`پرداخت قسط ${faNum((payInst?.idx ?? 0) + 1)} «${payInst?.inst.title ?? ""}»`}>
+            {payInst && (() => {
+              const m = payInst.inst.schedule?.[payInst.idx];
+              return (
+                <div className="grid gap-4">
+                  <div className="flex items-center justify-between rounded-xl px-4 py-3"
+                    style={{ background: "color-mix(in srgb, var(--fp-accent) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 30%, transparent)" }}>
+                    <span className="text-[12px] font-black" style={{ color: "var(--fp-text2)" }}>
+                      سررسید: {m ? jalaliShort(m.due) : "—"}
+                    </span>
+                    <span className="font-display text-2xl tabular" style={{ color: "var(--fp-accent)" }}>
+                      {faMoney(m?.amount ?? 0)} <span className="text-[11px]" style={{ color: "var(--fp-text3)" }}>تومان</span>
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-[12px] font-black mb-2">این قسط از کدام حساب پرداخت شود؟</p>
+                    <div className="grid gap-2">
+                      {state.accounts.map((a) => {
+                        const on = payInstAcc === a.id;
+                        return (
+                          <button key={a.id} onClick={() => setPayInstAcc(a.id)}
+                            className="flex items-center gap-3 rounded-xl border px-3.5 py-3 text-start cursor-pointer transition-all duration-150"
+                            style={{
+                              borderColor: on ? "var(--fp-accent)" : "var(--fp-border)",
+                              background: on ? "color-mix(in srgb, var(--fp-accent) 9%, transparent)" : "var(--fp-bg)",
+                              boxShadow: on ? "0 6px 18px -8px color-mix(in srgb, var(--fp-accent) 60%, transparent)" : "none",
+                            }}>
+                            <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0"
+                              style={{ background: `color-mix(in srgb, ${a.color} 16%, transparent)`, color: a.color }}>
+                              <Banknote className="w-4.5 h-4.5" />
+                            </span>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[13px] font-black truncate">{a.name}</span>
+                              <span className="block text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</span>
+                            </span>
+                            <span className="text-[12px] font-black tabular shrink-0">
+                              {faMoney(a.balance)} <span className="text-[9.5px]" style={{ color: "var(--fp-text3)" }}>مانده</span>
+                            </span>
+                            <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 border"
+                              style={{ borderColor: on ? "var(--fp-accent)" : "var(--fp-border2)", background: on ? "var(--fp-accent)" : "transparent" }}>
+                              {on && <Check className="w-3.5 h-3.5" strokeWidth={3.5} style={{ color: "#071b16" }} />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button className="btn btn-ghost" onClick={() => setPayInst(null)}>انصراف</button>
+                    <button className="btn btn-mint" onClick={() => {
+                      if (!payInstAcc) return toast("warn", "یک حساب انتخاب کن.");
+                      payMonth(payInst.inst, payInst.idx, payInstAcc);
+                      setPayInst(null);
+                    }}>
+                      <Check className="w-4 h-4" strokeWidth={3} /> ثبت پرداخت
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </Modal>
 
           {/* ماشین‌حساب وام */}
