@@ -1,5 +1,5 @@
 /* ---------- صفحه‌های اصلی برنامه (بخش اول) ---------- */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownRight, ArrowUpLeft, Banknote, Bot, CalendarDays, Check, Coins, Download, Filter,
   Landmark, Lightbulb, MessageSquare, PencilLine, Plus, QrCode, Receipt, Repeat,
@@ -1031,6 +1031,16 @@ export function CategoriesPage() {
   const pf = usePeriod("thisMonth");
   const [type, setType] = useState<"expense" | "income">("expense");
   const [selected, setSelected] = useState<string>("");
+  const txPanelRef = useRef<HTMLDivElement | null>(null);
+
+  /* وقتی پنل زیر یک دسته باز می‌شود، با اسکرول نرمِ حداقلی در دید قرار بگیرد */
+  useEffect(() => {
+    if (!selected) return;
+    const el = txPanelRef.current;
+    if (!el) return;
+    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "nearest" });
+  }, [selected]);
 
   const range = pf.range;
   const txs = state.transactions.filter((t) => t.type === type && inRange(t.date, range));
@@ -1055,6 +1065,59 @@ export function CategoriesPage() {
       return seg;
     });
   }, [rows, total]);
+
+  /* پنل تراکنش‌های دستهٔ انتخابی — دقیقاً زیر کارت همان دسته باز می‌شود؛
+     بازهٔ زمانی، نوع (هزینه/درآمد) و دکمهٔ بستن مثل قبل حفظ شده */
+  const txPanel = () => {
+    const cat = catById(state, selected);
+    const list = txs
+      .filter((t) => t.categoryId === selected)
+      .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
+    return (
+      <div ref={txPanelRef} className="overflow-hidden rounded-xl border rise-in"
+        style={{ borderColor: `color-mix(in srgb, ${cat?.color ?? "#888"} 45%, var(--fp-border))`, background: "var(--fp-bg2)" }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b"
+          style={{ borderColor: "var(--fp-border)", background: `color-mix(in srgb, ${cat?.color ?? "#888"} 9%, var(--fp-bg))` }}>
+          <span className="flex items-center gap-2.5 text-[13.5px] font-black">
+            <CatGlyph icon={cat?.icon} color={cat?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
+            تراکنش‌های «{cat?.name}»
+            <span className="chip !cursor-default !py-0.5 !px-2.5 !text-[10.5px]">{pf.label}</span>
+          </span>
+          <span className="flex items-center gap-3">
+            <span className="text-[12px] font-black tabular" style={{ color: type === "expense" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+              {faMoney(sumTx(list))} تومان
+            </span>
+            <button className="icon-btn !w-8 !h-8" title="بستن" onClick={() => setSelected("")}>
+              <XIcon />
+            </button>
+          </span>
+        </div>
+        {list.length === 0 ? (
+          <div className="p-4"><Empty text="در این بازه تراکنشی برای این دسته نیست." /></div>
+        ) : (
+          <div className="max-h-80 overflow-y-auto">
+            {list.map((t) => (
+              <div key={t.id} className="feed-in flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0" style={{ borderColor: "var(--fp-border)" }}>
+                <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0"
+                  style={{ background: `color-mix(in srgb, ${cat?.color ?? "#888"} 15%, transparent)`, color: cat?.color }}>
+                  {t.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-black truncate">{t.note || t.title || cat?.name}</p>
+                  <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
+                    {faDate(t.date)} · {accById(state, t.accountId)?.name ?? "—"} · {t.payMethod ?? "—"}
+                  </p>
+                </div>
+                <span className="text-[13px] font-black tabular shrink-0" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                  {t.type === "income" ? "+" : "−"}{faMoney(t.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="grid gap-5">
@@ -1097,83 +1160,42 @@ export function CategoriesPage() {
             {rows.map((r, i) => {
               const pct = total > 0 ? (r.sum / total) * 100 : 0;
               const count = txs.filter((t) => t.categoryId === r.cat!.id).length;
+              const isSel = selected === r.cat!.id;
               return (
-                <button key={r.cat!.id} onClick={() => setSelected((s) => (s === r.cat!.id ? "" : r.cat!.id))}
-                  className="group text-start rounded-xl border p-3.5 transition-all cursor-pointer hover:-translate-y-0.5"
-                  style={{
-                    borderColor: selected === r.cat!.id ? r.cat!.color : "var(--fp-border)",
-                    background: selected === r.cat!.id ? `color-mix(in srgb, ${r.cat!.color} 10%, var(--fp-bg))` : "var(--fp-bg)",
-                    boxShadow: selected === r.cat!.id ? `0 8px 24px -12px color-mix(in srgb, ${r.cat!.color} 55%, transparent)` : "none",
-                  }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="flex items-center gap-2 text-[13px] font-black">
-                      <CatGlyph icon={r.cat!.icon} color={r.cat!.color} className="w-8 h-8" iconClass="w-4 h-4" />
-                      {r.cat!.name}
-                      <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{faNum(count)} تراکنش</span>
-                    </span>
-                    <span className="text-[13px] font-black tabular">
-                      {faMoney(r.sum)} <span className="text-[10.5px]" style={{ color: r.cat!.color }}>٪{faNum(Math.round(pct))}</span>
-                    </span>
-                  </div>
-                  <Bar pct={pct} color={r.cat!.color} delay={i * 90} />
-                  <p className="text-[10px] font-bold mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--fp-accent)" }}>
-                    کلیک: نمایش تراکنش‌های این دسته در همین صفحه
-                  </p>
-                </button>
+                <Fragment key={r.cat!.id}>
+                  <button onClick={() => setSelected((s) => (s === r.cat!.id ? "" : r.cat!.id))}
+                    className="group text-start rounded-xl border p-3.5 transition-all cursor-pointer hover:-translate-y-0.5"
+                    style={{
+                      borderColor: isSel ? r.cat!.color : "var(--fp-border)",
+                      background: isSel ? `color-mix(in srgb, ${r.cat!.color} 10%, var(--fp-bg))` : "var(--fp-bg)",
+                      boxShadow: isSel ? `0 8px 24px -12px color-mix(in srgb, ${r.cat!.color} 55%, transparent)` : "none",
+                    }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="flex items-center gap-2 text-[13px] font-black">
+                        <CatGlyph icon={r.cat!.icon} color={r.cat!.color} className="w-8 h-8" iconClass="w-4 h-4" />
+                        {r.cat!.name}
+                        <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{faNum(count)} تراکنش</span>
+                      </span>
+                      <span className="text-[13px] font-black tabular">
+                        {faMoney(r.sum)} <span className="text-[10.5px]" style={{ color: r.cat!.color }}>٪{faNum(Math.round(pct))}</span>
+                      </span>
+                    </div>
+                    <Bar pct={pct} color={r.cat!.color} delay={i * 90} />
+                    <p className={`text-[10px] font-bold mt-1.5 transition-opacity ${isSel ? "" : "opacity-0 group-hover:opacity-100"}`}
+                      style={{ color: "var(--fp-accent)" }}>
+                      {isSel ? "▲ دوباره کلیک کن تا جمع شود" : "▼ کلیک: تراکنش‌ها همین‌جا زیرش باز می‌شود"}
+                    </p>
+                  </button>
+                  {/* پنل تراکنش‌های این دسته — دقیقاً زیر همین کارت */}
+                  {isSel && txPanel()}
+                </Fragment>
               );
             })}
           </div>
         </div>
       </div>
 
-      {/* تراکنش‌های دستهٔ انتخابی — با همان فیلتر زمانی */}
-      {selected && (() => {
-        const cat = catById(state, selected);
-        const list = txs
-          .filter((t) => t.categoryId === selected)
-          .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-        const periodLabel = pf.label;
-        return (
-          <div key={selected + pf.period + pf.range.from + pf.range.to + type} className="card overflow-hidden rise-in">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 border-b"
-              style={{ borderColor: "var(--fp-border)", background: `color-mix(in srgb, ${cat?.color ?? "#888"} 9%, var(--fp-bg))` }}>
-              <span className="flex items-center gap-2.5 text-[14px] font-black">
-                <i className="w-3.5 h-3.5 rounded-full not-italic" style={{ background: cat?.color }} />
-                تراکنش‌های «{cat?.name}»
-                <span className="chip !cursor-default !py-0.5 !px-2.5 !text-[10.5px]">{periodLabel}</span>
-              </span>
-              <span className="flex items-center gap-3">
-                <span className="text-[12px] font-black tabular" style={{ color: type === "expense" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
-                  {faMoney(sumTx(list))} تومان
-                </span>
-                <button className="icon-btn !w-8 !h-8" title="بستن" onClick={() => setSelected("")}>
-                  <XIcon />
-                </button>
-              </span>
-            </div>
-            {list.length === 0 && <Empty text="در این بازه تراکنشی برای این دسته نیست." />}
-            <div>
-              {list.map((t) => (
-                <div key={t.id} className="feed-in flex items-center gap-3 px-5 py-3 border-b last:border-b-0" style={{ borderColor: "var(--fp-border)" }}>
-                  <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0"
-                    style={{ background: `color-mix(in srgb, ${cat?.color ?? "#888"} 15%, transparent)`, color: cat?.color }}>
-                    {t.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-black truncate">{t.note || t.title || cat?.name}</p>
-                    <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
-                      {faDate(t.date)} · {accById(state, t.accountId)?.name ?? "—"} · {t.payMethod ?? "—"}
-                    </p>
-                  </div>
-                  <span className="text-[13px] font-black tabular" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                    {t.type === "income" ? "+" : "−"}{faMoney(t.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
+      {/* پنل تراکنش‌ها زیر کارتِ دستهٔ انتخابی رندر می‌شود — تابع txPanel */}
     </div>
   );
 }
