@@ -48,7 +48,13 @@ Android Studio خودش JDK لازم را می‌آورد، پس معمولاً 
 ```bash
 node patch-android-mirror.cjs
 ```
-این اسکریپت میرورهای Aliyun را به `android/build.gradle` و `android/settings.gradle` اضافه می‌کند (فقط بار اول یا بعد از هر `cap sync` که فایل‌ها را بازنویسی کند).
+این اسکریپت چند میرور (**Aliyun، Huawei، Amazon**) را به `android/build.gradle` و `android/settings.gradle` اضافه می‌کند + در `gradle.properties` timeout سریع می‌گذارد تا اگر یک میرور قطع بود، خودکار به بعدی برود. تکرارش بی‌ضرر است و بعد از هر `cap sync` (که فایل‌ها را بازنویسی می‌کند) دوباره بزنید.
+
+**اگر همهٔ میرورها از اینترنت شما قطع بودند (خطای Read timed out):** کلاینت VPN را روشن کنید و با پورت پراکسیِ محلی‌اش اجرا کنید:
+```bash
+set FP_PROXY=127.0.0.1:10809 && node patch-android-mirror.cjs
+```
+(پورت v2rayN معمولاً `10809` و Clash معمولاً `7890` است — از تنظیمات کلاینت خودتان چک کنید.)
 
 ---
 
@@ -184,7 +190,8 @@ android/app/build/outputs/apk/debug/app-debug.apk
 | سینک با Supabase کار نمی‌کند | در گوشی اینترنت روشن است؟ در شبیه‌ساز گاهی DNS مشکل دارد — روی گوشی واقعی تست کنید |
 | Android Studio بیلد نمی‌شود | از منوی File → Sync Project with Gradle Files را بزنید |
 | «SDK not found» | در Android Studio → SDK Manager، حداقل یک Android SDK Platform (مثلاً API 34/35) نصب کنید |
-| `Could not resolve all artifacts` — `Could not find com.android.tools.build:gradle:8.13.0` یا `com.google.gms:google-services:4.4.4` (خطای `dl.google.com`) | سرورهای گوگل از ایران مسدودند — `node patch-android-mirror.cjs` بزنید (میرور Aliyun را به build.gradle و settings.gradle اضافه می‌کند) سپس File → Sync Project with Gradle Files. اگر باز هم نشد، VPN کل‌سیستم + تنظیم پروکسی در Settings → HTTP Proxy |
+| `Could not resolve all artifacts` — `Could not find com.android.tools.build:gradle:8.13.0` یا `com.google.gms:google-services:4.4.4` (خطای `dl.google.com`) | سرورهای گوگل از ایران مسدودند — `node patch-android-mirror.cjs` بزنید سپس File → Sync Project with Gradle Files |
+| `Read timed out` روی `maven.aliyun.com` (پچ بوده ولی Aliyun هم از اینترنت شما قطع است) | پچ را **دوباره** بزنید — نسخهٔ جدید، میرورهای **Huawei و Amazon** + timeout سریع اضافه می‌کند تا خودکار به میرور بعدی برود. اگر باز نشد، راه تضمینی با VPN: کلاینت VPN را روشن کنید و بزنید `set FP_PROXY=127.0.0.1:10809 && node patch-android-mirror.cjs` (پورت کلاینت خودتان — v2rayN معمولاً `10809` و Clash معمولاً `7890` است) و بعد Sync |
 | `compileSdk 35/36 not found` | در SDK Manager تیک API 35 یا 36 را بزنید و Apply کنید |
 | لیست SDK خالی است | مسیر SDK را بدهید: `C:\Users\<نام>\AppData\Local\Android\Sdk` |
 | `Unsupported class file major version` | در Settings → Build Tools → Gradle، مقدار Gradle JDK را روی `jbr-21` بگذارید |
