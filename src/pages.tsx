@@ -21,6 +21,7 @@ import {
 } from "./ui";
 import { parseCSV, exportCSV } from "./excel";
 import { Sparkline } from "./widgets";
+import { readAccent } from "./lib/themes";
 
 /* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
 const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
@@ -541,6 +542,10 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
   const challenge = state.challenges[0];
   const currenciesTotal = state.currencies.reduce((s, c) => s + c.rate * c.qty, 0);
 
+  /* تم شیشه‌ای تیره → حلقهٔ نرخ پس‌انداز روی کارت موجودی */
+  const isGlass = (state.prefs.accent ?? readAccent()) === "glass-dark";
+  const saveRate = income > 0 ? Math.round(((income - expense) / income) * 100) : 0;
+
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3 rise-in">
@@ -559,6 +564,7 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
           icon={<Wallet className="w-5 h-5" />} title="موجودی کل" color="var(--fp-accent)"
           value={hideBal ? hiddenMoney : faMoney(bal)} suffix="تومان"
           hide={hideBal} onHide={() => setHideBal(!hideBal)}
+          ring={isGlass ? saveRate : undefined}
           foot={<Sparkline points={spark} height={44} color="var(--fp-accent)" />}
         />
         <StatCard
@@ -784,13 +790,14 @@ function SpendInsightCard({ monthTxs, expense }: { monthTxs: Tx[]; expense: numb
   );
 }
 
-function StatCard({ icon, title, value, suffix, color, hide, onHide, foot }: {
+function StatCard({ icon, title, value, suffix, color, hide, onHide, foot, ring }: {
   icon: React.ReactNode; title: string; value: string; suffix: string; color: string;
-  hide: boolean; onHide: () => void; foot?: React.ReactNode;
+  hide: boolean; onHide: () => void; foot?: React.ReactNode; ring?: number;
 }) {
   return (
     <div className="card card-hover p-5 relative overflow-hidden">
       <div className="absolute -top-8 -start-8 w-28 h-28 rounded-full opacity-[0.12]" style={{ background: color }} />
+      {ring !== undefined && <GlassRing pct={ring} />}
       <div className="flex items-center justify-between relative">
         <span className="flex items-center gap-2 text-[12px] font-black" style={{ color: "var(--fp-text3)" }}>
           <span className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>{icon}</span>
@@ -804,6 +811,31 @@ function StatCard({ icon, title, value, suffix, color, hide, onHide, foot }: {
         {value} {!hide && <span className="text-[12px] font-body font-bold" style={{ color: "var(--fp-text3)" }}>{suffix}</span>}
       </p>
       <div className="mt-2.5 relative">{foot}</div>
+    </div>
+  );
+}
+
+/* حلقهٔ پیشرفت شیشه‌ای (تم شیشه‌ای تیره) — نرخ پس‌انداز، گوشهٔ بالا */
+function GlassRing({ pct }: { pct: number }) {
+  const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+  const R = 30;
+  const C = 2 * Math.PI * R;
+  return (
+    <div
+      className="absolute top-4 end-4 z-10 grid place-items-center"
+      title={`نرخ پس‌انداز: ٪${faNum(clamped)}`}
+    >
+      <svg width="76" height="76" viewBox="0 0 76 76" className="-rotate-90">
+        <circle cx="38" cy="38" r={R} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)" strokeWidth="7" />
+        <circle
+          cx="38" cy="38" r={R} fill="none" stroke="var(--fp-accent)" strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={C} strokeDashoffset={C * (1 - clamped / 100)}
+          style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(0.3,0.7,0.2,1)", filter: "drop-shadow(0 0 6px rgba(212,175,55,0.45))" }}
+        />
+      </svg>
+      <span className="absolute text-[13px] font-extrabold tabular" style={{ color: "var(--fp-accent)" }}>
+        ٪{faNum(clamped)}
+      </span>
     </div>
   );
 }
