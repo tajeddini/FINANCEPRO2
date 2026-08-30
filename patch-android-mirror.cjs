@@ -50,8 +50,12 @@ const urlOf = (line) => {
 };
 
 /**
- * جلوی هر خط «google()» در بلوک‌های repositories، میرورهایی را که هنوز
- * نیستند اضافه می‌کند (با همان تورفتگی). تکراری وارد نمی‌کند.
+ * جلوی هر «google repository» در بلوک‌های repositories، میرورهای جدید را
+ * اضافه می‌کند. هر سه قالب رایج را می‌شناسد:
+ *   ۱) google()                       ← قالب قدیمی/ساده
+ *   ۲) google { content { ... } }     ← قالب جدید Android Studio (Quail و بعد)
+ *   ۳) settings.gradle بدون google    ← بلوک pluginManagement به ابتدای فایل
+ * تکراری وارد نمی‌کند.
  */
 function patchGradleFile(rel) {
   const file = path.join(ANDROID, rel);
@@ -70,15 +74,39 @@ function patchGradleFile(rel) {
   const out = [];
   let blocks = 0;
   for (const line of lines) {
-    if (line.trim() === "google()") {
+    const trimmed = line.trim();
+    /* شناسایی google repository در هر سه قالب */
+    const isGoogleRepo =
+      trimmed === "google()" ||
+      trimmed === "google(){" ||
+      trimmed === "google {" ||
+      /^google\s*\(/.test(trimmed) ||
+      /^google\s*\{/.test(trimmed);
+    if (isGoogleRepo) {
       const indent = line.slice(0, line.length - line.trimStart().length);
       for (const m of missing) out.push(indent + m);
       blocks++;
     }
     out.push(line);
   }
+
+  /* قالب جدید settings.gradle که اصلاً google ندارد → بلوک pluginManagement می‌سازیم */
+  const isSettings = rel.replace(/\\/g, "/").endsWith("settings.gradle");
+  if (blocks === 0 && isSettings && !text.includes("pluginManagement")) {
+    const block =
+      "/* --- patch-android-mirror: مخازن برای دسترسی از ایران --- */" + eol +
+      "pluginManagement {" + eol +
+      "    repositories {" + eol +
+      MIRRORS.map((m) => "        " + m).join(eol) + eol +
+      "    }" + eol +
+      "}" + eol + eol;
+    fs.writeFileSync(file, block + text, "utf8");
+    console.log(`✅ ${rel} — قالب جدید است؛ بلوک pluginManagement با ${MIRRORS.length} میرور به ابتدای فایل اضافه شد.`);
+    return true;
+  }
+
   if (blocks === 0) {
-    console.log(`⚠️  در ${rel} بلوک repositories با google() پیدا نشد — فایل را دستی بررسی کنید.`);
+    console.log(`⚠️  در ${rel} بلوک repositories گوگل پیدا نشد — محتوای فایل را برای بررسی بفرستید.`);
     return false;
   }
   fs.writeFileSync(file, out.join(eol), "utf8");
