@@ -282,8 +282,8 @@ export function MicButton({
     };
     const rec = new SR();
     rec.lang = "fa-IR";
-    rec.interimResults = true;
-    rec.continuous = true;
+    rec.interimResults = false;
+    rec.continuous = false;
     rec.maxAlternatives = 1;
     const myId = ++sessionIdRef.current;
     startBaseRef.current = fieldRef.current.trim();
