@@ -700,12 +700,12 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                   <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-lg" iconClass="w-4.5 h-4.5" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-black truncate flex items-center gap-1.5">
-                      {tx.note || tx.title}
+                      {tx.title}
                       {tx.source === "bot" && <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-sky)" }} />}
                       {tg && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>{tg.label}</span>}
                     </p>
-                    <p className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>
-                      {c?.name} · {accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
+                    <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>
+                      {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
                     </p>
                   </div>
                   <span className="text-[13.5px] font-black tabular" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
