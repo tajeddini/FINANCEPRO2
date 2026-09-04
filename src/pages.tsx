@@ -476,10 +476,10 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
                 <div key={x.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
                   <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-lg" iconClass="w-4 h-4" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-black truncate">{x.note || x.title}</p>
-                    <p className="text-[9.5px] font-bold flex items-center gap-1" style={{ color: "var(--fp-text3)" }}>
-                      {jalaliShort(x.date)}
-                      {x.source === "bot" && <span className="flex items-center gap-0.5" style={{ color: "var(--fp-sky)" }}><Bot className="w-3 h-3" /> ربات</span>}
+                    <p className="text-[12px] font-black truncate">{c?.name ?? x.title}</p>
+                    <p className="text-[9.5px] font-bold flex items-center gap-1 truncate" style={{ color: "var(--fp-text3)" }}>
+                      {x.note ? `${x.note} · ` : ""}{jalaliShort(x.date)}
+                      {x.source === "bot" && <span className="flex items-center gap-0.5 shrink-0" style={{ color: "var(--fp-sky)" }}><Bot className="w-3 h-3" /> ربات</span>}
                     </p>
                   </div>
                   <span className="text-[12px] font-black tabular" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
@@ -700,7 +700,7 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                   <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-lg shrink-0" iconClass="w-4.5 h-4.5" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-black flex items-center gap-1.5">
-                      <span className="truncate">{tx.title}</span>
+                      <span className="truncate">{c?.name ?? tx.title}</span>
                       {tx.source === "bot" && <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-sky)" }} />}
                       {tg && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>{tg.label}</span>}
                     </p>
@@ -708,13 +708,13 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                       {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
                     </p>
                   </div>
-                  <span className="text-[13.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                    {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
-                  </span>
                   <div className="flex gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <EditBtn onClick={() => setEditing(tx)} />
                     <DeleteBtn onClick={() => setConfirmDel(tx)} />
                   </div>
+                  <span className="text-[13.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
+                  </span>
                 </div>
               );
             })}
