@@ -692,32 +692,34 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
             <span className="text-[11px] font-bold tabular" style={{ color: "var(--fp-text3)" }}>{faNum(txs.length)} تراکنش</span>
           </div>
           <div>
-            {txs.map((tx) => {
-              const c = catById(state, tx.categoryId);
-              const tg = tagById(state, tx.tag);
-              return (
-                <div key={tx.id} className="group flex items-center gap-3 px-4 py-3 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_4%,transparent)]" style={{ borderColor: "var(--fp-border)" }}>
-                  <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-lg shrink-0" iconClass="w-4.5 h-4.5" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-black flex items-center gap-1.5">
-                      <span className="truncate">{tx.title}</span>
-                      {tx.source === "bot" && <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-sky)" }} />}
-                      {tg && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>{tg.label}</span>}
-                    </p>
-                    <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>
-                      {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
-                    </p>
+{txs.map((tx) => {
+                const c = catById(state, tx.categoryId);
+                const tg = tagById(state, tx.tag);
+                return (
+                  <div key={tx.id} className="flex items-center gap-2 px-4 py-2 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_2%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
+                    <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-full shrink-0" iconClass="w-4 h-4" />
+                    <span className="order-1 text-[13px] font-semibold tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                      {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
+                    </span>
+                    <span className="order-2 flex-1 min-w-0">
+                      <p className="text-[13px] font-medium truncate line-clamp-2" style={{ color: "var(--fp-text)" }}>
+                        <span>{tx.title}</span>
+                        {tx.source === "bot" && <Bot className="w-3 h-3 me-1" style={{ color: "var(--fp-sky)" }} />}
+                        {tg && <span className="text-[11px] font-semibold rounded bg-[color-mix(in_srgb,${tg.color}_8%,_transparent)] px-1.5 py-0.5 me-1">{tg.label}</span>}
+                      </p>
+                      {tx.note || tx.accountId || tx.payMethod ? (
+                        <p className="text-[12px] font-medium truncate line-clamp-2" style={{ color: "var(--fp-subtext)" }}>
+                          {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
+                        </p>
+                      ) : null}
+                    </span>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity order-3">
+                      <EditBtn size="sm" onClick={() => setEditing(tx)} />
+                      <DeleteBtn size="sm" onClick={() => setConfirmDel(tx)} />
+                    </div>
                   </div>
-                  <span className="text-[13.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                    {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
-                  </span>
-                  <div className="flex gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <EditBtn onClick={() => setEditing(tx)} />
-                    <DeleteBtn onClick={() => setConfirmDel(tx)} />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       ))}

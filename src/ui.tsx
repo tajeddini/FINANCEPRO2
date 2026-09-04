@@ -282,8 +282,8 @@ export function MicButton({
     };
     const rec = new SR();
     rec.lang = "fa-IR";
-    rec.interimResults = true;
-    rec.continuous = true;
+    rec.interimResults = false;
+    rec.continuous = false;
     rec.maxAlternatives = 1;
     const myId = ++sessionIdRef.current;
     startBaseRef.current = fieldRef.current.trim();
@@ -391,34 +391,36 @@ export function MicButton({
 }
 
 /* ================= دکمه‌های ویرایش و حذف — پررنگ و همیشه‌نما ================= */
-export function EditBtn({ onClick, title = "ویرایش" }: { onClick: () => void; title?: string }) {
+export function EditBtn({ onClick, title = "ویرایش", size }: { onClick: () => void; title?: string; size?: "sm" }) {
+  const sm = size === "sm";
   return (
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0"
+      className={`flex items-center gap-1 font-black rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${sm ? "text-[10px] px-2 py-1" : "text-[11px] px-2.5 py-1.5"}`}
       style={{
         background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)",
         color: "var(--fp-accent)",
         border: "1px solid color-mix(in srgb, var(--fp-accent) 40%, transparent)",
       }}>
-      <PencilLine className="w-3.5 h-3.5" /> ویرایش
+      <PencilLine className={sm ? "w-3 h-3" : "w-3.5 h-3.5"} /> ویرایش
     </button>
   );
 }
 
-export function DeleteBtn({ onClick, title = "حذف" }: { onClick: () => void; title?: string }) {
+export function DeleteBtn({ onClick, title = "حذف", size }: { onClick: () => void; title?: string; size?: "sm" }) {
+  const sm = size === "sm";
   return (
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0"
+      className={`flex items-center gap-1 font-black rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${sm ? "text-[10px] px-2 py-1" : "text-[11px] px-2.5 py-1.5"}`}
       style={{
         background: "color-mix(in srgb, var(--fp-coral) 14%, transparent)",
         color: "var(--fp-coral)",
         border: "1px solid color-mix(in srgb, var(--fp-coral) 40%, transparent)",
       }}>
-      <Trash2 className="w-3.5 h-3.5" /> حذف
+      <Trash2 className={sm ? "w-3 h-3" : "w-3.5 h-3.5"} /> حذف
     </button>
   );
 }
