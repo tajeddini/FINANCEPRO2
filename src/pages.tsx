@@ -697,21 +697,21 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
               const tg = tagById(state, tx.tag);
               return (
                 <div key={tx.id} className="group flex items-center gap-3 px-4 py-3 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_4%,transparent)]" style={{ borderColor: "var(--fp-border)" }}>
-                  <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-lg" iconClass="w-4.5 h-4.5" />
+                  <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-lg shrink-0" iconClass="w-4.5 h-4.5" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-black truncate flex items-center gap-1.5">
-                      {tx.title}
+                    <p className="text-[13px] font-black flex items-center gap-1.5">
+                      <span className="truncate">{tx.title}</span>
                       {tx.source === "bot" && <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-sky)" }} />}
-                      {tg && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>{tg.label}</span>}
+                      {tg && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>{tg.label}</span>}
                     </p>
                     <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>
                       {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
                     </p>
                   </div>
-                  <span className="text-[13.5px] font-black tabular" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                  <span className="text-[13.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                     {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
                   </span>
-                  <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <EditBtn onClick={() => setEditing(tx)} />
                     <DeleteBtn onClick={() => setConfirmDel(tx)} />
                   </div>
