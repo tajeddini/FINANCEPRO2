@@ -698,6 +698,9 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                 return (
                   <div key={tx.id} className="flex items-center gap-2 px-4 py-2 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_2%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
                     <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-full shrink-0" iconClass="w-4 h-4" />
+                    <span className="text-[12px] font-semibold tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                      {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
+                    </span>
                     <span className="flex-1 min-w-0">
                       <p className="text-[12px] font-medium truncate line-clamp-1" style={{ color: "var(--fp-text)" }}>
                         <span>{tx.title}</span>
@@ -709,9 +712,6 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                           {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
                         </p>
                       ) : null}
-                    </span>
-                    <span className="text-[12px] font-semibold tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                      {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
                     </span>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <EditBtn size="sm" onClick={() => setEditing(tx)} />
