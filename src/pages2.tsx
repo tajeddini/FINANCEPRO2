@@ -569,7 +569,7 @@ export function DailyPage() {
               return (
                 <div key={x.id} className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5" style={{ background: "var(--fp-bg)" }}>
                   <CatGlyph icon={c?.icon} color={c?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
-                  <span className="flex-1 text-[12px] font-black truncate">{c?.name ?? x.title}{x.note ? ` · ${x.note}` : ""}</span>
+                  <span className="flex-1 text-[12px] font-black truncate">{x.note || x.title}</span>
                   <span className="text-[12px] font-black tabular shrink-0" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                     {x.type === "income" ? "+" : "−"}{faMoney(x.amount)}
                   </span>

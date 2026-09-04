@@ -348,7 +348,7 @@ function GlobalSearch({ onNavigate }: {
                   <button key={t.id} onClick={() => onNavigate("transactions", { query: t.note || t.title })}
                     className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-start cursor-pointer hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
                     <CatGlyph icon={c?.icon} color={c?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
-                    <span className="flex-1 text-[12px] font-bold truncate">{c?.name ?? t.title}{t.note ? ` · ${t.note}` : ""}</span>
+                    <span className="flex-1 text-[12px] font-bold truncate">{t.note || t.title}</span>
                     <span className="text-[11px] font-black tabular" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                       {t.type === "income" ? "+" : "−"}{faNum(t.amount.toLocaleString("fa-IR"))}
                     </span>
