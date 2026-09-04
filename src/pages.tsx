@@ -408,6 +408,23 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
   const challenge = state.challenges[0];
   const currenciesTotal = state.currencies.reduce((s, c) => s + c.rate * c.qty, 0);
 
+  /* تحلیل رفتار خرج این ماه بر اساس برچسب‌ها */
+  const tagAnalysis = useMemo(() => {
+    const expTxs = monthTxs.filter((x) => x.type === "expense");
+    const byTag = new Map<string, { label: string; color: string; sum: number; count: number }>();
+    let untagged = 0;
+    for (const x of expTxs) {
+      const tg = x.tag ? getTags(state).find((t) => t.id === x.tag) : undefined;
+      if (!tg) { untagged += x.amount; continue; }
+      const cur = byTag.get(tg.id) ?? { label: tg.label, color: tg.color, sum: 0, count: 0 };
+      cur.sum += x.amount; cur.count++;
+      byTag.set(tg.id, cur);
+    }
+    const rows = [...byTag.values()].sort((a, b) => b.sum - a.sum);
+    const potential = rows.filter((r) => !r.label.includes("ضروری")).reduce((s, r) => s + r.sum, 0);
+    return { rows, untagged, potential };
+  }, [monthTxs, state]);
+
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-end justify-between gap-3 rise-in">
@@ -520,6 +537,49 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
           </div>
         )}
       </div>
+
+      {expense > 0 && (
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "240ms" }}>
+          <div className="flex items-center justify-between mb-4">
+            <Head icon={<Lightbulb className="w-4.5 h-4.5" />} title="تحلیل رفتار خرج" />
+            <span className="text-[10px] font-black px-2.5 py-1 rounded-full" style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)" }}>این ماه</span>
+          </div>
+          <div className="grid lg:grid-cols-2 gap-6 lg:items-center">
+            <div>
+              <p className="text-[13px] font-bold leading-7" style={{ color: "var(--fp-text2)" }}>
+                از <b className="tabular" style={{ color: "var(--fp-text)" }}>{faMoney(expense)}</b> تومان خرجِ این ماه،
+                {" "}<b className="tabular" style={{ color: "var(--fp-mint)" }}>{faMoney(tagAnalysis.potential)}</b> تومان
+                خرجِ غیرضروری بود — همون می‌تونست پس‌انداز بشه.
+              </p>
+              {tagAnalysis.untagged > 0 && (
+                <p className="text-[10.5px] font-bold mt-2.5 leading-5" style={{ color: "var(--fp-text3)" }}>
+                  {faMoney(tagAnalysis.untagged)} تومان هم بدون برچسبه — اگه برچسب بزنی، تحلیل دقیق‌تر می‌شه.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-3">
+              {tagAnalysis.rows.slice(0, 4).map((r, i) => (
+                <div key={r.label}>
+                  <div className="flex justify-between text-[11px] font-black mb-1">
+                    <span style={{ color: r.color }}>
+                      {r.label} <span style={{ color: "var(--fp-text3)" }}>({faNum(r.count)})</span>
+                    </span>
+                    <span className="tabular" style={{ color: "var(--fp-text)" }}>{faMoney(r.sum)}</span>
+                  </div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--fp-bg3)" }}>
+                    <div className="h-full rounded-full grow-x" style={{ width: `${Math.max(4, (r.sum / expense) * 100)}%`, background: r.color, animationDelay: `${i * 90}ms` }} />
+                  </div>
+                </div>
+              ))}
+              {tagAnalysis.rows.length === 0 && (
+                <p className="text-[11px] font-bold text-center py-3" style={{ color: "var(--fp-text3)" }}>
+                  هنوز خرجی برچسب نخورده — موقع ثبت تراکنش برچسب بزن.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import {
-  clearData, getTags, migrateLoadedState, sampleFill, useStore, DEFAULT_TAGS,
+  catById, clearData, getTags, migrateLoadedState, sampleFill, useStore, DEFAULT_TAGS,
   type AppState, type ID, type Appointment, type Note, type TagDef,
 } from "./lib/data";
 import {
@@ -585,6 +585,70 @@ export function DailyPage() {
 
 function CoinsMini() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="9" r="6" /><path d="M15.5 5.5a6 6 0 1 1-8 8" strokeLinecap="round" /><path d="M7 9h4M9 7v4" strokeLinecap="round" /></svg>; }
 
+/* ---------- گزارش هوشمند — متن جامع و ساختاریافته برای تحلیل با هوش مصنوعی ---------- */
+function buildSmartReport(s: AppState): string {
+  const t = jalaliToday();
+  const mr = jalaliMonthRange(t.jy, t.jm);
+  const txs = s.transactions.filter((x) => inRange(x.date, mr));
+  const income = txs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
+  const expense = txs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
+  const total = s.accounts.reduce((a, x) => a + x.balance, 0);
+  const L: string[] = [];
+  L.push(`# گزارش مالی فایننس‌پرو — ${jalaliDateStr()}`);
+  L.push("");
+  L.push("این گزارش برای تحلیل توسط هوش مصنوعی تهیه شده است. همهٔ مبالغ به تومان است.");
+  L.push("");
+  L.push("## ۱. نمای کلی این ماه");
+  L.push(`- موجودی کل حساب‌ها: ${faMoney(total)}`);
+  L.push(`- درآمد: ${faMoney(income)}`);
+  L.push(`- هزینه: ${faMoney(expense)}`);
+  L.push(`- تراز (درآمد − هزینه): ${faMoney(income - expense)}`);
+  L.push(`- نرخ پس‌انداز: ٪${faNum(income > 0 ? Math.round(((income - expense) / income) * 100) : 0)}`);
+  L.push("");
+  L.push("## ۲. تفکیک هزینه بر اساس دسته");
+  const byCat = new Map<string, number>();
+  for (const x of txs.filter((x) => x.type === "expense")) {
+    const name = catById(s, x.categoryId)?.name ?? "نامشخص";
+    byCat.set(name, (byCat.get(name) ?? 0) + x.amount);
+  }
+  [...byCat.entries()].sort((a, b) => b[1] - a[1]).forEach(([name, sum]) => {
+    L.push(`- ${name}: ${faMoney(sum)} (٪${faNum(expense > 0 ? Math.round((sum / expense) * 100) : 0)} از کل هزینه)`);
+  });
+  if (byCat.size === 0) L.push("- هزینه‌ای ثبت نشده.");
+  L.push("");
+  L.push("## ۳. رفتار خرج بر اساس برچسب");
+  const byTag = new Map<string, number>();
+  let untagged = 0;
+  for (const x of txs.filter((x) => x.type === "expense")) {
+    const tg = x.tag ? getTags(s).find((g) => g.id === x.tag) : undefined;
+    if (!tg) { untagged += x.amount; continue; }
+    byTag.set(tg.label, (byTag.get(tg.label) ?? 0) + x.amount);
+  }
+  [...byTag.entries()].sort((a, b) => b[1] - a[1]).forEach(([label, sum]) => L.push(`- ${label}: ${faMoney(sum)}`));
+  if (untagged > 0) L.push(`- بدون برچسب: ${faMoney(untagged)}`);
+  if (byTag.size === 0 && untagged === 0) L.push("- داده‌ای نیست.");
+  L.push("");
+  L.push("## ۴. بودجه‌ها");
+  if (s.budgets.length === 0) L.push("- بودجه‌ای تعریف نشده.");
+  s.budgets.forEach((b) => {
+    const name = catById(s, b.categoryId)?.name ?? "?";
+    const spent = byCat.get(name) ?? 0;
+    L.push(`- ${name}: سقف ${faMoney(b.limit)} · خرج‌شده ${faMoney(spent)} · ${spent > b.limit ? "مازاد بر سقف!" : "باقی‌مانده " + faMoney(b.limit - spent)}`);
+  });
+  L.push("");
+  L.push("## ۵. بدهی‌ها و طلب‌ها");
+  if (s.debts.length === 0) L.push("- موردی نیست.");
+  s.debts.forEach((d) => L.push(`- ${d.kind === "debt" ? "بدهی به" : "طلب از"} ${d.person}: ${faMoney(d.amount - d.paid)} باقی‌مانده`));
+  L.push("");
+  L.push("## ۶. اهداف پس‌انداز");
+  if (s.savings_goals.length === 0) L.push("- هدفی نیست.");
+  s.savings_goals.forEach((g) => L.push(`- ${g.title}: ${faMoney(g.saved)} از ${faMoney(g.target)} (٪${faNum(Math.round((g.saved / g.target) * 100))})`));
+  L.push("");
+  L.push("## ۷. درخواست از هوش مصنوعی");
+  L.push("بر اساس این داده‌ها: ۱) وضعیت مالی را در ۳ جمله خلاصه کن، ۲) ۳ نقطهٔ قوت و ۳ نقطهٔ ضعف را بگو، ۳) ۵ راهکار عملی برای ماه بعد بده، ۴) یک بودجه‌بندی پیشنهادی ارائه کن. پاسخ را به فارسی و ساده بده.");
+  return L.join("\n");
+}
+
 /* ================= ۶) گزارش‌ها ================= */
 export function ReportsPage() {
   const { state } = useStore();
@@ -610,6 +674,30 @@ export function ReportsPage() {
     }));
   }, [forecast]);
 
+  /* مقایسهٔ ماهانه: این ماه در برابر ماه قبل، بر اساس دسته */
+  const comparison = useMemo(() => {
+    const sumBy = (arr: AppState["transactions"]) => {
+      const m = new Map<string, number>();
+      for (const x of arr.filter((x) => x.type === "expense")) {
+        const name = catById(state, x.categoryId)?.name ?? "نامشخص";
+        m.set(name, (m.get(name) ?? 0) + x.amount);
+      }
+      return m;
+    };
+    const cur = sumBy(monthTxs);
+    const prev = sumBy(lastMonthTxs);
+    const names = [...new Set([...cur.keys(), ...prev.keys()])];
+    return names
+      .map((name) => ({ name, cur: cur.get(name) ?? 0, prev: prev.get(name) ?? 0 }))
+      .sort((a, b) => b.cur - a.cur)
+      .slice(0, 6);
+  }, [monthTxs, lastMonthTxs, state]);
+
+  /* گزارش هوشمند */
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportText, setReportText] = useState("");
+  const openReport = () => { setReportText(buildSmartReport(state)); setReportOpen(true); };
+
   return (
     <div className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
@@ -617,6 +705,9 @@ export function ReportsPage() {
           <BarChart3 className="w-8 h-8" style={{ color: "var(--fp-accent)" }} /> گزارش‌ها و تحلیل
         </h1>
         <div className="flex gap-2">
+          <button className="btn btn-mint btn-sm" onClick={openReport}>
+            <Sparkles className="w-4 h-4" /> گزارش هوشمند
+          </button>
           <button className="btn btn-gold btn-sm" onClick={() => { exportExcel(state, { txs: monthTxs, periodLabel: pf.label }); toast("ok", "فایل اکسل چندبرگی دانلود شد."); }}>
             <Download className="w-4 h-4" /> خروجی اکسل
           </button>
@@ -691,6 +782,57 @@ export function ReportsPage() {
           </div>
         </div>
       </div>
+
+      <div className="card p-5 rise-in" style={{ ["--d" as string]: "220ms" }}>
+        <h3 className="text-[14px] font-black flex items-center gap-2"><ArrowLeftRight className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> مقایسهٔ ماهانه (این ماه در برابر ماه قبل)</h3>
+        {comparison.length === 0 ? (
+          <p className="text-[12px] font-bold py-5 text-center" style={{ color: "var(--fp-text3)" }}>داده‌ای برای مقایسه نیست.</p>
+        ) : (
+          <div className="grid gap-3 mt-4">
+            {comparison.map((c) => {
+              const max = Math.max(c.cur, c.prev, 1);
+              const diff = c.cur - c.prev;
+              return (
+                <div key={c.name}>
+                  <div className="flex justify-between text-[11.5px] font-black mb-1.5">
+                    <span style={{ color: "var(--fp-text)" }}>{c.name}</span>
+                    <span className="flex items-center gap-2 tabular">
+                      <span style={{ color: "var(--fp-text3)" }}>{faMoney(c.prev)} ←</span>
+                      <span style={{ color: "var(--fp-text)" }}>{faMoney(c.cur)}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: diff > 0 ? "color-mix(in srgb, var(--fp-coral) 15%, transparent)" : "color-mix(in srgb, var(--fp-mint) 15%, transparent)", color: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                        {diff > 0 ? "▲" : "▼"} {faMoney(Math.abs(diff))}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="grid gap-1">
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--fp-bg3)" }}>
+                      <div className="h-full rounded-full grow-x" style={{ width: `${(c.prev / max) * 100}%`, background: "var(--fp-text3)", opacity: 0.5 }} />
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--fp-bg3)" }}>
+                      <div className="h-full rounded-full grow-x" style={{ width: `${(c.cur / max) * 100}%`, background: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }} />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>نوار کم‌رنگ: ماه قبل · نوار پررنگ: این ماه</p>
+          </div>
+        )}
+      </div>
+
+      <Modal open={reportOpen} onClose={() => setReportOpen(false)} title="گزارش هوشمند (برای تحلیل با هوش مصنوعی)" wide>
+        <p className="text-[11.5px] font-bold leading-6 mb-3" style={{ color: "var(--fp-text2)" }}>
+          این گزارش، خلاصهٔ کامل وضعیت مالی شماست. آن را کپی کنید و به یک هوش مصنوعی (مثل ChatGPT یا Claude) بدهید تا تحلیل و راهکار بگیرید.
+        </p>
+        <textarea readOnly value={reportText} dir="rtl" rows={14}
+          className="input !text-[11.5px] !leading-6 resize-y" style={{ background: "var(--fp-bg)" }} />
+        <div className="flex gap-2 mt-4">
+          <button className="btn btn-gold btn-sm" onClick={async () => { const ok = await copyText(reportText); toast(ok ? "ok" : "err", ok ? "گزارش کپی شد — حالا به هوش مصنوعی بدهید." : "کپی ناموفق بود."); }}>
+            <Copy className="w-4 h-4" /> کپی گزارش
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setReportOpen(false)}>بستن</button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1150,9 +1292,39 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const [pin, setPin] = useState(p.pin ?? "");
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [aiApiUrl, setAiApiUrl] = useState(p.aiApiUrl ?? "");
+  const [aiApiKey, setAiApiKey] = useState(p.aiApiKey ?? "");
+  const [aiModel, setAiModel] = useState(p.aiModel ?? "");
+  const [botToken, setBotToken] = useState(p.botToken ?? "");
+  const [transferCode, setTransferCode] = useState("");
+  const [importCode, setImportCode] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const cloudSyncId = "fp-user-" + user.username;
+
+  const saveAi = () => {
+    mutate((d) => { d.prefs.aiApiUrl = aiApiUrl.trim(); d.prefs.aiApiKey = aiApiKey.trim(); d.prefs.aiModel = aiModel.trim(); }, "تنظیمات هوش مصنوعی ذخیره شد");
+    toast("ok", "تنظیمات هوش مصنوعی ذخیره شد.");
+  };
+
+  const saveBot = () => {
+    mutate((d) => { d.prefs.botToken = botToken.trim(); }, "توکن ربات تلگرام ذخیره شد");
+    toast("ok", "توکن ربات تلگرام ذخیره شد.");
+  };
+
+  const makeTransferCode = () => {
+    setTransferCode(encodeState(state));
+    toast("ok", "کد انتقال ساخته شد — آن را در مرورگر دیگر وارد کنید.");
+  };
+
+  const doImportCode = () => {
+    if (!importCode.trim()) return toast("warn", "کد انتقال را وارد کنید.");
+    const data = decodeState(importCode.trim());
+    if (!data) return toast("err", "کد انتقال معتبر نیست.");
+    mutate((d) => { Object.assign(d, migrateLoadedState(data), { prefs: d.prefs }); }, "انتقال داده از مرورگر دیگر");
+    setImportCode("");
+    toast("ok", "داده‌ها از مرورگر دیگر منتقل شد — تنظیمات این دستگاه حفظ شد.");
+  };
 
   const saveSync = () => {
     mutate((d) => { d.prefs.syncUrl = syncUrl.trim(); d.prefs.syncKey = syncKey.trim(); }, "تنظیمات سینک ذخیره شد");
@@ -1282,12 +1454,57 @@ export function SettingsPage({ user, onLogout, onDelete, onLock }: {
         </div>
       </div>
 
+      <div className="card p-5 rise-in" style={{ ["--d" as string]: "140ms" }}>
+        <h3 className="text-[14px] font-black flex items-center gap-2"><Sparkles className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> هوش مصنوعی</h3>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          برای تحلیل مستقیم گزارش‌ها با هوش مصنوعی، آدرس API و کلید را وارد کنید (سازگار با OpenAI و OpenRouter). کلید فقط روی همین مرورگر ذخیره می‌شود.
+        </p>
+        <div className="grid gap-3 mt-4">
+          <Field label="آدرس API"><TInput dir="ltr" value={aiApiUrl} onChange={(e) => setAiApiUrl(e.target.value)} placeholder="https://api.openai.com/v1/chat/completions" /></Field>
+          <Field label="کلید API"><TInput dir="ltr" type="password" value={aiApiKey} onChange={(e) => setAiApiKey(e.target.value)} placeholder="sk-…" /></Field>
+          <Field label="مدل"><TInput dir="ltr" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="gpt-4o-mini" /></Field>
+          <button className="btn btn-gold btn-sm self-start" onClick={saveAi}>ذخیرهٔ تنظیمات هوش مصنوعی</button>
+        </div>
+      </div>
+
+      <div className="card p-5 rise-in" style={{ ["--d" as string]: "150ms" }}>
+        <h3 className="text-[14px] font-black flex items-center gap-2"><Bot className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> ربات تلگرام</h3>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          توکن ربات را از BotFather بگیرید و اینجا ذخیره کنید تا بتوانید از تلگرام تراکنش ثبت کنید. راهنمای کامل در VPS-GUIDE.md است.
+        </p>
+        <div className="grid gap-3 mt-4">
+          <Field label="توکن ربات (BOT_TOKEN)"><TInput dir="ltr" type="password" value={botToken} onChange={(e) => setBotToken(e.target.value)} placeholder="123456:ABC-DEF…" /></Field>
+          <button className="btn btn-gold btn-sm self-start" onClick={saveBot}>ذخیرهٔ توکن ربات</button>
+        </div>
+      </div>
+
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "160ms" }}>
         <h3 className="text-[14px] font-black flex items-center gap-2"><Download className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> پشتیبان‌گیری</h3>
         <div className="flex flex-wrap gap-2 mt-4">
           <button className="btn btn-ghost btn-sm" onClick={exportBackup}><Download className="w-4 h-4" /> دانلود پشتیبان JSON</button>
           <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" /> بازیابی از پشتیبان</button>
           <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} />
+        </div>
+      </div>
+
+      <div className="card p-5 rise-in" style={{ ["--d" as string]: "180ms" }}>
+        <h3 className="text-[14px] font-black flex items-center gap-2"><KeyRound className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> انتقال بین مرورگر</h3>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          اگر سینک ابری ندارید، می‌توانید داده‌ها را با یک کد از این مرورگر به مرورگر دیگر منتقل کنید.
+        </p>
+        <div className="grid gap-3 mt-4">
+          <button className="btn btn-mint btn-sm self-start" onClick={makeTransferCode}><KeyRound className="w-4 h-4" /> ساخت کد انتقال از این مرورگر</button>
+          {transferCode && (
+            <div>
+              <p className="text-[10.5px] font-black mb-1" style={{ color: "var(--fp-text3)" }}>این کد را کپی و در مرورگر دیگر وارد کنید:</p>
+              <textarea readOnly value={transferCode} dir="ltr" rows={3} className="input !text-[10px] !leading-5 resize-y" style={{ background: "var(--fp-bg)" }} />
+              <button className="btn btn-ghost btn-sm mt-2" onClick={async () => { const ok = await copyText(transferCode); toast(ok ? "ok" : "err", ok ? "کد کپی شد." : "کپی ناموفق بود."); }}><Copy className="w-4 h-4" /> کپی کد</button>
+            </div>
+          )}
+          <Field label="وارد کردن کد انتقال (از مرورگر دیگر)">
+            <textarea value={importCode} onChange={(e) => setImportCode(e.target.value)} dir="ltr" rows={3} className="input !text-[10px] !leading-5 resize-y" style={{ background: "var(--fp-bg)" }} placeholder="کد را اینجا بچسبانید…" />
+          </Field>
+          <button className="btn btn-gold btn-sm self-start" onClick={doImportCode}><Upload className="w-4 h-4" /> انتقال به این مرورگر</button>
         </div>
       </div>
 
