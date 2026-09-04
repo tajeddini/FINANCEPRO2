@@ -755,28 +755,49 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
 {txs.map((tx) => {
                 const c = catById(state, tx.categoryId);
                 const tg = tagById(state, tx.tag);
+                const acc = accById(state, tx.accountId);
+                const hasDetail = !!(tx.note || acc || tx.payMethod);
                 return (
-                  <div key={tx.id} className="flex items-center gap-2 px-4 py-2 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_2%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
+                  <div key={tx.id} className="group flex items-center gap-2 px-4 py-2 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_3%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
+                    {/* آیکون دسته */}
                     <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-full shrink-0" iconClass="w-4 h-4" />
-                    <span className="order-1 text-[13px] font-semibold tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+
+                    {/* همهٔ اطلاعات روی یک خط */}
+                    <p className="flex-1 min-w-0 truncate text-[12.5px]" style={{ color: "var(--fp-text)" }}>
+                      <span className="font-bold">{tx.title}</span>
+                      {tx.source === "bot" && <Bot className="w-3 h-3 inline -mt-0.5 mx-1" style={{ color: "var(--fp-sky)" }} />}
+                      {tg && (
+                        <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 mx-1 align-middle whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color }}>
+                          {tg.label}
+                        </span>
+                      )}
+                      {hasDetail && (
+                        <span className="font-medium" style={{ color: "var(--fp-text3)" }}>
+                          {tx.note ? ` · ${tx.note}` : ""}
+                          {acc ? ` · ${acc.name}` : ""}
+                          {tx.payMethod ? ` · ${tx.payMethod}` : ""}
+                        </span>
+                      )}
+                    </p>
+
+                    {/* دکمه‌های ویرایش و حذف — همیشه نمایان */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button title="ویرایش" onClick={() => setEditing(tx)}
+                        className="w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all hover:scale-110 active:scale-95"
+                        style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)" }}>
+                        <PencilLine className="w-3.5 h-3.5" />
+                      </button>
+                      <button title="حذف" onClick={() => setConfirmDel(tx)}
+                        className="w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all hover:scale-110 active:scale-95"
+                        style={{ background: "color-mix(in srgb, var(--fp-coral) 12%, transparent)", color: "var(--fp-coral)" }}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* قیمت — سمت چپ */}
+                    <span className="text-[13px] font-bold tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                       {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
                     </span>
-                    <span className="order-2 flex-1 min-w-0">
-                      <p className="text-[13px] font-medium truncate line-clamp-2" style={{ color: "var(--fp-text)" }}>
-                        <span>{tx.title}</span>
-                        {tx.source === "bot" && <Bot className="w-3 h-3 me-1" style={{ color: "var(--fp-sky)" }} />}
-                        {tg && <span className="text-[11px] font-semibold rounded bg-[color-mix(in_srgb,${tg.color}_8%,_transparent)] px-1.5 py-0.5 me-1">{tg.label}</span>}
-                      </p>
-                      {tx.note || tx.accountId || tx.payMethod ? (
-                        <p className="text-[12px] font-medium truncate line-clamp-2" style={{ color: "var(--fp-subtext)" }}>
-                          {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
-                        </p>
-                      ) : null}
-                    </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity order-3">
-                      <EditBtn size="sm" onClick={() => setEditing(tx)} />
-                      <DeleteBtn size="sm" onClick={() => setConfirmDel(tx)} />
-                    </div>
                   </div>
                 );
               })}
