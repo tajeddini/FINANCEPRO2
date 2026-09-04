@@ -23,28 +23,25 @@ export const DEFAULT_TAGS: TagDef[] = [
 export interface Tx {
   id: ID; date: string; type: "income" | "expense"; amount: number; title: string;
   note?: string; tag?: ID; categoryId: ID; accountId: ID; payMethod?: string;
-  createdAt: number; /** مهر زمانیِ آخرین ویرایش — مبنای ادغام صحیح بین دستگاه‌ها */ updatedAt?: number;
+  createdAt: number; updatedAt?: number;
   source?: "app" | "bot";
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
+
 /* ---------- اقساط با برنامهٔ ماهانه ---------- */
 export interface InstallmentMonth {
-  due: string;        /* سررسید این قسط (ISO) */
-  amount: number;     /* مبلغ این قسط — قسط آخر مابه‌التفاوت گردکردن را جذب می‌کند */
-  paidAt?: number;    /* مهر زمانی پرداخت — اگر نباشد یعنی پرداخت نشده */
+  due: string;
+  amount: number;
+  paidAt?: number;
 }
 export interface Installment {
   id: ID; title: string; total: number; months: number; amountPerMonth: number;
   start: string; accountId: ID; categoryId?: ID;
-  paidCount: number;            /* تعداد قسط‌های پرداخت‌شده — از schedule مشتق می‌شود (سازگاری با اکسل/گزارش‌ها) */
-  schedule: InstallmentMonth[]; /* برنامهٔ ماه‌به‌ماه */
+  paidCount: number;
+  schedule: InstallmentMonth[];
 }
 
-/**
- * ساخت برنامهٔ ماهانهٔ اقساط: هر ماه همان روزِ سررسیدِ ماه اول (با clamp در ماه‌های کوتاه)
- * و قسطِ آخر، مابه‌التفاوت گردکردنِ مبلغ کل را جذب می‌کند تا جمع دقیقاً برابر total شود.
- */
 export function buildSchedule(
   inst: { start: string; months: number; amountPerMonth: number; total: number },
   paidCount = 0
@@ -64,7 +61,6 @@ export function buildSchedule(
   return out;
 }
 
-/** پر کردن schedule برای اقساطِ ساخته‌شده قبل از این نسخه + همگام‌سازی paidCount */
 export function normalizeInstallments(s: AppState) {
   for (const inst of s.installments) {
     if (!Array.isArray(inst.schedule) || inst.schedule.length !== inst.months) {
@@ -73,6 +69,7 @@ export function normalizeInstallments(s: AppState) {
     inst.paidCount = inst.schedule.filter((m) => !!m.paidAt).length;
   }
 }
+
 export interface Budget { id: ID; categoryId: ID; limit: number; }
 export interface PayMethod { id: ID; name: string; }
 export interface Recurring { id: ID; title: string; type: "income" | "expense"; amount: number; categoryId: ID; accountId: ID; dayOfMonth: number; lastRun?: string; }
@@ -87,12 +84,6 @@ export interface Subscription { id: ID; name: string; amount: number; cycle: "mo
 export interface ActivityLog { id: ID; at: number; text: string; }
 export interface TelegramUser { id: ID; name: string; username: string; joined: number; }
 export interface TrashEntry { key: string; table: string; item: unknown; until: number; label: string; }
-
-/* سنگ‌قبر (Tombstone): رکورد دائمیِ حذف —
-   چون سینک «کل‌نگر» است، حذفِ یک تراکنش در یک مرورگر نباید در مرورگر دیگر
-   به‌صورت «تراکنش محلیِ جدید» تفسیر و زنده شود. هر حذف یک سنگ‌قبر می‌سازد که
-   همراه داده سینک می‌شود و هنگام ادغام، تراکنشِ حذف‌شده را حذف‌شده نگه می‌دارد
-   (مگر اینکه بعداً عمداً بازگردانی شده باشد — updatedAt جدیدتر از سنگ‌قبر). */
 export interface Tombstone { table: "transactions"; id: ID; at: number; }
 
 export interface Prefs {
@@ -204,11 +195,6 @@ function seed(): AppState {
     tx(0, "expense", "اسنپ — جلسه", 88000, cTrans, a1, "نقد", "bot", "essential"),
   ];
 
-  const jt = jalaliToday();
-  const ap = (n: number, time: string, title: string, note?: string, done?: boolean): Appointment => ({
-    id: uid(), date: addDaysISO(t, n), time, title, note, done,
-  });
-
   const state: AppState = {
     accounts, categories, tags: JSON.parse(JSON.stringify(DEFAULT_TAGS)), transactions,
     transfers: [{ id: uid(), date: d(12), from: a1.id, to: a3.id, amount: 1000000, note: "پس‌انداز طلا" }],
@@ -235,88 +221,70 @@ function seed(): AppState {
       { id: uid(), title: "لپ‌تاپ جدید", target: 45000000, saved: 12000000 },
     ],
     appointments: [
-      ap(0, "17:30", "جلسه با تیم محصول", "لینک جلسه در تلگرام"),
-      ap(0, "20:00", "ورزش — دویدن"),
-      ap(2, "10:00", "ویزیت دندانپزشکی", "کلینیک دکتر راد"),
-      ap(5, "18:00", "شام با مریم و رضا", "رستوران شاندیز"),
-      ap(-3, "09:00", "تحویل پروژهٔ فریلنسری", "تحویل شد", true),
+      { id: uid(), date: t, time: "17:30", title: "جلسه با تیم محصول", note: "لینک جلسه در تلگرام" },
+      { id: uid(), date: t, time: "20:00", title: "ورزش — دویدن" },
+      { id: uid(), date: addDaysISO(t, 2), time: "10:00", title: "ویزیت دندانپزشکی", note: "کلینیک دکتر راد" },
+      { id: uid(), date: addDaysISO(t, 5), time: "18:00", title: "شام با مریم و رضا", note: "رستوران شاندیز" },
     ],
     notes: [
-      { id: uid(), title: "ایدهٔ پس‌انداز", body: "هر ماه ۱۰٪ از حقوق را همان روز به صندوق طلا منتقل کنم تا قبل از خرج شدن، پس‌انداز شده باشد.", date: d(3), color: "#e8b04b", createdAt: Date.now() - 3 * 86400000 },
-      { id: uid(), title: "لیست خرید هفته", body: "شیر، نان، میوه، قهوه — خرید بزرگ ماهانه را به اول هفته موکول کنم که تخفیف‌ها تازه هستند.", date: d(1), color: "#57d9a3", createdAt: Date.now() - 86400000 },
+      { id: uid(), title: "ایدهٔ پس‌انداز", body: "هر ماه ۱۰٪ از حقوق را همان روز به صندوق طلا منتقل کنم.", date: d(3), color: "#ffd76b", createdAt: Date.now() - 3 * 86400000 },
     ],
     cheques: [
       { id: uid(), kind: "out", bank: "ملت", amount: 1450000, date: addDaysISO(t, 9), person: "بانک ملت — قسط ۶", status: "pending" },
-      { id: uid(), kind: "in", bank: "صادرات", amount: 2200000, date: addDaysISO(t, -6), person: "شرکت آریا", status: "cashed" },
     ],
-    splits: [{ id: uid(), title: "شام تیم", total: 1200000, parts: 4 }],
+    splits: [],
     challenges: [{ id: uid(), title: "چالش ۳۰ روزهٔ پس‌انداز", target: 1500000, saved: 950000, perDay: 50000 }],
     currencies: [
       { id: uid(), name: "دلار آمریکا", symbol: "USD", rate: 625000, qty: 40 },
-      { id: uid(), name: "یورو", symbol: "EUR", rate: 678000, qty: 15 },
     ],
     assets: [
       { id: uid(), name: "سکهٔ بهار آزادی", buyPrice: 42000000, nowPrice: 51000000, qty: 1 },
-      { id: uid(), name: "پراید ۱۳۹۸", buyPrice: 180000000, nowPrice: 260000000, qty: 1 },
     ],
     subscriptions: [
-      { id: uid(), name: "فیلم‌نت", amount: 79000, cycle: "monthly", renew: jalaliToISO(jt.jy, jt.jm, Math.min(28, jalaliMonthLen(jt.jy, jt.jm))) },
-      { id: uid(), name: "اسپاتیفای", amount: 145000, cycle: "monthly", renew: addDaysISO(t, 11) },
+      { id: uid(), name: "فیلم‌نت", amount: 79000, cycle: "monthly", renew: addDaysISO(t, 20) },
     ],
     activity_logs: [
-      { id: uid(), at: Date.now() - 3600000, text: "تراکنش «اسنپ — جلسه» از ربات تلگرام ثبت شد" },
-      { id: uid(), at: Date.now() - 86400000, text: "سینک ابری با موفقیت انجام شد" },
+      { id: uid(), at: Date.now() - 3600000, text: "دفترکل نمونه ساخته شد" },
     ],
-    telegram_users: [{ id: uid(), name: "شما", username: "@shoma", joined: Date.now() - 30 * 86400000 }],
+    telegram_users: [],
     trash: [],
     tombstones: [],
     prefs: { theme: "dark" },
     lastSync: Date.now(),
-    rev: 0,
+    rev: Date.now(),
   };
   normalizeInstallments(state);
   recomputeBalances(state);
   return state;
 }
 
-/* ---------- حالت خالی (بدون دادهٔ نمونه) ----------
-   برای «کاربر موجودی» که در مرورگر/دستگاه جدید وارد می‌شود: ساختار آماده است،
-   داده‌های واقعی از ابر می‌آیند — دادهٔ نمونه جای دادهٔ واقعی را نمی‌گیرد. */
+/* ---------- state خالی (برای کاربر موجود در مرورگر جدید) ---------- */
 export function emptyState(): AppState {
-  const cat = (name: string, type: "income" | "expense", color: string): Category => ({
-    id: uid(), name, type, color, icon: CATEGORY_ICON_BY_NAME[name] ?? "wallet",
-  });
-  const a1: Account = { id: uid(), name: "بانک ملت", type: "کارت بانکی", initial: 0, color: "#57d9a3", balance: 0 };
-  const state: AppState = {
-    accounts: [a1],
-    categories: [
-      cat("خوراک", "expense", "#e8b04b"), cat("رفت‌وآمد", "expense", "#5ec8de"),
-      cat("خانه و اجاره", "expense", "#8f7ae8"), cat("سلامت", "expense", "#ff7a6b"),
-      cat("تفریح", "expense", "#57d9a3"), cat("پوشاک", "expense", "#f28fc0"),
-      cat("آموزش", "expense", "#7ab8f2"), cat("اشتراک", "expense", "#c0e85e"),
-      cat("متفرقه", "expense", "#a3b8ac"),
-      cat("حقوق", "income", "#57d9a3"), cat("پروژه", "income", "#e8b04b"), cat("هدیه", "income", "#f28fc0"),
-    ],
-    tags: JSON.parse(JSON.stringify(DEFAULT_TAGS)),
-    transactions: [], transfers: [], debts: [], installments: [], budgets: [],
-    payment_methods: [{ id: uid(), name: "کارت" }, { id: uid(), name: "نقد" }, { id: uid(), name: "شبا" }],
-    recurring: [], savings_goals: [], appointments: [], notes: [], cheques: [], splits: [],
-    challenges: [], currencies: [], assets: [], subscriptions: [],
-    activity_logs: [], telegram_users: [], trash: [], tombstones: [],
-    prefs: { theme: "dark" }, lastSync: Date.now(), rev: 0,
-  };
-  recomputeBalances(state);
-  return state;
+  const s = seed();
+  s.transactions = [];
+  s.transfers = [];
+  s.debts = [];
+  s.installments = [];
+  s.budgets = [];
+  s.recurring = [];
+  s.savings_goals = [];
+  s.appointments = [];
+  s.notes = [];
+  s.cheques = [];
+  s.challenges = [];
+  s.currencies = [];
+  s.assets = [];
+  s.subscriptions = [];
+  s.activity_logs = [];
+  recomputeBalances(s);
+  return s;
 }
 
-/* ---------- مهاجرت داده‌های بارگذاری‌شده (نسخه‌های قدیمی) ---------- */
+/* ---------- مهاجرت داده‌های بارگذاری‌شده ---------- */
 export function migrateLoadedState(parsed: AppState): AppState {
   if (typeof parsed.rev !== "number") parsed.rev = 0;
   if (!Array.isArray(parsed.notes)) parsed.notes = [];
   if (!Array.isArray(parsed.tombstones)) parsed.tombstones = [];
-  /* پاک‌سازی سنگ‌قبرهای خیلی قدیمی (بیش از ۱۸۰ روز) تا داده بی‌نهایت رشد نکند */
-  const cutoff = Date.now() - 180 * 86400000;
-  parsed.tombstones = parsed.tombstones.filter((tb) => tb.at > cutoff);
   if (!Array.isArray(parsed.tags) || parsed.tags.length === 0) {
     parsed.tags = JSON.parse(JSON.stringify(DEFAULT_TAGS));
   }
@@ -324,12 +292,10 @@ export function migrateLoadedState(parsed: AppState): AppState {
   for (const c of parsed.categories ?? []) {
     if (!c.icon) c.icon = CATEGORY_ICON_BY_NAME[c.name] ?? "wallet";
   }
-  if (Array.isArray(parsed.installments)) normalizeInstallments(parsed);
   return parsed;
 }
 
 /* ---------- بازمحاسبهٔ ماندهٔ حساب‌ها ---------- */
-/** JSON محتوای تراکنش بدون مهر زمانی — برای تشخیص «تغییر واقعی» در ادغام چنددستگاهه */
 const txContentJson = (t: Tx): string => JSON.stringify({ ...t, updatedAt: 0 });
 
 export function recomputeBalances(s: AppState) {
@@ -414,7 +380,6 @@ function applyRecurring(s: AppState) {
   const monthKey = `${t.jy}-${String(t.jm).padStart(2, "0")}`;
   for (const r of s.recurring) {
     if (r.lastRun === monthKey) continue;
-    /* روز مؤثر: در ماه‌های کوتاه، آخرین روز ماه */
     const day = Math.min(r.dayOfMonth, jalaliMonthLen(t.jy, t.jm));
     if (t.jd >= day) {
       s.transactions.unshift({
@@ -449,9 +414,6 @@ export const useStore = () => useContext(Ctx);
 
 export function DataProvider({ userId, fresh = false, children }: {
   userId: string;
-  /** فقط برای حسابی که «همین الان ساخته شده» — دادهٔ نمونه می‌گیرد.
-      کاربر موجودی که در مرورگر جدید وارد می‌شود false است تا دادهٔ نمونه
-      جای دادهٔ واقعیِ ابری را نگیرد (ریشهٔ باگ «تراکنش‌های مالِ من نیست») */
   fresh?: boolean;
   children: ReactNode;
 }) {
@@ -463,6 +425,7 @@ export function DataProvider({ userId, fresh = false, children }: {
         const parsed = JSON.parse(raw) as AppState;
         migrateLoadedState(parsed);
         applyRecurring(parsed);
+        normalizeInstallments(parsed);
         recomputeBalances(parsed);
         return parsed;
       }
@@ -482,9 +445,8 @@ export function DataProvider({ userId, fresh = false, children }: {
     setState((prev) => {
       const draft: AppState = JSON.parse(JSON.stringify(prev));
       fn(draft);
+      normalizeInstallments(draft);
       recomputeBalances(draft);
-      /* مهر زمانی برای تراکنش‌های «جدید یا واقعاً تغییرکرده» —
-         مقایسهٔ محتوا بدون خودِ updatedAt انجام می‌شود تا تغییرات صوری مهر نخورند */
       {
         const prevTxs = new Map(prev.transactions.map((t) => [t.id, txContentJson(t)]));
         const stamp = Date.now();
@@ -492,8 +454,6 @@ export function DataProvider({ userId, fresh = false, children }: {
           if (prevTxs.get(t.id) !== txContentJson(t)) t.updatedAt = stamp;
         }
       }
-      /* نسخهٔ داده = مهر زمانیِ آخرین تغییر — بر خلاف شمارندهٔ محلی،
-         بین همهٔ دستگاه‌ها قابل مقایسه است (ریشهٔ باگ «خودبه‌خود عوض شدن») */
       draft.rev = Date.now();
       if (log) {
         draft.activity_logs.unshift({ id: uid(), at: Date.now(), text: log });
@@ -514,7 +474,6 @@ export function DataProvider({ userId, fresh = false, children }: {
       d.trash = [...d.trash.filter((e) => e.table !== table || (e.item as { id: ID }).id !== id), {
         key: uid(), table, item, until: Date.now() + 30000, label,
       }].slice(-5);
-      /* سنگ‌قبر: حذف در همهٔ مرورگرها ماندگار می‌شود (ریشهٔ باگ «برگشتن تراکنش حذف‌شده») */
       if (table === "transactions") {
         d.tombstones = [...d.tombstones.filter((tb) => tb.id !== id), { table: "transactions", id, at: Date.now() }];
       }
@@ -527,8 +486,6 @@ export function DataProvider({ userId, fresh = false, children }: {
       if (!entry) return;
       (d[entry.table as TableName] as unknown[]).push(entry.item);
       d.trash = d.trash.filter((e) => e.key !== key);
-      /* بازگردانی = تغییر جدید: مهر زمانی می‌گیرد و سنگ‌قبرش پاک می‌شود
-         تا در مرورگرهای دیگر «بازگردانی» بر «حذف قدیمی» برنده شود */
       if (entry.table === "transactions") {
         const tx = entry.item as Tx;
         tx.updatedAt = Date.now();
@@ -563,7 +520,6 @@ export const catById = (s: AppState, id: ID) => s.categories.find((c) => c.id ==
 export const accById = (s: AppState, id: ID) => s.accounts.find((a) => a.id === id);
 export const tagById = (s: AppState, id?: ID) => (id ? getTags(s).find((t) => t.id === id) : undefined);
 
-/** تگ‌های زندهٔ state — اگر خالی بود، پیش‌فرض‌ها */
 export const getTags = (s: AppState): TagDef[] =>
   Array.isArray(s.tags) && s.tags.length > 0 ? s.tags : DEFAULT_TAGS;
 
@@ -583,9 +539,6 @@ export function sampleFill(d: AppState) {
   const cHome = cat("خانه و اجاره", "expense", "#8f7ae8");
   const cHealth = cat("سلامت", "expense", "#ff7a6b");
   const cFun = cat("تفریح", "expense", "#57d9a3");
-  const cCloth = cat("پوشاک", "expense", "#f28fc0");
-  const cEdu = cat("آموزش", "expense", "#7ab8f2");
-  const cSub = cat("اشتراک", "expense", "#c0e85e");
   const iSalary = cat("حقوق", "income", "#57d9a3");
   const iProject = cat("پروژه", "income", "#e8b04b");
 
@@ -613,45 +566,34 @@ export function sampleFill(d: AppState) {
     tx(40, "expense", "داروخانه", 240000, cHealth, a2, "essential"),
     tx(35, "expense", "رستوران با خانواده", 540000, cFood, a1, "fun"),
     tx(30, "income", "واریز حقوق", 18500000, iSalary, a1),
-    tx(28, "expense", "قبض برق و گاز", 380000, cHome, a1, "essential"),
-    tx(24, "expense", "خرید پوشاک", 890000, cCloth, a1, "later"),
+    tx(24, "expense", "خرید پوشاک", 890000, cFood, a1, "later"),
     tx(20, "expense", "کافه با دوستان", 145000, cFun, a2, "fun"),
-    tx(16, "expense", "کلاس زبان", 750000, cEdu, a2, "later"),
-    tx(12, "expense", "اشتراک فیلم", 79000, cSub, a1, "later"),
     tx(8, "expense", "خرید میوه", 210000, cFood, a1, "cheap"),
-    tx(5, "expense", "بنزین", 300000, cTrans, a1, "essential"),
     tx(2, "expense", "سوپرمارکت یاس", 265000, cFood, a1, "essential"),
     tx(1, "income", "پروژهٔ فریلنسری", 1800000, iProject, a2),
-    tx(0, "expense", "اسنپ — جلسه", 88000, cTrans, a1, "essential"),
   );
 
   d.debts.push(
     { id: uid(), kind: "debt", person: "رضا محمدی", amount: 1500000, paid: 500000, due: addDaysISO(t, 12), note: "قرض تعمیر ماشین" },
-    { id: uid(), kind: "credit", person: "مریم احمدی", amount: 800000, paid: 0, due: addDaysISO(t, 5), note: "پول بلیت کنسرت" },
   );
   d.budgets.push(
     { id: uid(), categoryId: cFood.id, limit: 3000000 },
     { id: uid(), categoryId: cTrans.id, limit: 1200000 },
-    { id: uid(), categoryId: cFun.id, limit: 800000 },
-    { id: uid(), categoryId: cHome.id, limit: 5500000 },
   );
   d.savings_goals.push(
     { id: uid(), title: "سفر شیراز", target: 6000000, saved: 3850000, deadline: addDaysISO(t, 60) },
-    { id: uid(), title: "لپ‌تاپ جدید", target: 45000000, saved: 12000000 },
   );
   d.appointments.push(
     { id: uid(), date: t, time: "20:00", title: "ورزش — دویدن" },
     { id: uid(), date: addDaysISO(t, 2), time: "10:00", title: "ویزیت دندانپزشکی", note: "کلینیک دکتر راد" },
-    { id: uid(), date: addDaysISO(t, 5), time: "18:00", title: "شام با مریم و رضا", note: "رستوران شاندیز" },
   );
   d.notes.push(
-    { id: uid(), title: "ایدهٔ پس‌انداز", body: "هر ماه ۱۰٪ از حقوق را همان روز به صندوق طلا منتقل کنم تا قبل از خرج شدن، پس‌انداز شده باشد.", date: dd(3), color: "#e8b04b", createdAt: Date.now() - 3 * 86400000 },
-    { id: uid(), title: "لیست خرید هفته", body: "شیر، نان، میوه، قهوه — خرید بزرگ ماهانه را به اول هفته موکول کنم که تخفیف‌ها تازه هستند.", date: dd(1), color: "#57d9a3", createdAt: Date.now() - 86400000 },
+    { id: uid(), title: "ایدهٔ پس‌انداز", body: "هر ماه ۱۰٪ از حقوق را پس‌انداز کنم.", date: dd(3), color: "#ffd76b", createdAt: Date.now() - 3 * 86400000 },
   );
   recomputeBalances(d);
 }
 
-/** پاک‌سازی همهٔ داده‌ها — ساختار (دسته‌ها، حساب‌ها، تگ‌ها، روش‌های پرداخت) حفظ می‌شود */
+/** پاک‌سازی همهٔ داده‌ها — ساختار حفظ می‌شود */
 export function clearData(d: AppState) {
   d.transactions = [];
   d.transfers = [];

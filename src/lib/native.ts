@@ -1,19 +1,21 @@
-/* ---------- تشخیص پلتفرم بومی (Capacitor) ----------
-   فاز ۱ — آماده‌سازی: این ماژول هنوز به هیچ‌جای برنامه وصل نیست و هیچ رفتاری
-   را تغییر نمی‌دهد. در نسخهٔ وب (Vercel) مقادیرش همیشه «web» است.
+/* ---------- تشخیص پلتفرم (وب / کپاسیتور) ---------- */
 
-   در فاز ساخت APK از این ماژول برای موارد زیر استفاده می‌شود:
-   - قفل با اثر انگشت (Biometric) که در مرورگر ممکن نیست
-   - اعلان‌های بومی واقعی
-   - اشتراک‌گذاری گزارش‌ها به‌صورت بومی */
-import { Capacitor } from "@capacitor/core";
+/** آیا داخل اپ اندروید/بومی اجرا می‌شویم؟ */
+export const isNative = (): boolean => {
+  try {
+    const w = window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } };
+    return !!w.Capacitor?.isNativePlatform?.();
+  } catch {
+    return false;
+  }
+};
 
-/** آیا برنامه داخل اپ بومی (اندروید/iOS) اجرا می‌شود یا در مرورگر؟ */
-export const isNativePlatform: boolean = Capacitor.isNativePlatform();
-
-/** پلتفرم فعلی: 'web' | 'android' | 'ios' */
-export const platform: string = Capacitor.getPlatform();
-
-/** آیا پلاگین مشخصی روی این پلتفرم موجود است؟ (برای فازهای بعدی) */
-export const hasNativePlugin = (name: string): boolean =>
-  Capacitor.isPluginAvailable(name);
+/** آیا PWA نصب‌شده (standalone) اجرا می‌شود؟ */
+export const isStandalone = (): boolean => {
+  try {
+    const nav = navigator as unknown as { standalone?: boolean };
+    return nav.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  } catch {
+    return false;
+  }
+};

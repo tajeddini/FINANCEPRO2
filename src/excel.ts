@@ -11,7 +11,6 @@ function download(blob: Blob, name: string) {
   URL.revokeObjectURL(a.href);
 }
 
-/* ---------- پالت و سبک‌ها ---------- */
 const PINE = "FF0D2C24";
 const GRAY = "FF87A496";
 const ROW_A = "FFF4F9F5";
@@ -102,7 +101,6 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
     - s.debts.filter((d) => d.kind === "debt").reduce((a, d) => a + (d.amount - d.paid), 0)
     + s.debts.filter((d) => d.kind === "credit").reduce((a, d) => a + (d.amount - d.paid), 0);
 
-  /* بلوک شاخص‌ها */
   let r = 5;
   const kpi = (label: string, value: number, color: string) => {
     const row = ws.getRow(r++);
@@ -124,7 +122,6 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
   kpi("تراز بازه (درآمد − هزینه)", income - expense, income - expense >= 0 ? "FF1F7A56" : "FFC24A3D");
   kpi("ارزش خالص دارایی‌ها", netWorth, PINE);
 
-  /* برترین دسته‌ها */
   r += 1;
   const h1 = ws.getRow(r++);
   h1.getCell(2).value = "برترین دسته‌های هزینه";
@@ -147,7 +144,6 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
     pc.alignment = { horizontal: "center" };
   }
 
-  /* موجودی حساب‌ها */
   r += 1;
   const h2 = ws.getRow(r++);
   h2.getCell(2).value = "موجودی حساب‌ها";
@@ -173,10 +169,8 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   const income = txs.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0);
   const expense = txs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
 
-  /* ۱) خلاصه */
   summarySheet(wb, s, txs, periodLabel);
 
-  /* ۲) تراکنش‌ها */
   const tags = getTags(s);
   const tagName = (id?: string) => tags.find((x) => x.id === id)?.label ?? "—";
   const w1 = makeSheet(wb, "تراکنش‌ها", [
@@ -204,7 +198,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   totalRow(w1, "تراز نهایی", income - expense, 9, PINE);
   w1.autoFilter = { from: "A1", to: `J${txs.length + 1}` };
 
-  /* ۳) دسته‌ها */
   const w2 = makeSheet(wb, "گزارش دسته‌ها", [
     { h: "دسته", w: 22 }, { h: "نوع", w: 10 }, { h: "تعداد تراکنش", w: 14 }, { h: "جمع (تومان)", w: 18 }, { h: "سهم از کل", w: 12 },
   ]);
@@ -226,7 +219,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   }
   zebra(w2, 2, i2 - 1, [2, 3, 5], [4]);
 
-  /* ۴) حساب‌ها */
   const w3 = makeSheet(wb, "حساب‌ها", [
     { h: "نام حساب", w: 24 }, { h: "نوع", w: 18 }, { h: "موجودی اولیه", w: 18 }, { h: "ماندهٔ فعلی", w: 18 },
   ]);
@@ -234,7 +226,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   zebra(w3, 2, s.accounts.length + 1, [2], [3, 4]);
   totalRow(w3, "جمع ماندهٔ حساب‌ها", s.accounts.reduce((x, a) => x + a.balance, 0), 4);
 
-  /* ۵) بدهی‌ها و طلب‌ها */
   const w4 = makeSheet(wb, "بدهی‌ها و طلب‌ها", [
     { h: "نوع", w: 10 }, { h: "طرف حساب", w: 22 }, { h: "مبلغ کل", w: 16 }, { h: "پرداخت‌شده", w: 16 },
     { h: "باقی‌مانده", w: 16 }, { h: "سررسید", w: 15 }, { h: "یادداشت", w: 26 },
@@ -245,7 +236,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   }));
   zebra(w4, 2, s.debts.length + 1, [1], [3, 4, 5]);
 
-  /* ۶) اقساط */
   const w5 = makeSheet(wb, "اقساط", [
     { h: "عنوان", w: 26 }, { h: "مبلغ کل", w: 16 }, { h: "قسط ماهانه", w: 15 }, { h: "تعداد ماه", w: 11 },
     { h: "پرداخت‌شده", w: 12 }, { h: "پیشرفت", w: 10 },
@@ -256,7 +246,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   });
   zebra(w5, 2, s.installments.length + 1, [4, 5, 6], [1, 2]);
 
-  /* ۷) بودجه‌ها */
   const w6 = makeSheet(wb, "بودجه‌ها", [
     { h: "دسته", w: 22 }, { h: "سقف ماهانه", w: 17 }, { h: "خرجِ بازه", w: 17 }, { h: "باقی‌مانده", w: 17 }, { h: "وضعیت", w: 13 },
   ]);
@@ -271,7 +260,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   });
   zebra(w6, 2, s.budgets.length + 1, [5], [2, 3, 4]);
 
-  /* ۸) اهداف، دارایی‌ها و اشتراک‌ها */
   const w7 = makeSheet(wb, "دارایی‌ها و اهداف", [
     { h: "بخش", w: 16 }, { h: "عنوان", w: 26 }, { h: "ارزش ۱", w: 18 }, { h: "ارزش ۲", w: 18 }, { h: "توضیح", w: 22 },
   ]);
@@ -281,7 +269,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   s.subscriptions.forEach((x) => w7.addRow({ c0: "اشتراک", c1: x.name, c2: x.amount, c3: x.cycle === "monthly" ? x.amount * 12 : x.amount, c4: `تمدید: ${faDate(x.renew)}` }));
   zebra(w7, 2, s.savings_goals.length + s.assets.length + s.currencies.length + s.subscriptions.length + 1, [1], [3, 4]);
 
-  /* ۹) برچسب‌ها (تحلیل رفتار خرج) */
   const w8 = makeSheet(wb, "برچسب‌ها", [
     { h: "برچسب", w: 24 }, { h: "توضیح", w: 34 }, { h: "تعداد تراکنش", w: 14 }, { h: "جمع (تومان)", w: 17 }, { h: "سهم از هزینه", w: 13 },
   ]);
@@ -294,7 +281,6 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   });
   zebra(w8, 2, tags.length + 1, [3, 5], [4]);
 
-  /* ۱۰) یادداشت‌ها */
   const w9 = makeSheet(wb, "یادداشت‌ها", [
     { h: "عنوان", w: 26 }, { h: "دسته", w: 14 }, { h: "تاریخ شمسی", w: 16 }, { h: "سنجاق", w: 9 }, { h: "متن", w: 50 },
   ]);
@@ -339,7 +325,6 @@ export function parseCSV(text: string, s: AppState): {
       continue;
     }
     const [date, type, title, catName, amount] = parts;
-    /* نرمال‌سازی: ارقام فارسی/عربی ← لاتین + حذف جداکنندهٔ هزارگان تا مبلغ صفر نشود */
     const ndate = toEnDigits(date).trim();
     const namount = toEnDigits(amount).replace(/[٬،,\s]/g, "");
     const isIncome = /income|درآمد/i.test(type);

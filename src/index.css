@@ -1,42 +1,44 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Lalezar", "Vazirmatn", serif;
-  --font-body: "Vazirmatn", "Segoe UI", system-ui, sans-serif;
+ --font-display: "Lalezar", "Vazirmatn", serif;
+ --font-body: "Vazirmatn", "Segoe UI", system-ui, sans-serif;
 }
 
 /* ================= متغیرهای تم (تیره — پیش‌فرض) ================= */
 :root {
-  --fp-bg: #081c16;
-  --fp-bg2: #0d2c24;
-  --fp-bg3: #123a2f;
-  --fp-text: #eaf4ee;
-  --fp-text2: #b7cfc2;
-  --fp-text3: #87a496;
-  --fp-accent: #e8b04b;
-  --fp-mint: #2fb98a;
-  --fp-coral: #ff7a6b;
-  --fp-sky: #5ec8de;
-  --fp-border: rgba(140, 236, 195, 0.14);
-  --fp-border2: rgba(140, 236, 195, 0.3);
-  --fp-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.55);
+ --fp-bg: #081c16;
+ --fp-bg2: #0d2c24;
+ --fp-bg3: #123a2f;
+ --fp-text: #eaf4ee;
+ --fp-text2: #b7cfc2;
+ --fp-text3: #87a496;
+ --fp-accent: #e8b04b;
+ --fp-mint: #2fb98a;
+ --fp-coral: #ff7a6b;
+ --fp-sky: #5ec8de;
+ --fp-border: rgba(140, 236, 195, 0.14);
+ --fp-border2: rgba(140, 236, 195, 0.3);
+ --fp-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.55);
+ --fp-pine: #0d2c24;
 }
 
 /* تم روشن */
 .light {
-  --fp-bg: #f2f6f1;
-  --fp-bg2: #ffffff;
-  --fp-bg3: #e7efe8;
-  --fp-text: #12332a;
-  --fp-text2: #3d5c50;
-  --fp-text3: #6f8d80;
-  --fp-accent: #c78a22;
-  --fp-mint: #178a63;
-  --fp-coral: #d94f40;
-  --fp-sky: #1f8fa8;
-  --fp-border: rgba(13, 44, 36, 0.12);
-  --fp-border2: rgba(13, 44, 36, 0.25);
-  --fp-shadow: 0 10px 30px -14px rgba(18, 51, 42, 0.25);
+ --fp-bg: #f2f6f1;
+ --fp-bg2: #ffffff;
+ --fp-bg3: #e7efe8;
+ --fp-text: #12332a;
+ --fp-text2: #3d5c50;
+ --fp-text3: #6f8d80;
+ --fp-accent: #c78a22;
+ --fp-mint: #178a63;
+ --fp-coral: #d94f40;
+ --fp-sky: #1f8fa8;
+ --fp-border: rgba(13, 44, 36, 0.12);
+ --fp-border2: rgba(13, 44, 36, 0.25);
+ --fp-shadow: 0 10px 30px -14px rgba(18, 51, 42, 0.25);
+ --fp-pine: #e7efe8;
 }
 
 /* ================= تم‌های رنگی ترکیبی ================= */
@@ -51,115 +53,107 @@ html[data-accent="royal"].light { --fp-accent: #3b6bd6; --fp-mint: #17a3b8; }
 html[data-accent="copper"] { --fp-accent: #dd9460; --fp-mint: #b3c968; }
 html[data-accent="copper"].light { --fp-accent: #b06a35; --fp-mint: #7d9437; }
 
-/* زمردی دارک — ترکیب کامل زمرد و تیره (همهٔ متغیرها) */
+/* زمردی دارک */
 html[data-accent="emerald-dark"] {
-  --fp-bg: #030f0a;
-  --fp-bg2: #07231a;
-  --fp-bg3: #0d3325;
-  --fp-text: #dcf7ea;
-  --fp-text2: #a3d9c2;
-  --fp-text3: #5f9a82;
-  --fp-accent: #34d399;
-  --fp-mint: #5eead4;
-  --fp-coral: #fb7185;
-  --fp-sky: #67e8f9;
-  --fp-border: rgba(52, 211, 153, 0.18);
-  --fp-border2: rgba(52, 211, 153, 0.38);
-  --fp-shadow: 0 12px 34px -12px rgba(0, 0, 0, 0.65);
+ --fp-bg: #030f0a;
+ --fp-bg2: #07231a;
+ --fp-bg3: #0d3325;
+ --fp-text: #dcf7ea;
+ --fp-text2: #a3d9c2;
+ --fp-text3: #5f9a82;
+ --fp-accent: #34d399;
+ --fp-mint: #5eead4;
+ --fp-coral: #fb7185;
+ --fp-sky: #67e8f9;
+ --fp-border: rgba(52, 211, 153, 0.18);
+ --fp-border2: rgba(52, 211, 153, 0.38);
+ --fp-shadow: 0 12px 34px -12px rgba(0, 0, 0, 0.65);
 }
 html[data-accent="emerald-dark"].light {
-  --fp-bg: #ecf7f1;
-  --fp-bg2: #ffffff;
-  --fp-bg3: #d9efe4;
-  --fp-text: #0b3527;
-  --fp-text2: #34664f;
-  --fp-text3: #63917d;
-  --fp-accent: #0e9f6e;
-  --fp-mint: #0d9488;
-  --fp-coral: #dc2626;
-  --fp-sky: #0891b2;
-  --fp-border: rgba(14, 159, 110, 0.16);
-  --fp-border2: rgba(14, 159, 110, 0.34);
-  --fp-shadow: 0 10px 30px -14px rgba(11, 53, 39, 0.22);
+ --fp-bg: #ecf7f1;
+ --fp-bg2: #ffffff;
+ --fp-bg3: #d9efe4;
+ --fp-text: #0b3527;
+ --fp-text2: #34664f;
+ --fp-text3: #63917d;
+ --fp-accent: #0e9f6e;
+ --fp-mint: #0d9488;
+ --fp-coral: #dc2626;
+ --fp-sky: #0891b2;
+ --fp-border: rgba(14, 159, 110, 0.16);
+ --fp-border2: rgba(14, 159, 110, 0.34);
+ --fp-shadow: 0 10px 30px -14px rgba(11, 53, 39, 0.22);
 }
 
-/* ================= تم شیشه‌ای تیره (Glassmorphism Dark) =================
-   کارت‌ها و نوارها «شیشهٔ یخ‌زده» می‌شوند: پس‌زمینهٔ نیمه‌شفاف + blur +
-   حاشیهٔ مویی روشن + گوشه‌های گردتر؛ روی زمینه‌ای با دو هالهٔ نور (طلایی و سبز) */
+/* ================= تم شیشه‌ای تیره (Glassmorphism Dark) ================= */
 html[data-accent="glass-dark"] {
-  --fp-bg: rgba(13, 18, 31, 0.55);      /* پایهٔ نیمه‌شفاف برای اینپوت‌ها و فرورفتگی‌ها */
-  --fp-bg2: rgba(255, 255, 255, 0.05);  /* پایهٔ کارت */
-  --fp-bg3: rgba(255, 255, 255, 0.09);  /* هاور / حالت‌های تو در تو */
-  --fp-text: #F3F1EA;
-  --fp-text2: #9CA3B4;
-  --fp-text3: #6B7180;
-  --fp-accent: #D4AF37;                 /* طلایی */
-  --fp-mint: #3ECF8E;                   /* سبز درآمد */
-  --fp-coral: #E8695A;                  /* مرجانی هزینه */
-  --fp-sky: #6FA8DC;
-  --fp-border: rgba(255, 255, 255, 0.09);
-  --fp-border2: rgba(255, 255, 255, 0.16);
-  --fp-shadow: 0 18px 48px -16px rgba(0, 0, 0, 0.55);
-  --fp-glass: rgba(255, 255, 255, 0.045);
-  --fp-glass-border: rgba(255, 255, 255, 0.09);
+ --fp-bg: rgba(13, 18, 31, 0.55);
+ --fp-bg2: rgba(255, 255, 255, 0.05);
+ --fp-bg3: rgba(255, 255, 255, 0.09);
+ --fp-text: #F3F1EA;
+ --fp-text2: #9CA3B4;
+ --fp-text3: #6B7180;
+ --fp-accent: #D4AF37;
+ --fp-mint: #3ECF8E;
+ --fp-coral: #E8695A;
+ --fp-sky: #6FA8DC;
+ --fp-border: rgba(255, 255, 255, 0.09);
+ --fp-border2: rgba(255, 255, 255, 0.16);
+ --fp-shadow: 0 18px 48px -16px rgba(0, 0, 0, 0.55);
+ --fp-glass: rgba(255, 255, 255, 0.045);
+ --fp-glass-border: rgba(255, 255, 255, 0.09);
+ --fp-pine: rgba(10, 14, 23, 0.6);
 }
 
-/* پس‌زمینه: دو هالهٔ نور نرم روی گرادیان خطی تیره */
 html[data-accent="glass-dark"] body,
 html[data-accent="glass-dark"] .app-texture {
-  background:
-    radial-gradient(900px 620px at 85% -10%, rgba(212, 175, 55, 0.16), transparent 62%),
-    radial-gradient(820px 700px at 8% 112%, rgba(62, 207, 142, 0.11), transparent 62%),
-    linear-gradient(160deg, #0A0E17 0%, #121826 55%, #0A0E17 100%);
-  background-attachment: fixed;
+ background:
+ radial-gradient(900px 620px at 85% -10%, rgba(212, 175, 55, 0.16), transparent 62%),
+ radial-gradient(820px 700px at 8% 112%, rgba(62, 207, 142, 0.11), transparent 62%),
+ linear-gradient(160deg, #0A0E17 0%, #121826 55%, #0A0E17 100%);
+ background-attachment: fixed;
 }
 
-/* کارت‌ها: شیشهٔ یخ‌زده */
 html[data-accent="glass-dark"] .card {
-  background: var(--fp-glass);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid var(--fp-glass-border);
-  border-radius: 22px;
-  box-shadow: var(--fp-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+ background: var(--fp-glass);
+ backdrop-filter: blur(18px);
+ -webkit-backdrop-filter: blur(18px);
+ border: 1px solid var(--fp-glass-border);
+ border-radius: 22px;
+ box-shadow: var(--fp-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-/* نوار بالا و پایین و کناری: شیشه */
 html[data-accent="glass-dark"] header,
 html[data-accent="glass-dark"] aside,
 html[data-accent="glass-dark"] nav {
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: rgba(10, 14, 23, 0.55) !important;
-  border-color: var(--fp-glass-border) !important;
+ backdrop-filter: blur(16px);
+ -webkit-backdrop-filter: blur(16px);
+ background: rgba(10, 14, 23, 0.55) !important;
+ border-color: var(--fp-glass-border) !important;
 }
-/* چیپ‌ها و دکمه‌های شبح: شیشه‌ای */
 html[data-accent="glass-dark"] .chip {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.14);
+ background: rgba(255, 255, 255, 0.05);
+ border-color: rgba(255, 255, 255, 0.14);
 }
 html[data-accent="glass-dark"] .chip-on {
-  background: var(--fp-accent);
-  border-color: var(--fp-accent);
-  color: #0A0E17;
+ background: var(--fp-accent);
+ border-color: var(--fp-accent);
+ color: #0A0E17;
 }
-/* اینپوت‌ها: شیشه */
 html[data-accent="glass-dark"] .input {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.14);
+ background: rgba(255, 255, 255, 0.06);
+ border-color: rgba(255, 255, 255, 0.14);
 }
 html[data-accent="glass-dark"] select.input option { background: #121826; color: #F3F1EA; }
-/* اعداد بزرگ پررنگ‌تر */
 html[data-accent="glass-dark"] .font-display { font-weight: 800; }
-/* کاهش حرکت: blur را هم خاموش نکن (ثابت است) — فقط انیمیشن‌ها کم می‌شوند */
 
 /* ================= پایه ================= */
 html { scroll-behavior: smooth; }
 body {
-  background: var(--fp-bg);
-  color: var(--fp-text);
-  font-family: var(--font-body);
-  overflow-x: hidden;
-  text-rendering: optimizeLegibility;
+ background: var(--fp-bg);
+ color: var(--fp-text);
+ font-family: var(--font-body);
+ overflow-x: hidden;
+ text-rendering: optimizeLegibility;
 }
 .font-display { font-family: var(--font-display); }
 .tabular { font-variant-numeric: tabular-nums; }
@@ -172,41 +166,41 @@ body {
 /* ================= بافت محیطی ================= */
 .app-texture { background: var(--fp-bg); }
 .grid-lines {
-  background-image:
-    linear-gradient(var(--fp-border) 1px, transparent 1px),
-    linear-gradient(90deg, var(--fp-border) 1px, transparent 1px);
-  background-size: 34px 34px;
-  opacity: 0.5;
+ background-image:
+ linear-gradient(var(--fp-border) 1px, transparent 1px),
+ linear-gradient(90deg, var(--fp-border) 1px, transparent 1px);
+ background-size: 34px 34px;
+ opacity: 0.5;
 }
 .noise-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  pointer-events: none;
-  opacity: 0.045;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+ position: fixed;
+ inset: 0;
+ z-index: 60;
+ pointer-events: none;
+ opacity: 0.045;
+ background-image: url("image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ================= کامپوننت‌ها ================= */
 .card {
-  background: var(--fp-bg2);
-  border: 1px solid var(--fp-border);
-  border-radius: 1rem;
-  box-shadow: var(--fp-shadow);
+ background: var(--fp-bg2);
+ border: 1px solid var(--fp-border);
+ border-radius: 1rem;
+ box-shadow: var(--fp-shadow);
 }
 
 .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  font-weight: 800;
-  font-size: 13px;
-  border-radius: 0.75rem;
-  padding: 0.55rem 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ gap: 0.4rem;
+ font-weight: 800;
+ font-size: 13px;
+ border-radius: 0.75rem;
+ padding: 0.55rem 1rem;
+ cursor: pointer;
+ transition: all 0.2s ease;
+ border: 1px solid transparent;
 }
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -216,83 +210,83 @@ body {
 .btn-mint { background: var(--fp-mint); color: #071b16; }
 .btn-mint:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
 .btn-ghost {
-  background: transparent;
-  color: var(--fp-text2);
-  border-color: var(--fp-border2);
+ background: transparent;
+ color: var(--fp-text2);
+ border-color: var(--fp-border2);
 }
 .btn-ghost:hover:not(:disabled) { color: var(--fp-text); border-color: var(--fp-mint); background: color-mix(in srgb, var(--fp-mint) 7%, transparent); }
 .btn-danger { background: color-mix(in srgb, var(--fp-coral) 15%, transparent); color: var(--fp-coral); border-color: color-mix(in srgb, var(--fp-coral) 40%, transparent); }
 .btn-danger:hover:not(:disabled) { background: var(--fp-coral); color: #071b16; }
 
 .chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-weight: 800;
-  font-size: 11.5px;
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid var(--fp-border2);
-  color: var(--fp-text2);
-  cursor: pointer;
-  transition: all 0.18s ease;
-  background: transparent;
+ display: inline-flex;
+ align-items: center;
+ gap: 0.3rem;
+ font-weight: 800;
+ font-size: 11.5px;
+ padding: 0.3rem 0.7rem;
+ border-radius: 999px;
+ border: 1px solid var(--fp-border2);
+ color: var(--fp-text2);
+ cursor: pointer;
+ transition: all 0.18s ease;
+ background: transparent;
 }
 .chip:hover { border-color: var(--fp-mint); color: var(--fp-text); }
 .chip-on { background: var(--fp-accent); border-color: var(--fp-accent); color: #071b16; }
 
 .input {
-  width: 100%;
-  background: var(--fp-bg);
-  border: 1px solid var(--fp-border2);
-  border-radius: 0.75rem;
-  padding: 0.55rem 0.85rem;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--fp-text);
-  outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+ width: 100%;
+ background: var(--fp-bg);
+ border: 1px solid var(--fp-border2);
+ border-radius: 0.75rem;
+ padding: 0.55rem 0.85rem;
+ font-size: 13.5px;
+ font-weight: 600;
+ color: var(--fp-text);
+ outline: none;
+ transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .input:focus { border-color: var(--fp-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fp-accent) 18%, transparent); }
 .input::placeholder { color: var(--fp-text3); font-weight: 500; }
 select.input option { background: var(--fp-bg2); color: var(--fp-text); }
 
 .icon-btn {
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.7rem;
-  color: var(--fp-text2);
-  cursor: pointer;
-  transition: all 0.18s ease;
-  background: transparent;
-  border: none;
+ display: grid;
+ place-items: center;
+ width: 2.25rem;
+ height: 2.25rem;
+ border-radius: 0.7rem;
+ color: var(--fp-text2);
+ cursor: pointer;
+ transition: all 0.18s ease;
+ background: transparent;
+ border: none;
 }
 .icon-btn:hover { background: var(--fp-bg3); color: var(--fp-text); }
 
 /* ================= انیمیشن‌ها ================= */
 @keyframes rise-in-kf {
-  from { opacity: 0; transform: translateY(18px); }
-  to { opacity: 1; transform: translateY(0); }
+ from { opacity: 0; transform: translateY(18px); }
+ to { opacity: 1; transform: translateY(0); }
 }
 .rise-in { animation: rise-in-kf 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) both; animation-delay: var(--d, 0ms); }
 
 @keyframes pop-in-kf {
-  from { opacity: 0; transform: scale(0.94); }
-  to { opacity: 1; transform: scale(1); }
+ from { opacity: 0; transform: scale(0.94); }
+ to { opacity: 1; transform: scale(1); }
 }
 .pop-in { animation: pop-in-kf 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.15) both; }
 
 @keyframes slide-up-kf {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
+ from { opacity: 0; transform: translateY(24px); }
+ to { opacity: 1; transform: translateY(0); }
 }
 .slide-up { animation: slide-up-kf 0.35s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
 
 @keyframes pulse-soft-kf {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fp-mint) 55%, transparent); }
-  55% { box-shadow: 0 0 0 7px transparent; }
+ 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fp-mint) 55%, transparent); }
+ 55% { box-shadow: 0 0 0 7px transparent; }
 }
 .pulse-soft { animation: pulse-soft-kf 2.2s ease-out infinite; }
 
@@ -300,11 +294,11 @@ select.input option { background: var(--fp-bg2); color: var(--fp-text); }
 .blink-dot { animation: blink-dot-kf 1.2s ease-in-out infinite; }
 
 @keyframes shake-x-kf {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-8px); }
-  40% { transform: translateX(8px); }
-  60% { transform: translateX(-5px); }
-  80% { transform: translateX(5px); }
+ 0%, 100% { transform: translateX(0); }
+ 20% { transform: translateX(-8px); }
+ 40% { transform: translateX(8px); }
+ 60% { transform: translateX(-5px); }
+ 80% { transform: translateX(5px); }
 }
 .shake-x { animation: shake-x-kf 0.45s ease both; }
 
@@ -312,30 +306,29 @@ select.input option { background: var(--fp-bg2); color: var(--fp-text); }
 .spin-slow { animation: spin-slow-kf 1s linear infinite; }
 
 @keyframes mic-ring-kf {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fp-coral) 50%, transparent); }
-  100% { box-shadow: 0 0 0 12px transparent; }
+ 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fp-coral) 50%, transparent); }
+ 100% { box-shadow: 0 0 0 12px transparent; }
 }
 .mic-live { animation: mic-ring-kf 1.3s ease-out infinite; color: var(--fp-coral) !important; border-color: var(--fp-coral) !important; }
 
 .stripe-edge {
-  background-image: repeating-linear-gradient(-45deg, var(--fp-accent) 0 14px, var(--fp-bg) 14px 28px);
+ background-image: repeating-linear-gradient(-45deg, var(--fp-accent) 0 14px, var(--fp-bg) 14px 28px);
 }
 
 /* ================= چاپ / PDF ================= */
-.no-print { }
 @media print {
-  .no-print { display: none !important; }
-  body { background: #fff !important; color: #000 !important; }
-  .card { box-shadow: none !important; border-color: #ccc !important; }
-  .noise-layer, .grid-lines { display: none !important; }
+ .no-print { display: none !important; }
+ body { background: #fff !important; color: #000 !important; }
+ .card { box-shadow: none !important; border-color: #ccc !important; }
+ .noise-layer, .grid-lines { display: none !important; }
 }
 
 /* ================= کاهش حرکت ================= */
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+ html { scroll-behavior: auto; }
+ *, *::before, *::after {
+ animation-duration: 0.01ms !important;
+ animation-iteration-count: 1 !important;
+ transition-duration: 0.01ms !important;
+ }
 }

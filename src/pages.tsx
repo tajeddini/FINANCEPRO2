@@ -49,10 +49,8 @@ export function TxModal({
   const [touchedCat, setTouchedCat] = useState(false);
   const [smart, setSmart] = useState(() => localStorage.getItem("fp_smart") === "1");
   const [detected, setDetected] = useState<string[]>([]);
-  /* مرحلهٔ پیشنهاد تگ بعد از ثبت تراکنشِ هزینهٔ بدون تگ */
   const [suggestTxId, setSuggestTxId] = useState<ID | "">("");
   const [suggestCat, setSuggestCat] = useState("");
-  /* ثبت از پیام بانکی */
   const [smsOpen, setSmsOpen] = useState(false);
   const [smsText, setSmsText] = useState("");
   const [smsResult, setSmsResult] = useState<SmsParse | null>(null);
@@ -72,14 +70,14 @@ export function TxModal({
       setAccountId(state.accounts[0]?.id ?? "");
       setCategoryId(state.categories.find((c) => c.type === "expense")?.id ?? "");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editing]);
 
   useEffect(() => {
     if (touchedCat || !open) return;
     setCategoryId(state.categories.find((c) => c.type === type)?.id ?? "");
-  }, [type, open]);
+  }, [type, open, touchedCat, state.categories]);
 
-  /* تشخیص هوشمند — با تغییر توضیح */
   const runDetect = (text: string) => {
     if (!text.trim() || text.trim().length < 3) { setDetected([]); return; }
     const r = detectSmart(text, state.categories, state.accounts);
@@ -110,7 +108,6 @@ export function TxModal({
     if (v && note.trim()) runDetect(note);
   };
 
-  /* پیش‌بینی کسری بودجه: هشدار قبل از رسیدن به سقف بودجهٔ دسته */
   const budgetCheck = (amt: number, catId: ID) => {
     const b = state.budgets.find((x) => x.categoryId === catId);
     if (!b || b.limit <= 0) return;
@@ -156,7 +153,6 @@ export function TxModal({
     toast("ok", `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
     if (type === "expense") {
       budgetCheck(amt, categoryId);
-      /* یادآوری هوشمند تگ‌گذاری: هزینهٔ بدون تگ → پیشنهاد برچسب بر اساس دسته */
       if (!tag && getTags(state).length > 0) {
         setSuggestTxId(newId);
         setSuggestCat(label);
@@ -166,7 +162,6 @@ export function TxModal({
     handleClose();
   };
 
-  /* ترتیب پیشنهادی تگ‌ها: تگِ هم‌خوان با دسته اول می‌آید */
   const tags = getTags(state);
   const suggestedTagId = useMemo(() => {
     const hit = TAG_SUGGEST_KEYWORDS.find((k) => k.words.some((w) => suggestCat.includes(w)));
@@ -186,7 +181,6 @@ export function TxModal({
     handleClose();
   };
 
-  /* ---------- تحلیل پیام بانکی ---------- */
   const analyzeSms = (source = smsText) => {
     if (!source.trim()) return toast("warn", "ابتدا متن پیام بانکی را بچسبان.");
     const r = parseBankSMS(source);
@@ -195,18 +189,15 @@ export function TxModal({
       toast("err", "مبلغی در پیام پیدا نشد — متن پیام را کامل کپی کن.");
       return;
     }
-    /* پر کردن خودکار فرم */
     setType(r.type);
     setAmount(String(r.amountToman));
     if (r.dateISO) setDate(r.dateISO);
-    /* تطبیق حساب: چهار رقم کارت ← شمارهٔ حساب ← نام بانک داخل پیام */
     const matched =
       matchAccountByCard(state.accounts, r.cardTail, r.accountNo) ??
       matchAccountByBankName(state.accounts, source);
     if (matched) setAccountId(matched.id);
     if (r.merchant) {
       setNote(r.merchant);
-      /* حدس دسته از نام فروشنده/طرف مقابل */
       const d = detectSmart(r.merchant, state.categories, state.accounts);
       if (d.categoryId) { setCategoryId(d.categoryId); setTouchedCat(true); }
     }
@@ -251,40 +242,25 @@ export function TxModal({
       <>
       <div className="flex rounded-xl p-1 gap-1 mb-4" style={{ background: "var(--fp-bg)" }}>
         {(["expense", "income"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setType(t)}
+          <button key={t} onClick={() => setType(t)}
             className="flex-1 rounded-lg py-2 text-[13px] font-black transition-all cursor-pointer"
-            style={{
-              background: type === t ? (t === "income" ? "var(--fp-mint)" : "var(--fp-coral)") : "transparent",
-              color: type === t ? "#071b16" : "var(--fp-text3)",
-            }}
-          >
+            style={{ background: type === t ? (t === "income" ? "var(--fp-mint)" : "var(--fp-coral)") : "transparent", color: type === t ? "#071b16" : "var(--fp-text3)" }}>
             {t === "income" ? "درآمد" : "هزینه"}
           </button>
         ))}
       </div>
 
-      {/* کلید تشخیص هوشمند */}
-      <button
-        onClick={() => toggleSmart(!smart)}
+      <button onClick={() => toggleSmart(!smart)}
         className="w-full flex items-center gap-3 rounded-xl border px-4 py-3 mb-4 transition-all duration-200 cursor-pointer"
         style={{
           borderColor: smart ? "color-mix(in srgb, var(--fp-accent) 60%, transparent)" : "var(--fp-border)",
           background: smart ? "color-mix(in srgb, var(--fp-accent) 9%, transparent)" : "var(--fp-bg)",
-        }}
-      >
+        }}>
         <Sparkles className="w-5 h-5 shrink-0" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text3)" }} />
-        <span className="text-[13px] font-black" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text2)" }}>
-          تشخیص هوشمند
-        </span>
-        <span className="text-[10.5px] font-bold flex-1" style={{ color: "var(--fp-text3)" }}>
-          مبلغ، دسته و کارت بانکی را از توضیحات حدس می‌زند
-        </span>
-        <span
-          className="w-11 h-6 rounded-full p-1 flex transition-all duration-250 shrink-0"
-          style={{ background: smart ? "var(--fp-accent)" : "var(--fp-border2)", justifyContent: smart ? "flex-end" : "flex-start" }}
-        >
+        <span className="text-[13px] font-black" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text2)" }}>تشخیص هوشمند</span>
+        <span className="text-[10.5px] font-bold flex-1" style={{ color: "var(--fp-text3)" }}>مبلغ، دسته و کارت بانکی را از توضیحات حدس می‌زند</span>
+        <span className="w-11 h-6 rounded-full p-1 flex transition-all duration-200 shrink-0"
+          style={{ background: smart ? "var(--fp-accent)" : "var(--fp-border2)", justifyContent: smart ? "flex-end" : "flex-start" }}>
           <span className="w-4 h-4 rounded-full bg-white shadow transition-transform" />
         </span>
       </button>
@@ -300,7 +276,6 @@ export function TxModal({
         </div>
       )}
 
-      {/* ---------- ثبت از پیام بانکی ---------- */}
       <div className="rounded-xl border overflow-hidden mb-4 transition-all duration-200"
         style={{
           borderColor: smsOpen ? "color-mix(in srgb, var(--fp-sky) 55%, transparent)" : "var(--fp-border)",
@@ -309,117 +284,33 @@ export function TxModal({
         <button onClick={() => { setSmsOpen((o) => !o); setSmsResult(null); }}
           className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
           <MessageSquare className="w-5 h-5 shrink-0" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text3)" }} />
-          <span className="text-[13px] font-black" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text2)" }}>
-            ثبت از پیام بانکی
-          </span>
-          <span className="text-[10.5px] font-bold flex-1 text-start" style={{ color: "var(--fp-text3)" }}>
-            پیامک بانک را بچسبان تا مبلغ، تاریخ و کارت خودش دربیاید
-          </span>
-          <span className={`transition-transform duration-200 ${smsOpen ? "rotate-180" : ""}`} style={{ color: "var(--fp-text3)" }}>
-            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-          </span>
+          <span className="text-[13px] font-black" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text2)" }}>ثبت از پیام بانکی</span>
+          <span className="text-[10.5px] font-bold flex-1 text-start" style={{ color: "var(--fp-text3)" }}>پیامک بانک را بچسبان تا خودکار پر شود</span>
+          <span className="text-[11px] font-black" style={{ color: "var(--fp-text3)" }}>{smsOpen ? "▲" : "▼"}</span>
         </button>
-
         {smsOpen && (
-          <div className="px-4 pb-4 rise-in">
-            <div className="rounded-xl border border-dashed p-3" dir="rtl"
-              style={{ borderColor: "var(--fp-border2)", background: "var(--fp-bg2)" }}>
-              <textarea
-                value={smsText}
-                onChange={(e) => { setSmsText(e.target.value); setSmsResult(null); }}
-                rows={4}
-                placeholder={"بانك ملي ايران\nانتقال:4,509,000-\nحساب:83008\nمانده:220,654,858\n0531-20:40"}
-                className="w-full bg-transparent outline-none resize-none text-[12px] leading-6"
-                style={{ color: "var(--fp-text2)" }}
-              />
-            </div>
-            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-              <span className="text-[10px] font-black me-0.5" style={{ color: "var(--fp-text3)" }}>نمونهٔ واقعی:</span>
+          <div className="p-4 grid gap-3 border-t" style={{ borderColor: "var(--fp-border)" }}>
+            <textarea value={smsText} onChange={(e) => setSmsText(e.target.value)} rows={4}
+              placeholder={"مثلاً:\nبانك ملي ايران\nانتقال:4,509,000-\nحساب:83008\nمانده:220,654,858\n0531-20:40"}
+              className="input !leading-6 resize-y !text-[12px]" dir="ltr" />
+            <div className="flex flex-wrap gap-1.5">
               {SMS_SAMPLES.map((s) => (
-                <button key={s.label}
-                  onClick={() => { setSmsText(s.text); analyzeSms(s.text); }}
-                  className="text-[10px] font-black px-2.5 py-1 rounded-full cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
-                  style={{ background: "color-mix(in srgb, var(--fp-sky) 13%, transparent)", color: "var(--fp-sky)", border: "1px solid color-mix(in srgb, var(--fp-sky) 40%, transparent)" }}>
-                  {s.label}
-                </button>
+                <button key={s.label} onClick={() => { setSmsText(s.text); analyzeSms(s.text); }}
+                  className="chip !py-1 !text-[10px]">{s.label}</button>
               ))}
             </div>
-            <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-              <button className="btn btn-sm" onClick={() => analyzeSms()}
-                style={{ background: "var(--fp-sky)", color: "#071b16" }}>
+            <div className="flex gap-2">
+              <button className="btn btn-mint btn-sm flex-1" onClick={() => analyzeSms()}>
                 <Sparkles className="w-4 h-4" /> تحلیل پیام
               </button>
-              <span className="text-[10px] font-bold flex items-center gap-1" style={{ color: "var(--fp-text3)" }}>
-                🔒 تحلیل فقط روی دستگاه خودت انجام می‌شود — پیام هیچ‌جا فرستاده نمی‌شود
-              </span>
             </div>
-
             {smsResult && smsResult.confidence !== "low" && (
-              <div className="mt-3 rounded-xl border p-3.5 rise-in"
-                style={{ borderColor: "color-mix(in srgb, var(--fp-sky) 40%, transparent)", background: "color-mix(in srgb, var(--fp-sky) 7%, transparent)" }}>
-                <div className="flex items-center justify-between mb-2.5">
-                  <span className="text-[11.5px] font-black" style={{ color: "var(--fp-sky)" }}>نتیجهٔ تحلیل — فرم پر شد ✔</span>
-                  <span className="text-[9.5px] font-black px-2 py-0.5 rounded-full"
-                    style={{
-                      background: smsResult.confidence === "high" ? "color-mix(in srgb, var(--fp-mint) 16%, transparent)" : "color-mix(in srgb, var(--fp-accent) 16%, transparent)",
-                      color: smsResult.confidence === "high" ? "var(--fp-mint)" : "var(--fp-accent)",
-                    }}>
-                    {smsResult.confidence === "high" ? "اطمینان بالا" : "بازبینی کن"}
-                  </span>
-                </div>
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <span className="font-display text-3xl tabular" style={{ color: smsResult.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                    {smsResult.type === "income" ? "+" : "−"}{faMoney(smsResult.amountToman)}
-                  </span>
-                  <span className="text-[11px] font-black" style={{ color: "var(--fp-text2)" }}>تومان</span>
-                  {smsResult.unit === "rial" && (
-                    <span className="text-[10.5px] font-bold tabular" style={{ color: "var(--fp-text3)" }}>
-                      ← {faNum(groupInt(smsResult.rawAmount))} ریال (تبدیل خودکار)
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-2.5">
-                  {smsResult.jalali && (
-                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
-                      <CalendarDays className="w-3 h-3" /> {smsResult.dateISO ? faDate(smsResult.dateISO) : smsResult.jalali}{smsResult.time ? ` — ${faNum(smsResult.time)}` : ""}
-                    </span>
-                  )}
-                  {(smsResult.cardTail || smsResult.accountNo) && (
-                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" dir="ltr" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
-                      <Wallet className="w-3 h-3" />
-                      {smsResult.cardTail ? <bdi>*{faNum(smsResult.cardTail)}</bdi> : <bdi>حساب {faNum(smsResult.accountNo!)}</bdi>}
-                      {(() => {
-                        const a = matchAccountByCard(state.accounts, smsResult.cardTail, smsResult.accountNo)
-                          ?? matchAccountByBankName(state.accounts, smsText);
-                        return a ? <b style={{ color: "var(--fp-mint)" }}>← {a.name}</b> : <i className="not-italic" style={{ color: "var(--fp-text3)" }}>حساب منطبق پیدا نشد</i>;
-                      })()}
-                    </span>
-                  )}
-                  {smsResult.merchant && (
-                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
-                      <Receipt className="w-3 h-3" /> {smsResult.merchant}
-                    </span>
-                  )}
-                  {smsResult.balanceToman !== undefined && (
-                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
-                      <Landmark className="w-3 h-3" /> مانده: {faMoney(smsResult.balanceToman)}
-                    </span>
-                  )}
-                  {smsResult.reference && (
-                    <span className="text-[10.5px] font-bold px-2 py-1 rounded-lg flex items-center gap-1" dir="ltr" style={{ background: "var(--fp-bg2)", color: "var(--fp-text2)" }}>
-                      <Receipt className="w-3 h-3" /> ارجاع: <bdi>{smsResult.reference}</bdi>
-                    </span>
-                  )}
-                </div>
-                {smsResult.notes.length > 0 && (
-                  <ul className="grid gap-1 mt-2.5 pt-2.5 border-t" style={{ borderColor: "color-mix(in srgb, var(--fp-sky) 22%, transparent)" }}>
-                    {smsResult.notes.map((n, i) => (
-                      <li key={i} className="text-[10.5px] font-bold leading-5 flex items-start gap-1.5" style={{ color: "var(--fp-accent)" }}>
-                        <Lightbulb className="w-3 h-3 mt-0.5 shrink-0" /> {n}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+              <div className="rounded-lg p-3 grid gap-1 text-[11px] font-bold" style={{ background: "var(--fp-bg)", border: "1px solid var(--fp-border)" }}>
+                <p>نوع: <b style={{ color: smsResult.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>{smsResult.type === "income" ? "درآمد (واریز)" : "هزینه (برداشت)"}</b></p>
+                <p>مبلغ: <b className="tabular">{faMoney(smsResult.amountToman)} تومان</b></p>
+                {smsResult.jalali && <p>تاریخ: <b>{smsResult.jalali}</b>{smsResult.time ? ` — ساعت ${faNum(smsResult.time)}` : ""}</p>}
+                {smsResult.balanceToman !== undefined && <p>مانده: <b className="tabular">{faMoney(smsResult.balanceToman)} تومان</b></p>}
+                {smsResult.notes.map((n, i) => <p key={i} style={{ color: "var(--fp-accent)" }}>⚠ {n}</p>)}
               </div>
             )}
           </div>
@@ -427,24 +318,13 @@ export function TxModal({
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4">
-        <div className="sm:col-span-2">
-          <Field label="توضیحات (اختیاری — تراکنش با نام دسته ثبت می‌شود)">
-            <textarea
-              value={note}
-              onChange={(e) => onNote(e.target.value)}
-              placeholder={smart ? "مثلاً: اسنپ ۵۰ هزار از کارت ملت" : "مثلاً: خرید از سوپرمارکت یاس"}
-              rows={2}
-              className="input resize-none !text-[13.5px] !leading-6"
-              autoFocus
-            />
-            <div className="mt-2">
-              <MicButton onText={(t) => onNote(t)} baseText={note} />
-            </div>
-          </Field>
-        </div>
-        <Field label="مبلغ (تومان)">
-          <AmountInput value={amount} onChange={setAmount} />
+        <Field label="توضیحات (اختیاری — تراکنش با نام دسته ثبت می‌شود)">
+          <textarea value={note} onChange={(e) => onNote(e.target.value)} rows={2}
+            placeholder={smart ? "مثلاً: اسنپ ۵۰ هزار از کارت ملت" : "مثلاً: خرید از سوپرمارکت یاس"}
+            className="input resize-none !text-[13.5px] !leading-6" />
+          <div className="mt-2"><MicButton onText={(t) => onNote(t)} baseText={note} /></div>
         </Field>
+        <Field label="مبلغ (تومان)"><AmountInput value={amount} onChange={setAmount} /></Field>
         <Field label="دسته">
           <TSelect value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setTouchedCat(true); }}>
             {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -455,44 +335,26 @@ export function TxModal({
             {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </TSelect>
         </Field>
-        <Field label="تاریخ (شمسی)">
-          <JalaliPicker value={date} onChange={setDate} />
-        </Field>
+        <Field label="تاریخ (شمسی)"><JalaliPicker value={date} onChange={setDate} /></Field>
         <Field label="روش پرداخت">
           <TSelect value={pay} onChange={(e) => setPay(e.target.value)}>
             {state.payment_methods.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
           </TSelect>
         </Field>
+        <Field label="برچسب (اختیاری)">
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={() => setTag("")} className={`chip !py-1 !text-[10.5px] ${tag === "" ? "chip-on" : ""}`}>بدون برچسب</button>
+            {tags.map((tg) => (
+              <button key={tg.id} onClick={() => setTag(tg.id)} title={tg.desc}
+                className="chip !py-1 !text-[10.5px]"
+                style={tag === tg.id ? { background: tg.color, borderColor: tg.color, color: "#071b16" } : { color: tg.color, borderColor: `color-mix(in srgb, ${tg.color} 50%, transparent)` }}>
+                {tg.label}
+              </button>
+            ))}
+          </div>
+        </Field>
       </div>
 
-      {type === "expense" && (
-        <div className="mt-4">
-          <Field label="تگ خرج (این خرید چه جور خرجی بود؟)">
-            <div className="flex flex-wrap gap-2">
-              {getTags(state).map((t) => {
-                const on = tag === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setTag(on ? "" : t.id)}
-                    title={t.desc}
-                    className="px-3 py-2 rounded-xl text-[12px] font-black transition-all duration-150 cursor-pointer hover:scale-[1.03] active:scale-95"
-                    style={{
-                      background: on ? `color-mix(in srgb, ${t.color} 22%, transparent)` : "var(--fp-bg)",
-                      color: on ? t.color : "var(--fp-text3)",
-                      border: `1.5px solid ${on ? t.color : "var(--fp-border)"}`,
-                      boxShadow: on ? `0 4px 14px -6px color-mix(in srgb, ${t.color} 60%, transparent)` : "none",
-                    }}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-        </div>
-      )}
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={handleClose}>انصراف</button>
         <button className="btn btn-gold" onClick={submit}>
@@ -525,6 +387,9 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
   const inc = useCountUp(income);
   const exp = useCountUp(expense);
 
+  const isGlass = (state.prefs.accent ?? readAccent()) === "glass-dark";
+  const saveRate = income > 0 ? Math.round(((income - expense) / income) * 100) : 0;
+
   const spark = useMemo(() => {
     const pts: number[] = [];
     let run = 0;
@@ -539,12 +404,9 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
     return pts;
   }, [state.transactions, total]);
 
+  const recent = [...state.transactions].sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString())).slice(0, 6);
   const challenge = state.challenges[0];
   const currenciesTotal = state.currencies.reduce((s, c) => s + c.rate * c.qty, 0);
-
-  /* تم شیشه‌ای تیره → حلقهٔ نرخ پس‌انداز روی کارت موجودی */
-  const isGlass = (state.prefs.accent ?? readAccent()) === "glass-dark";
-  const saveRate = income > 0 ? Math.round(((income - expense) / income) * 100) : 0;
 
   return (
     <div className="grid gap-5">
@@ -558,7 +420,6 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
         </button>
       </div>
 
-      {/* آمار */}
       <div className="grid md:grid-cols-3 gap-4">
         <StatCard
           icon={<Wallet className="w-5 h-5" />} title="موجودی کل" color="var(--fp-accent)"
@@ -577,225 +438,101 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
           icon={<ArrowUpLeft className="w-5 h-5" />} title="هزینهٔ این ماه" color="var(--fp-coral)"
           value={hideExp ? hiddenMoney : faMoney(exp)} suffix="تومان"
           hide={hideExp} onHide={() => setHideExp(!hideExp)}
-          foot={
-            <p className="text-[11px] font-bold" style={{ color: "var(--fp-text3)" }}>
-              {income > 0 ? `٪${faNum(Math.round((expense / income) * 100))} از درآمد ماه` : "هنوز درآمدی ثبت نشده"}
-            </p>
-          }
+          foot={<Bar pct={income > 0 ? Math.min(100, (expense / income) * 100) : 0} color="var(--fp-coral)" />}
         />
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* حساب‌ها */}
-        <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
-          <div className="flex items-center justify-between">
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="card p-5 lg:col-span-2 rise-in" style={{ ["--d" as string]: "80ms" }}>
+          <div className="flex items-center justify-between mb-4">
             <Head icon={<Landmark className="w-4.5 h-4.5" />} title="موجودی حساب‌ها" />
-            <button className="icon-btn !w-8 !h-8" onClick={() => setHideAcc(!hideAcc)} title={hideAcc ? "نمایش موجودی حساب‌ها" : "مخفی کردن موجودی حساب‌ها"}>
+            <button className="icon-btn !w-8 !h-8" onClick={() => setHideAcc(!hideAcc)} title={hideAcc ? "نمایش" : "مخفی کردن"}>
               {hideAcc ? <EyeOff /> : <EyeOn />}
             </button>
           </div>
-          <div className="grid gap-3.5 mt-4">
-            {state.accounts.map((a) => {
-              const share = total > 0 ? (a.balance / total) * 100 : 0;
-              return (
-                <div key={a.id} className="group">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="flex items-center gap-2 text-[13px] font-black">
-                      <i className="w-2.5 h-2.5 rounded-full not-italic" style={{ background: a.color }} />
-                      {a.name}
-                      <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</span>
-                    </span>
-                    <span className="text-[13px] font-black tabular" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-text)" }}>
-                      {hideAcc ? hiddenMoney : `${faMoney(a.balance)} ﷼`}
-                    </span>
-                  </div>
-                  <Bar pct={share} color={a.color} />
+          <div className="grid sm:grid-cols-2 gap-3">
+            {state.accounts.map((a) => (
+              <div key={a.id} className="rounded-xl border p-3.5 flex items-center gap-3 transition-all hover:-translate-y-0.5" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                <CatGlyph icon="wallet" color={a.color} className="w-10 h-10 rounded-xl" iconClass="w-5 h-5" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12.5px] font-black truncate">{a.name}</p>
+                  <p className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</p>
                 </div>
-              );
-            })}
-          </div>
-
-          {challenge && (
-            <div className="mt-5 rounded-xl p-4 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-              <div className="flex items-center justify-between">
-                <span className="text-[12.5px] font-black flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4" style={{ color: "var(--fp-accent)" }} />
-                  {challenge.title}
-                </span>
-                <span className="text-[11px] font-black tabular" style={{ color: "var(--fp-text3)" }}>
-                  ٪{faNum(Math.min(100, Math.round((challenge.saved / challenge.target) * 100)))}
-                </span>
+                <p className="text-[13px] font-black tabular" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-text)" }}>
+                  {hideAcc ? hiddenMoney : faMoney(a.balance)}
+                </p>
               </div>
-              <div className="mt-2.5"><Bar pct={(challenge.saved / challenge.target) * 100} color="var(--fp-accent)" /></div>
-              <p className="text-[11px] font-bold mt-2" style={{ color: "var(--fp-text3)" }}>
-                {faMoney(challenge.saved)} از {faMoney(challenge.target)} تومان — روزی {faMoney(challenge.perDay)}
-              </p>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
 
-        {/* فعالیت اخیر */}
-        <div className="card p-5 rise-in lg:col-span-2" style={{ ["--d" as string]: "140ms" }}>
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "120ms" }}>
           <Head icon={<Receipt className="w-4.5 h-4.5" />} title="فعالیت اخیر" />
-          <div className="grid gap-1 mt-2">
-            {[...state.transactions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 7).map((tx) => {
-              const c = catById(state, tx.categoryId);
+          <div className="grid gap-2 mt-3">
+            {recent.length === 0 && <p className="text-[12px] font-bold text-center py-4" style={{ color: "var(--fp-text3)" }}>هنوز تراکنشی نداری.</p>}
+            {recent.map((x) => {
+              const c = catById(state, x.categoryId);
               return (
-                <div key={tx.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_5%,transparent)]">
-                  <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0"
-                    style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>
-                    {tx.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
-                  </span>
+                <div key={x.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
+                  <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-lg" iconClass="w-4 h-4" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-black truncate flex items-center gap-1.5">
-                      {tx.title}
-                      {tx.source === "bot" && <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-sky)" }} />}
-                    </p>
-                    <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
-                      {c?.name ?? "—"} · {accById(state, tx.accountId)?.name} · {relTime(tx.createdAt)}
+                    <p className="text-[12px] font-black truncate">{x.note || x.title}</p>
+                    <p className="text-[9.5px] font-bold flex items-center gap-1" style={{ color: "var(--fp-text3)" }}>
+                      {jalaliShort(x.date)}
+                      {x.source === "bot" && <span className="flex items-center gap-0.5" style={{ color: "var(--fp-sky)" }}><Bot className="w-3 h-3" /> ربات</span>}
                     </p>
                   </div>
-                  <span className="text-[13px] font-black tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                    {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
+                  <span className="text-[12px] font-black tabular" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {x.type === "income" ? "+" : "−"}{faMoney(x.amount)}
                   </span>
                 </div>
               );
             })}
           </div>
+        </div>
+      </div>
 
-          <div className="grid sm:grid-cols-2 gap-3 mt-4">
-            <div className="rounded-xl p-4 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-              <Head icon={<Banknote className="w-4 h-4" />} title="ارز خارجی" small />
-              {state.currencies.map((c) => (
-                <div key={c.id} className="flex justify-between text-[12px] font-bold mt-2.5">
-                  <span>{c.name} <span className="tabular" style={{ color: "var(--fp-text3)" }}>×{faNum(c.qty)}</span></span>
-                  <span className="tabular">{faMoney(c.qty * c.rate)}</span>
-                </div>
-              ))}
-              <p className="text-[11px] font-black mt-3 pt-2 border-t flex justify-between" style={{ borderColor: "var(--fp-border)", color: "var(--fp-accent)" }}>
-                <span>معادل تومانی</span><span className="tabular">{faMoney(currenciesTotal)}</span>
-              </p>
-            </div>
-            <div className="rounded-xl p-4 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-              <Head icon={<Repeat className="w-4 h-4" />} title="اشتراک‌های فعال" small />
-              {state.subscriptions.slice(0, 3).map((s) => (
-                <div key={s.id} className="flex justify-between text-[12px] font-bold mt-2.5">
-                  <span>{s.name}</span>
-                  <span className="tabular" style={{ color: "var(--fp-text3)" }}>{faMoney(s.amount)} / ماه</span>
-                </div>
-              ))}
-              <p className="text-[11px] font-bold mt-3" style={{ color: "var(--fp-text3)" }}>
-                تمدید بعدی: {jalaliShort(state.subscriptions[0]?.renew ?? todayISO())}
-              </p>
+      <div className="grid lg:grid-cols-2 gap-4">
+        {challenge && (
+          <div className="card p-5 rise-in" style={{ ["--d" as string]: "160ms" }}>
+            <Head icon={<Sparkles className="w-4.5 h-4.5" />} title={challenge.title} />
+            <div className="mt-3">
+              <div className="flex justify-between text-[12px] font-black mb-1.5">
+                <span style={{ color: "var(--fp-text2)" }}>{faMoney(challenge.saved)} از {faMoney(challenge.target)}</span>
+                <span style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.min(100, Math.round((challenge.saved / challenge.target) * 100)))}</span>
+              </div>
+              <Bar pct={(challenge.saved / challenge.target) * 100} color="var(--fp-accent)" />
+              <p className="text-[10.5px] font-bold mt-2" style={{ color: "var(--fp-text3)" }}>روزی {faMoney(challenge.perDay)} تومان</p>
             </div>
           </div>
-        </div>
-      </div>
-
-      <SpendInsightCard monthTxs={monthTxs} expense={expense} />
-    </div>
-  );
-}
-
-function Head({ icon, title, small }: { icon: React.ReactNode; title: string; small?: boolean }) {
-  return (
-    <h3 className={`font-black flex items-center gap-2 ${small ? "text-[12.5px]" : "text-[14.5px]"}`} style={{ color: "var(--fp-text)" }}>
-      <span style={{ color: "var(--fp-accent)" }}>{icon}</span>{title}
-    </h3>
-  );
-}
-
-/* ---------- تحلیل خودکار رفتار خرج (بر اساس برچسب‌ها) ---------- */
-function SpendInsightCard({ monthTxs, expense }: { monthTxs: Tx[]; expense: number }) {
-  const { state } = useStore();
-  const tags = getTags(state);
-  const tagged = monthTxs.filter((x) => x.type === "expense" && x.tag);
-  const perTag = tags
-    .map((tg) => {
-      const sum = tagged.filter((x) => x.tag === tg.id).reduce((a, x) => a + x.amount, 0);
-      return { tag: tg, sum, pct: expense > 0 ? (sum / expense) * 100 : 0 };
-    })
-    .filter((x) => x.sum > 0)
-    .sort((a, b) => b.sum - a.sum);
-  /* بدون‌برچسب = تگی ندارد یا تگش حذف شده (یتیم) */
-  const untagged = monthTxs.filter((x) => x.type === "expense" && (!x.tag || !tagById(state, x.tag))).length;
-  /* پتانسیل پس‌انداز: همهٔ برچسب‌های غیرضروری — با برچسب‌های سفارشی کاربر هم به‌روز می‌ماند */
-  const essential = tags.find((tg) => tg.label.includes("ضروری"));
-  const potential = perTag.filter((x) => x.tag.id !== essential?.id).reduce((a, x) => a + x.sum, 0);
-  const top = perTag[0];
-
-  const insights: { icon: React.ReactNode; text: string; tone: string }[] = [];
-  if (top) {
-    insights.push({
-      icon: <Sparkles className="w-4 h-4" />,
-      text: `بیشترین خرج این ماه با برچسب «${top.tag.label}» بوده — ٪${faNum(Math.round(top.pct))} از کل هزینه.`,
-      tone: top.tag.color,
-    });
-  }
-  if (potential > 0 && expense > 0) {
-    insights.push({
-      icon: <Lightbulb className="w-4 h-4" />,
-      text: `این ماه ٪${faNum(Math.round((potential / expense) * 100))} از خرج‌هایت (معادل ${faMoney(potential)} تومان) می‌توانست عقب بیفتد — این همان پتانسیل پس‌انداز توست.`,
-      tone: "var(--fp-mint)",
-    });
-  }
-  if (untagged > 0) {
-    insights.push({
-      icon: <Lightbulb className="w-4 h-4" />,
-      text: `${faNum(untagged)} تراکنشِ هزینه هنوز برچسب ندارد — برچسب‌گذاری کمک می‌کند رفتار خرجت را دقیق‌تر ببینی.`,
-      tone: "var(--fp-accent)",
-    });
-  }
-  if (insights.length === 0) {
-    insights.push({
-      icon: <Sparkles className="w-4 h-4" />,
-      text: "هنوز دادهٔ کافی برای تحلیل رفتار خرج نداری — چند تراکنش با برچسب ثبت کن.",
-      tone: "var(--fp-text3)",
-    });
-  }
-
-  return (
-    <div className="card p-5 rise-in" style={{ ["--d" as string]: "200ms" }}>
-      <Head icon={<Lightbulb className="w-4.5 h-4.5" />} title="تحلیل رفتار خرج این ماه" />
-      <div className="grid lg:grid-cols-2 gap-6 mt-4">
-        <div className="grid gap-3.5">
-          {perTag.slice(0, 5).map(({ tag, sum, pct }) => (
-            <div key={tag.id}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[12.5px] font-black flex items-center gap-2">
-                  <i className="w-2.5 h-2.5 rounded-full not-italic" style={{ background: tag.color }} />
-                  {tag.label}
-                  <span className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>٪{faNum(Math.round(pct))}</span>
-                </span>
-                <span className="text-[12px] font-black tabular">{faMoney(sum)}</span>
-              </div>
-              <Bar pct={pct} color={tag.color} />
+        )}
+        {currenciesTotal > 0 && (
+          <div className="card p-5 rise-in" style={{ ["--d" as string]: "200ms" }}>
+            <Head icon={<Coins className="w-4.5 h-4.5" />} title="ارز خارجی" />
+            <div className="grid gap-2 mt-3">
+              {state.currencies.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg px-2 py-1.5">
+                  <span className="text-[12px] font-black">{c.name} <span style={{ color: "var(--fp-text3)" }}>({c.symbol})</span></span>
+                  <span className="text-[12px] font-black tabular">{faMoney(c.rate * c.qty)} <span className="text-[9.5px]" style={{ color: "var(--fp-text3)" }}>تومان</span></span>
+                </div>
+              ))}
             </div>
-          ))}
-          {perTag.length === 0 && (
-            <p className="text-[12px] font-bold" style={{ color: "var(--fp-text3)" }}>هنوز تراکنشی با برچسب ثبت نشده.</p>
-          )}
-        </div>
-        <div className="grid gap-2.5 content-start">
-          {insights.map((ins, i) => (
-            <div key={i} className="flex items-start gap-2.5 rounded-xl p-3 border"
-              style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)", borderInlineStart: `3px solid ${ins.tone}` }}>
-              <span style={{ color: ins.tone }} className="mt-0.5 shrink-0">{ins.icon}</span>
-              <p className="text-[12px] font-bold leading-6">{ins.text}</p>
-            </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+function EyeOn() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>; }
+function EyeOff() { return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.5 10.5 0 0 1 12 19c-6.5 0-10-7-10-7a19 19 0 0 1 5.06-5.94M9.9 4.24A10 10 0 0 1 12 4c6.5 0 10 7 10 7a19 19 0 0 1-3.22 4.31" /><path d="M1 1l22 22" /><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" /></svg>; }
 
 function StatCard({ icon, title, value, suffix, color, hide, onHide, foot, ring }: {
   icon: React.ReactNode; title: string; value: string; suffix: string; color: string;
   hide: boolean; onHide: () => void; foot?: React.ReactNode; ring?: number;
 }) {
   return (
-    <div className="card card-hover p-5 relative overflow-hidden">
+    <div className="card card-hover p-5 relative overflow-hidden rise-in">
       <div className="absolute -top-8 -start-8 w-28 h-28 rounded-full opacity-[0.12]" style={{ background: color }} />
       {ring !== undefined && <GlassRing pct={ring} />}
       <div className="flex items-center justify-between relative">
@@ -815,44 +552,28 @@ function StatCard({ icon, title, value, suffix, color, hide, onHide, foot, ring 
   );
 }
 
-/* حلقهٔ پیشرفت شیشه‌ای (تم شیشه‌ای تیره) — نرخ پس‌انداز، گوشهٔ بالا */
 function GlassRing({ pct }: { pct: number }) {
   const clamped = Math.max(0, Math.min(100, Math.round(pct)));
   const R = 30;
   const C = 2 * Math.PI * R;
   return (
-    <div
-      className="absolute top-4 end-4 z-10 grid place-items-center"
-      title={`نرخ پس‌انداز: ٪${faNum(clamped)}`}
-    >
+    <div className="absolute top-4 end-4 z-10 grid place-items-center" title={`نرخ پس‌انداز: ٪${faNum(clamped)}`}>
       <svg width="76" height="76" viewBox="0 0 76 76" className="-rotate-90">
         <circle cx="38" cy="38" r={R} fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)" strokeWidth="7" />
-        <circle
-          cx="38" cy="38" r={R} fill="none" stroke="var(--fp-accent)" strokeWidth="7" strokeLinecap="round"
+        <circle cx="38" cy="38" r={R} fill="none" stroke="var(--fp-accent)" strokeWidth="7" strokeLinecap="round"
           strokeDasharray={C} strokeDashoffset={C * (1 - clamped / 100)}
-          style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(0.3,0.7,0.2,1)", filter: "drop-shadow(0 0 6px rgba(212,175,55,0.45))" }}
-        />
+          style={{ transition: "stroke-dashoffset 0.9s cubic-bezier(0.3,0.7,0.2,1)", filter: "drop-shadow(0 0 6px rgba(212,175,55,0.45))" }} />
       </svg>
-      <span className="absolute text-[13px] font-extrabold tabular" style={{ color: "var(--fp-accent)" }}>
-        ٪{faNum(clamped)}
-      </span>
+      <span className="absolute text-[13px] font-extrabold tabular" style={{ color: "var(--fp-accent)" }}>٪{faNum(clamped)}</span>
     </div>
   );
 }
 
-function EyeOn() {
+function Head({ icon, title, small }: { icon: React.ReactNode; title: string; small?: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-function EyeOff() {
-  return (
-    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9.9 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17.8 17.8 0 0 1-3 3.9M6.1 6.1A17.6 17.6 0 0 0 2 12s3.5 7 10 7a10.4 10.4 0 0 0 5.9-1.9M3 3l18 18" />
-      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
-    </svg>
+    <h3 className={`font-black flex items-center gap-2 ${small ? "text-[12.5px]" : "text-[14.5px]"}`} style={{ color: "var(--fp-text)" }}>
+      <span style={{ color: "var(--fp-accent)" }}>{icon}</span> {title}
+    </h3>
   );
 }
 
@@ -860,15 +581,13 @@ function EyeOff() {
 export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; initCat?: string }) {
   const { state, mutate, trashItem } = useStore();
   const toast = useToast();
-  const [q, setQ] = useState(initQuery ?? "");
-  const [type, setType] = useState<"all" | "income" | "expense">("all");
   const pf = usePeriod("thisMonth");
+  const [type, setType] = useState<"all" | "income" | "expense">("all");
+  const [q, setQ] = useState(initQuery ?? "");
   const [catFilter, setCatFilter] = useState(initCat ?? "");
   const [tagFilter, setTagFilter] = useState<ID | "">("");
   const [editing, setEditing] = useState<Tx | null>(null);
-  const [openEdit, setOpenEdit] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvText, setCsvText] = useState("");
+  const [confirmDel, setConfirmDel] = useState<Tx | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const range = pf.range;
@@ -878,181 +597,145 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
       .filter((t) => inRange(t.date, range))
       .filter((t) => !catFilter || t.categoryId === catFilter)
       .filter((t) => !tagFilter || t.tag === tagFilter)
-      .filter((t) => !q.trim() || t.title.includes(q.trim()) || (t.note ?? "").includes(q.trim()))
+      .filter((t) => !q.trim() || (t.note || t.title).includes(q.trim()))
       .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-  }, [state.transactions, type, q, catFilter, tagFilter, range.from, range.to]);
+  }, [state.transactions, type, range, catFilter, tagFilter, q]);
+
+  const income = sumTx(filtered, "income");
+  const expense = sumTx(filtered, "expense");
 
   const groups = useMemo(() => {
     const m = new Map<string, Tx[]>();
     for (const t of filtered) {
-      if (!m.has(t.date)) m.set(t.date, []);
-      m.get(t.date)!.push(t);
+      const arr = m.get(t.date) ?? [];
+      arr.push(t);
+      m.set(t.date, arr);
     }
     return [...m.entries()];
   }, [filtered]);
 
-  const doImport = () => {
-    const { rows, errors } = parseCSV(csvText, state);
-    if (!rows.length) return toast("err", "ردیف معتبری در CSV پیدا نشد.");
-    mutate((d) => {
-      for (const r of rows) {
-        d.transactions.unshift({
-          id: Math.random().toString(36).slice(2, 10), date: r.date, type: r.type, amount: r.amount,
-          title: r.title, categoryId: r.categoryId, accountId: d.accounts[0]?.id ?? "",
-          payMethod: "کارت", createdAt: Date.now(), source: "app",
-        });
-      }
-    }, `ورود CSV — ${rows.length} تراکنش`);
-    toast("ok", `${faNum(rows.length)} تراکنش وارد شد${errors ? ` (${faNum(errors)} خطا نادیده گرفته شد)` : ""}.`);
-    setCsvOpen(false); setCsvText("");
+  const onImport = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, errors } = parseCSV(String(reader.result), state);
+      if (!rows.length) return toast("err", `فایل خوانا نبود${errors ? ` (${faNum(errors)} خط خطا)` : ""}.`);
+      mutate((d) => {
+        for (const r of rows) {
+          d.transactions.unshift({
+            id: Math.random().toString(36).slice(2, 10), date: r.date, type: r.type, amount: r.amount,
+            title: r.title, categoryId: r.categoryId || d.categories[0]?.id || "", accountId: d.accounts[0]?.id || "",
+            createdAt: Date.now(), source: "app",
+          });
+        }
+      }, `ورود ${faNum(rows.length)} تراکنش از CSV`);
+      toast("ok", `${faNum(rows.length)} تراکنش وارد شد${errors ? `، ${faNum(errors)} خط نادیده گرفته شد` : ""}.`);
+    };
+    reader.readAsText(file);
   };
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
         <h1 className="font-display text-3xl md:text-4xl">تراکنش‌ها</h1>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm" onClick={() => exportCSV(state)}><Download className="w-4 h-4" /> خروجی CSV</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setCsvOpen(true)}><Upload className="w-4 h-4" /> ورود CSV</button>
-        </div>
-      </div>
-
-      <div className="card p-4 grid gap-3 rise-in" style={{ ["--d" as string]: "60ms" }}>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative grow max-w-xs">
-            <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3" style={{ color: "var(--fp-text3)" }} />
-            <TInput className="!ps-9" placeholder="جست‌وجو در توضیحات و دسته‌ها…" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          {([["all", "همه"], ["income", "درآمدها"], ["expense", "هزینه‌ها"]] as const).map(([k, l]) => (
-            <button key={k} className={`chip ${type === k ? "chip-on" : ""}`} onClick={() => setType(k)}>
-              {k === "income" ? <ArrowDownRight className="w-3.5 h-3.5" /> : k === "expense" ? <ArrowUpLeft className="w-3.5 h-3.5" /> : <Filter className="w-3.5 h-3.5" />}{l}
-            </button>
-          ))}
-          {catFilter && (
-            <button className="chip chip-on" onClick={() => setCatFilter("")}>
-              دسته: {catById(state, catFilter)?.name} ×
-            </button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10.5px] font-black me-1" style={{ color: "var(--fp-text3)" }}>تگ:</span>
-          <button className={`chip ${tagFilter === "" ? "chip-on" : ""}`} onClick={() => setTagFilter("")}>همه</button>
-          {getTags(state).map((tg) => (
-            <button key={tg.id} onClick={() => setTagFilter(tagFilter === tg.id ? "" : tg.id)}
-              className="chip"
-              style={tagFilter === tg.id ? {
-                background: `color-mix(in srgb, ${tg.color} 20%, transparent)`,
-                color: tg.color, borderColor: tg.color,
-              } : undefined}>
-              {tg.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <PeriodFilter pf={pf} count={<>{faNum(filtered.length)} تراکنش در این بازه</>} />
-
-      <div className="grid gap-4 rise-in" style={{ ["--d" as string]: "120ms" }}>
-        {groups.length === 0 && <div className="card"><Empty text="تراکنشی با این فیلترها پیدا نشد." /></div>}
-        {groups.map(([date, txs]) => {
-          const net = sumTx(txs, "income") - sumTx(txs, "expense");
-          return (
-            <div key={date} className="card overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-                <span className="text-[12px] font-black flex items-center gap-1.5" style={{ color: "var(--fp-text2)" }}>
-                  <CalendarDays className="w-3.5 h-3.5" style={{ color: "var(--fp-accent)" }} /> {faDate(date)}
-                </span>
-                <span className="text-[11.5px] font-black tabular" style={{ color: net >= 0 ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                  خالص: {net >= 0 ? "+" : "−"}{faMoney(net)}
-                </span>
-              </div>
-              <div>
-                {txs.map((tx) => {
-                  const c = catById(state, tx.categoryId);
-                  return (
-                    <div key={tx.id} className="group flex items-center gap-3 px-4 py-3 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_4%,transparent)]" style={{ borderColor: "var(--fp-border)" }}>
-                      <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0"
-                        style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 15%, transparent)`, color: c?.color }}>
-                        {tx.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-black truncate flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded-md text-[10.5px] inline-flex items-center gap-1" style={{ background: `color-mix(in srgb, ${c?.color ?? "#888"} 16%, transparent)`, color: c?.color }}>
-                            <CatIconInline icon={c?.icon} className="w-3 h-3" />
-                            {c?.name ?? tx.title}
-                          </span>
-                          {(() => {
-                            const tg = tagById(state, tx.tag);
-                            return tg ? (
-                              <span title={tg.desc} className="px-1.5 py-0.5 rounded-full text-[9.5px] font-black border shrink-0"
-                                style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color, borderColor: `color-mix(in srgb, ${tg.color} 45%, transparent)` }}>
-                                {tg.label}
-                              </span>
-                            ) : null;
-                          })()}
-                          {tx.note && <span className="truncate">{tx.note}</span>}
-                          {tx.source === "bot" && <span className="text-[9.5px] font-black px-1.5 py-0.5 rounded-full shrink-0" style={{ background: "color-mix(in srgb, var(--fp-sky) 15%, transparent)", color: "var(--fp-sky)" }}>ربات</span>}
-                        </p>
-                        <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
-                          {accById(state, tx.accountId)?.name} · {tx.payMethod ?? "—"}
-                        </p>
-                      </div>
-                      <span className="text-[13.5px] font-black tabular" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                        {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
-                      </span>
-                      <div className="flex gap-1.5">
-                        <button
-                          className="flex items-center gap-1 text-[11px] font-black px-2.5 py-2 rounded-lg transition-all duration-150 cursor-pointer hover:scale-105"
-                          style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 35%, transparent)" }}
-                          onClick={() => { setEditing(tx); setOpenEdit(true); }}>
-                          <PencilLine className="w-3.5 h-3.5" /><span className="hidden sm:inline">ویرایش</span>
-                        </button>
-                        <button
-                          className="flex items-center gap-1 text-[11px] font-black px-2.5 py-2 rounded-lg transition-all duration-150 cursor-pointer hover:scale-105"
-                          style={{ background: "color-mix(in srgb, var(--fp-coral) 14%, transparent)", color: "var(--fp-coral)", border: "1px solid color-mix(in srgb, var(--fp-coral) 35%, transparent)" }}
-                          onClick={() => trashItem("transactions", tx.id, tx.note || tx.title)}>
-                          <Trash2 className="w-3.5 h-3.5" /><span className="hidden sm:inline">حذف</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <TxModal open={openEdit} onClose={() => { setOpenEdit(false); setEditing(null); }} editing={editing} />
-
-      <Modal open={csvOpen} onClose={() => setCsvOpen(false)} title="ورود تراکنش از CSV" wide>
-        <p className="text-[12.5px] font-bold leading-6 mb-3" style={{ color: "var(--fp-text2)" }}>
-          قالب: <code dir="ltr" className="text-[11.5px] px-1.5 py-0.5 rounded" style={{ background: "var(--fp-bg)" }}>date,type,title,category,amount</code>{" "}
-          — تاریخ میلادی (۲۰۲۵-۰۵-۱۲)، نوع income/expense، مبلغ عددی.
-        </p>
-        <textarea
-          className="input h-40 font-mono !text-[12px]" dir="ltr"
-          placeholder={"2025-05-12,expense,Snapp,رفت‌وآمد,95000\n2025-05-13,income,Project,پروژه,3200000"}
-          value={csvText} onChange={(e) => setCsvText(e.target.value)}
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
           <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
-            <Upload className="w-4 h-4" /> انتخاب فایل
+            <Upload className="w-4 h-4" /> ورود CSV
           </button>
-          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (!f) return;
-              const r = new FileReader();
-              r.onload = () => setCsvText(String(r.result ?? ""));
-              r.readAsText(f);
-            }} />
-          <div className="flex gap-2">
-            <button className="btn btn-ghost" onClick={() => setCsvOpen(false)}>انصراف</button>
-            <button className="btn btn-mint" onClick={doImport}><Upload className="w-4 h-4" /> وارد کردن</button>
+          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = ""; }} />
+          <button className="btn btn-ghost btn-sm" onClick={() => { exportCSV(state); toast("ok", "خروجی CSV دانلود شد."); }}>
+            <Download className="w-4 h-4" /> خروجی CSV
+          </button>
+        </div>
+      </div>
+
+      <PeriodFilter pf={pf} count={<>{faNum(filtered.length)} تراکنش</>} className="rise-in" />
+
+      <div className="card p-3.5 flex flex-wrap items-center gap-2 rise-in" style={{ ["--d" as string]: "60ms" }}>
+        <div className="relative flex-1 min-w-[180px]">
+          <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3" style={{ color: "var(--fp-text3)" }} />
+          <TInput className="!ps-9" placeholder="جست‌وجو…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className="flex gap-1.5">
+          {([["all", "همه"], ["income", "درآمد"], ["expense", "هزینه"]] as const).map(([k, l]) => (
+            <button key={k} className={`chip ${type === k ? "chip-on" : ""}`} onClick={() => setType(k)}>{l}</button>
+          ))}
+        </div>
+        <TSelect className="!w-auto" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
+          <option value="">همهٔ دسته‌ها</option>
+          {state.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </TSelect>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5 rise-in" style={{ ["--d" as string]: "80ms" }}>
+        <button className={`chip ${tagFilter === "" ? "chip-on" : ""}`} onClick={() => setTagFilter("")}>همهٔ برچسب‌ها</button>
+        {getTags(state).map((tg) => (
+          <button key={tg.id} onClick={() => setTagFilter(tagFilter === tg.id ? "" : tg.id)}
+            className="chip"
+            style={tagFilter === tg.id ? { background: tg.color, borderColor: tg.color, color: "#071b16" } : { color: tg.color, borderColor: `color-mix(in srgb, ${tg.color} 50%, transparent)` }}>
+            {tg.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="card p-4 flex items-center justify-between rise-in" style={{ ["--d" as string]: "100ms" }}>
+        <span className="text-[12px] font-black" style={{ color: "var(--fp-mint)" }}>درآمد: {faMoney(income)}</span>
+        <span className="text-[12px] font-black" style={{ color: "var(--fp-coral)" }}>هزینه: {faMoney(expense)}</span>
+        <span className="text-[12px] font-black" style={{ color: "var(--fp-accent)" }}>تراز: {faMoney(income - expense)}</span>
+      </div>
+
+      {groups.length === 0 && <div className="card rise-in"><Empty text="تراکنشی با این فیلترها پیدا نشد." /></div>}
+
+      {groups.map(([date, txs]) => (
+        <div key={date} className="card overflow-hidden rise-in">
+          <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: "var(--fp-bg3)" }}>
+            <span className="text-[12px] font-black flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" style={{ color: "var(--fp-accent)" }} /> {faDate(date)}</span>
+            <span className="text-[11px] font-bold tabular" style={{ color: "var(--fp-text3)" }}>{faNum(txs.length)} تراکنش</span>
+          </div>
+          <div>
+            {txs.map((tx) => {
+              const c = catById(state, tx.categoryId);
+              const tg = tagById(state, tx.tag);
+              return (
+                <div key={tx.id} className="group flex items-center gap-3 px-4 py-3 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_4%,transparent)]" style={{ borderColor: "var(--fp-border)" }}>
+                  <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-lg shrink-0" iconClass="w-4.5 h-4.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-black flex items-center gap-1.5">
+                      <span className="truncate">{tx.title}</span>
+                      {tx.source === "bot" && <Bot className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-sky)" }} />}
+                      {tg && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>{tg.label}</span>}
+                    </p>
+                    <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>
+                      {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
+                    </p>
+                  </div>
+                  <span className="text-[13.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
+                  </span>
+                  <div className="flex gap-1.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <EditBtn onClick={() => setEditing(tx)} />
+                    <DeleteBtn onClick={() => setConfirmDel(tx)} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      </Modal>
+      ))}
+
+      <TxModal open={!!editing} onClose={() => setEditing(null)} editing={editing} />
+      <Confirm
+        open={!!confirmDel}
+        onClose={() => setConfirmDel(null)}
+        onYes={() => {
+          if (confirmDel) {
+            trashItem("transactions", confirmDel.id, confirmDel.note || confirmDel.title);
+            toast("warn", "حذف شد — تا ۳۰ ثانیه می‌توانی برگردانی.");
+          }
+        }}
+        title="حذف تراکنش"
+        desc={`آیا از حذف «${confirmDel?.note || confirmDel?.title}» مطمئن هستید؟ تا ۳۰ ثانیه فرصت بازگردانی دارید.`}
+        yesLabel="بله، حذف شود"
+      />
     </div>
   );
 }
@@ -1063,127 +746,51 @@ export function CategoriesPage() {
   const pf = usePeriod("thisMonth");
   const [type, setType] = useState<"expense" | "income">("expense");
   const [selected, setSelected] = useState<string>("");
-  const txPanelRef = useRef<HTMLDivElement | null>(null);
-
-  /* وقتی پنل زیر یک دسته باز می‌شود، با اسکرول نرمِ حداقلی در دید قرار بگیرد */
-  useEffect(() => {
-    if (!selected) return;
-    const el = txPanelRef.current;
-    if (!el) return;
-    const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "nearest" });
-  }, [selected]);
 
   const range = pf.range;
-  const txs = state.transactions.filter((t) => t.type === type && inRange(t.date, range));
+  const txs = useMemo(() =>
+    state.transactions.filter((t) => t.type === type && inRange(t.date, range)),
+    [state.transactions, type, range]);
   const total = sumTx(txs);
 
   const rows = useMemo(() => {
     const m = new Map<string, number>();
     for (const t of txs) m.set(t.categoryId, (m.get(t.categoryId) ?? 0) + t.amount);
     return [...m.entries()]
-      .map(([catId, sum]) => ({ cat: catById(state, catId), sum }))
+      .map(([id, sum]) => ({ cat: catById(state, id), sum }))
       .filter((r) => r.cat)
       .sort((a, b) => b.sum - a.sum);
   }, [txs, state]);
 
-  const donut = useMemo(() => {
-    const C = 2 * Math.PI * 42;
-    let acc = 0;
-    return rows.slice(0, 6).map((r) => {
-      const pct = total > 0 ? r.sum / total : 0;
-      const seg = { color: r.cat!.color, dash: `${pct * C - 2.5} ${C - pct * C + 2.5}`, off: -acc * C };
-      acc += pct;
-      return seg;
-    });
-  }, [rows, total]);
+  const selCat = selected ? catById(state, selected) : undefined;
+  const selTxs = selected ? txs.filter((t) => t.categoryId === selected) : [];
 
-  /* پنل تراکنش‌های دستهٔ انتخابی — دقیقاً زیر کارت همان دسته باز می‌شود؛
-     بازهٔ زمانی، نوع (هزینه/درآمد) و دکمهٔ بستن مثل قبل حفظ شده */
-  const txPanel = () => {
-    const cat = catById(state, selected);
-    const list = txs
-      .filter((t) => t.categoryId === selected)
-      .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-    return (
-      <div ref={txPanelRef} className="overflow-hidden rounded-xl border rise-in"
-        style={{ borderColor: `color-mix(in srgb, ${cat?.color ?? "#888"} 45%, var(--fp-border))`, background: "var(--fp-bg2)" }}>
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b"
-          style={{ borderColor: "var(--fp-border)", background: `color-mix(in srgb, ${cat?.color ?? "#888"} 9%, var(--fp-bg))` }}>
-          <span className="flex items-center gap-2.5 text-[13.5px] font-black">
-            <CatGlyph icon={cat?.icon} color={cat?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
-            تراکنش‌های «{cat?.name}»
-            <span className="chip !cursor-default !py-0.5 !px-2.5 !text-[10.5px]">{pf.label}</span>
-          </span>
-          <span className="flex items-center gap-3">
-            <span className="text-[12px] font-black tabular" style={{ color: type === "expense" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
-              {faMoney(sumTx(list))} تومان
-            </span>
-            <button className="icon-btn !w-8 !h-8" title="بستن" onClick={() => setSelected("")}>
-              <XIcon />
-            </button>
-          </span>
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
+        <h1 className="font-display text-3xl md:text-4xl">گزارش دسته‌ها</h1>
+        <div className="flex gap-1.5">
+          <button className={`chip ${type === "expense" ? "chip-on" : ""}`} onClick={() => { setType("expense"); setSelected(""); }}>هزینه‌ها</button>
+          <button className={`chip ${type === "income" ? "chip-on" : ""}`} onClick={() => { setType("income"); setSelected(""); }}>درآمدها</button>
         </div>
-        {list.length === 0 ? (
-          <div className="p-4"><Empty text="در این بازه تراکنشی برای این دسته نیست." /></div>
-        ) : (
-          <div className="max-h-80 overflow-y-auto">
-            {list.map((t) => (
-              <div key={t.id} className="feed-in flex items-center gap-3 px-4 py-2.5 border-b last:border-b-0" style={{ borderColor: "var(--fp-border)" }}>
-                <span className="w-9 h-9 rounded-xl grid place-items-center shrink-0"
-                  style={{ background: `color-mix(in srgb, ${cat?.color ?? "#888"} 15%, transparent)`, color: cat?.color }}>
-                  {t.type === "income" ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpLeft className="w-4 h-4" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-black truncate">{t.note || t.title || cat?.name}</p>
-                  <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
-                    {faDate(t.date)} · {accById(state, t.accountId)?.name ?? "—"} · {t.payMethod ?? "—"}
-                  </p>
-                </div>
-                <span className="text-[13px] font-black tabular shrink-0" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                  {t.type === "income" ? "+" : "−"}{faMoney(t.amount)}
-                </span>
+      </div>
+
+      <PeriodFilter pf={pf} count={<>{faNum(txs.length)} تراکنش</>} className="rise-in" />
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
+          <Head icon={<Scale className="w-4.5 h-4.5" />} title="جمع دوره" />
+          <p className="font-display text-3xl mt-3 tabular" style={{ color: type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>{faMoney(total)}</p>
+          <p className="text-[11px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>تومان · {pf.label}</p>
+          <div className="mt-4 grid gap-1.5">
+            {rows.slice(0, 5).map((r) => (
+              <div key={r.cat!.id} className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r.cat!.color }} />
+                <span className="text-[11px] font-bold flex-1 truncate">{r.cat!.name}</span>
+                <span className="text-[11px] font-black tabular">٪{faNum(total > 0 ? Math.round((r.sum / total) * 100) : 0)}</span>
               </div>
             ))}
           </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div className="grid gap-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
-        <h1 className="font-display text-3xl md:text-4xl">گزارش دسته‌ها</h1>
-        <div className="flex gap-2">
-          <button className={`chip ${type === "expense" ? "chip-on" : ""}`} onClick={() => setType("expense")}>هزینه‌ها</button>
-          <button className={`chip ${type === "income" ? "chip-on" : ""}`} onClick={() => setType("income")}>درآمدها</button>
-        </div>
-      </div>
-      <PeriodFilter pf={pf} count={<>{faNum(txs.length)} تراکنش در این بازه</>} className="!mt-0" />
-
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className="card p-6 grid place-items-center rise-in" style={{ ["--d" as string]: "90ms" }}>
-          <div className="relative">
-            <svg width="190" height="190" viewBox="0 0 100 100" className="-rotate-90">
-              <circle cx="50" cy="50" r="42" fill="none" stroke="var(--fp-bg3)" strokeWidth="12" />
-              {donut.map((s, i) => (
-                <circle key={i} cx="50" cy="50" r="42" fill="none" stroke={s.color} strokeWidth="12"
-                  strokeDasharray={s.dash} strokeDashoffset={s.off} strokeLinecap="butt"
-                  style={{ transition: "all .7s cubic-bezier(.3,.7,.2,1)" }} />
-              ))}
-            </svg>
-            <div className="absolute inset-0 grid place-items-center text-center">
-              <div>
-                <p className="text-[10.5px] font-black" style={{ color: "var(--fp-text3)" }}>جمع {type === "expense" ? "هزینه" : "درآمد"}</p>
-                <p className="font-display text-xl tabular mt-0.5" style={{ color: type === "expense" ? "var(--fp-coral)" : "var(--fp-mint)" }}>{faMoney(total)}</p>
-                <p className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>تومان</p>
-              </div>
-            </div>
-          </div>
-          <p className="text-[11.5px] font-bold mt-4" style={{ color: "var(--fp-text3)" }}>
-            {faNum(rows.length)} دسته · {faNum(txs.length)} تراکنش در بازهٔ انتخابی
-          </p>
         </div>
 
         <div className="card p-5 lg:col-span-2 rise-in" style={{ ["--d" as string]: "140ms" }}>
@@ -1213,59 +820,82 @@ export function CategoriesPage() {
                       </span>
                     </div>
                     <Bar pct={pct} color={r.cat!.color} delay={i * 90} />
-                    <p className={`text-[10px] font-bold mt-1.5 transition-opacity ${isSel ? "" : "opacity-0 group-hover:opacity-100"}`}
-                      style={{ color: "var(--fp-accent)" }}>
+                    <p className={`text-[10px] font-bold mt-1.5 transition-opacity ${isSel ? "" : "opacity-0 group-hover:opacity-100"}`} style={{ color: "var(--fp-accent)" }}>
                       {isSel ? "▲ دوباره کلیک کن تا جمع شود" : "▼ کلیک: تراکنش‌ها همین‌جا زیرش باز می‌شود"}
                     </p>
                   </button>
-                  {/* پنل تراکنش‌های این دسته — دقیقاً زیر همین کارت */}
-                  {isSel && txPanel()}
+                  {isSel && selCat && (
+                    <div className="rounded-xl border p-3 grid gap-2" style={{ borderColor: `color-mix(in srgb, ${selCat.color} 40%, transparent)`, background: "var(--fp-bg)" }}>
+                      <p className="text-[11.5px] font-black" style={{ color: selCat.color }}>
+                        تراکنش‌های «{selCat.name}» در {pf.label} · جمع {faMoney(r.sum)} تومان
+                      </p>
+                      <div className="max-h-64 overflow-y-auto grid gap-1.5">
+                        {selTxs.map((t) => (
+                          <div key={t.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--fp-bg2)" }}>
+                            <span className="text-[10.5px] font-bold shrink-0" style={{ color: "var(--fp-text3)" }}>{jalaliShort(t.date)}</span>
+                            <span className="text-[11.5px] font-black flex-1 truncate">{t.note || t.title}</span>
+                            <span className="text-[11.5px] font-black tabular" style={{ color: "var(--fp-text)" }}>{faMoney(t.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </Fragment>
               );
             })}
           </div>
         </div>
       </div>
-
-      {/* پنل تراکنش‌ها زیر کارتِ دستهٔ انتخابی رندر می‌شود — تابع txPanel */}
     </div>
   );
 }
 
-function XIcon() {
-  return <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>;
-}
-
-/* ================= ۴) بدهی‌ها ================= */
+/* ================= ۴) بدهی‌ها و اقساط ================= */
 export function DebtsPage() {
   const { state, mutate, trashItem } = useStore();
   const toast = useToast();
   const [tab, setTab] = useState<"debt" | "credit" | "inst">("debt");
+  const [adding, setAdding] = useState(false);
   const [payFor, setPayFor] = useState<{ id: string; person: string; remaining: number; kind: "debt" | "credit" } | null>(null);
   const [payAmt, setPayAmt] = useState("");
   const [payAcc, setPayAcc] = useState("");
-  const [loan, setLoan] = useState({ p: "10000000", r: "23", n: "12" });
-  const [qr, setQr] = useState<string | null>(null);
   const [editDebt, setEditDebt] = useState<{ id: string; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string } | null>(null);
-  /* فرم ثبت/ویرایش قسط — مبلغ هر قسط را خود کاربر وارد می‌کند (محاسبهٔ خودکار ندارد) */
+  const [qr, setQr] = useState<string | null>(null);
   const [instForm, setInstForm] = useState<null | { id?: string; title: string; total: string; months: string; amountPerMonth: string; start: string; accountId: string; categoryId: string }>(null);
-  /* انتخاب حساب هنگام پرداخت قسط: «پرداخت شد» → پرسش «از کدام کارت؟» */
   const [payInst, setPayInst] = useState<{ inst: Installment; idx: number } | null>(null);
   const [payInstAcc, setPayInstAcc] = useState("");
+  const [loan, setLoan] = useState({ p: "10000000", r: "18", n: "12" });
 
-  const debts = state.debts.filter((d) => d.kind === tab);
+  const emi = useMemo(() => calcEMI(Number(loan.p) || 0, Number(loan.r) || 0, Number(loan.n) || 0), [loan]);
 
-  /* ---------- محاسبات اقساط ---------- */
-  const instStats = (i: Installment) => {
-    const sched = i.schedule ?? [];
-    const paidAmt = sched.filter((m) => m.paidAt).reduce((a, m) => a + m.amount, 0);
-    const remaining = Math.max(0, i.total - paidAmt);
-    const unpaid = sched.filter((m) => !m.paidAt);
-    const today = todayISO();
-    const next = unpaid[0];
-    const overdue = unpaid.filter((m) => m.due < today);
-    const pct = i.months > 0 ? (i.paidCount / i.months) * 100 : 0;
-    return { paidAmt, remaining, next, overdue, pct };
+  const list = state.debts.filter((d) => d.kind === tab);
+
+  const saveInst = () => {
+    if (!instForm) return;
+    const title = instForm.title.trim();
+    const total = Number(instForm.total) || 0;
+    const months = Math.max(1, Number(instForm.months) || 1);
+    const apm = Math.round(Number(instForm.amountPerMonth) || 0);
+    if (!title) return toast("warn", "عنوان قسط را بنویسید.");
+    if (total <= 0) return toast("warn", "مبلغ کل باید بزرگ‌تر از صفر باشد.");
+    if (apm <= 0) return toast("warn", "مبلغ هر قسط را خودت وارد کن.");
+    const base = { title, total, months, amountPerMonth: apm, start: instForm.start, accountId: instForm.accountId, categoryId: instForm.categoryId || undefined };
+    if (instForm.id) {
+      mutate((d) => {
+        const x = d.installments.find((y) => y.id === instForm.id);
+        if (x) {
+          Object.assign(x, base);
+          x.schedule = (x.schedule && x.schedule.length === months) ? x.schedule : buildScheduleLocal(base, x.paidCount);
+        }
+      }, `قسط «${title}» ویرایش شد`);
+      toast("ok", "قسط ویرایش شد.");
+    } else {
+      mutate((d) => {
+        d.installments.push({ id: Math.random().toString(36).slice(2, 10), ...base, paidCount: 0, schedule: buildScheduleLocal(base, 0) });
+      }, `قسط «${title}» ثبت شد`);
+      toast("ok", "قسط ثبت شد.");
+    }
+    setInstForm(null);
   };
 
   const payMonth = (inst: Installment, idx: number, accountId?: ID) => {
@@ -1278,10 +908,7 @@ export function DebtsPage() {
       if (!m || m.paidAt) return;
       m.paidAt = Date.now();
       x.paidCount = x.schedule.filter((mm) => !!mm.paidAt).length;
-      const catId = x.categoryId
-        ?? d.categories.find((c) => c.name === "متفرقه")?.id
-        ?? d.categories.find((c) => c.type === "expense")?.id ?? "";
-      /* روش پرداخت از نوع حساب انتخابی حدس زده می‌شود */
+      const catId = x.categoryId ?? d.categories.find((c) => c.name === "متفرقه")?.id ?? d.categories.find((c) => c.type === "expense")?.id ?? "";
       const acc = d.accounts.find((a) => a.id === accId);
       const method = acc && /کارت/.test(acc.type) ? "کارت" : "شبا";
       d.transactions.unshift({
@@ -1293,390 +920,139 @@ export function DebtsPage() {
     toast("ok", `قسط ${faNum(idx + 1)} از «${accName}» پرداخت و به‌عنوان تراکنش ثبت شد.`);
   };
 
-  const unpayMonth = (inst: Installment, idx: number) => {
-    mutate((d) => {
-      const x = d.installments.find((y) => y.id === inst.id);
-      if (!x) return;
-      const m = x.schedule?.[idx];
-      if (!m || !m.paidAt) return;
-      m.paidAt = undefined;
-      x.paidCount = x.schedule.filter((mm) => !!mm.paidAt).length;
-    }, `پرداخت قسط ${faNum(idx + 1)} «${inst.title}» لغو شد`);
-    toast("warn", "قسط به حالت پرداخت‌نشده برگشت — تراکنشِ ثبت‌شده در صفحهٔ تراکنش‌ها باقی است.");
-  };
-
-  const saveInst = () => {
-    if (!instForm) return;
-    const title = instForm.title.trim();
-    const total = Number(instForm.total) || 0;
-    const months = Math.max(1, Number(instForm.months) || 1);
-    const apm = Math.round(Number(instForm.amountPerMonth) || 0);
-    if (!title) return toast("warn", "عنوان قسط را بنویسید.");
-    if (total <= 0) return toast("warn", "مبلغ کل باید بزرگ‌تر از صفر باشد.");
-    if (apm <= 0) return toast("warn", "مبلغ هر قسط را خودت وارد کن.");
-    const base = {
-      title, total, months,
-      amountPerMonth: apm,
-      start: instForm.start, accountId: instForm.accountId,
-      categoryId: instForm.categoryId || undefined,
-    };
-    if (instForm.id) {
-      mutate((d) => {
-        const x = d.installments.find((y) => y.id === instForm.id);
-        if (!x) return;
-        const oldPaid = (x.schedule ?? []).filter((m) => m.paidAt).length;
-        Object.assign(x, base, { paidCount: 0, schedule: [] });
-        normalizeInstallments(d);
-        const xx = d.installments.find((y) => y.id === instForm.id);
-        if (xx) {
-          xx.schedule.slice(0, oldPaid).forEach((m) => { m.paidAt = m.paidAt ?? Date.now(); });
-          xx.paidCount = xx.schedule.filter((m) => !!m.paidAt).length;
-        }
-      }, `قسط «${title}» ویرایش شد`);
-      toast("ok", "قسط ویرایش شد و برنامهٔ ماهانهٔ آن به‌روز شد.");
-    } else {
-      mutate((d) => {
-        d.installments.push({ id: Math.random().toString(36).slice(2, 10), ...base, paidCount: 0, schedule: [] });
-        normalizeInstallments(d);
-      }, `قسط «${title}» ثبت شد`);
-      toast("ok", "قسط جدید با برنامهٔ ماهانه ساخته شد.");
-    }
-    setInstForm(null);
-  };
-
-  const startInstForm = (i?: Installment) => {
-    setInstForm(i
-      ? { id: i.id, title: i.title, total: String(i.total), months: String(i.months), amountPerMonth: String(i.amountPerMonth), start: i.start, accountId: i.accountId, categoryId: i.categoryId ?? "" }
-      : { title: "", total: "", months: "12", amountPerMonth: "", start: todayISO(), accountId: state.accounts[0]?.id ?? "", categoryId: "" });
-  };
-
-  /* جمع‌بندی کل اقساط برای نوار خلاصه */
-  const instTotals = state.installments.reduce((acc, i) => {
-    const st = instStats(i);
-    const mr = jalaliMonthRange(jalaliToday().jy, jalaliToday().jm);
-    const dueThisMonth = (i.schedule ?? []).filter((m) => !m.paidAt && inRange(m.due, mr)).reduce((a, m) => a + m.amount, 0);
-    acc.remaining += st.remaining;
-    acc.thisMonthDue += dueThisMonth;
-    acc.overdueCount += st.overdue.length;
-    return acc;
-  }, { remaining: 0, thisMonthDue: 0, overdueCount: 0 });
-  const emi = calcEMI(Number(loan.p) || 0, Number(loan.r) || 0, Number(loan.n) || 0);
-
-  const addForm = tab !== "inst" && (
-    <AddDebtForm kind={tab} onDone={() => toast("ok", tab === "debt" ? "بدهی ثبت شد." : "طلب ثبت شد.")} />
-  );
-
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
-        <h1 className="font-display text-3xl md:text-4xl">بدهی‌ها و طلب‌ها</h1>
-        <button className="btn btn-ghost btn-sm" onClick={() => setQr("درخواست وجه")}>
-          <QrCode className="w-4 h-4" /> QR درخواست وجه
-        </button>
+        <h1 className="font-display text-3xl md:text-4xl">بدهی‌ها و اقساط</h1>
+        {tab !== "inst" && (
+          <button className="btn btn-gold btn-sm" onClick={() => setAdding(true)}>
+            <Plus className="w-4 h-4" strokeWidth={3} /> {tab === "debt" ? "بدهی جدید" : "طلب جدید"}
+          </button>
+        )}
       </div>
 
-      <div className="flex gap-2 rise-in" style={{ ["--d" as string]: "50ms" }}>
-        {([["debt", "بدهی‌ها", Coins], ["credit", "طلب‌ها", Scale], ["inst", "اقساط", Repeat]] as const).map(([k, l, I]) => (
-          <button key={k} className={`chip !text-[12.5px] !px-4 !py-2 ${tab === k ? "chip-on" : ""}`} onClick={() => setTab(k)}>
-            <I className="w-4 h-4" /> {l}
-          </button>
+      <div className="flex gap-1.5 rise-in" style={{ ["--d" as string]: "40ms" }}>
+        {([["debt", "بدهی‌ها"], ["credit", "طلب‌ها"], ["inst", "اقساط"]] as const).map(([k, l]) => (
+          <button key={k} className={`chip ${tab === k ? "chip-on" : ""}`} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
 
       {tab !== "inst" ? (
-        <div className="grid lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 grid gap-3 rise-in" style={{ ["--d" as string]: "100ms" }}>
-            {debts.length === 0 && <div className="card"><Empty text={tab === "debt" ? "هیچ بدهی باز ندارید. آفرین! 🎉" : "طلبی ثبت نشده."} /></div>}
-            {debts.map((d) => {
-              const remaining = d.amount - d.paid;
-              return (
-                <div key={d.id} className="card card-hover p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[14px] font-black">{d.person}</p>
-                      <p className="text-[11px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>
-                        {d.note ?? "—"} {d.due && `· سررسید: ${jalaliShort(d.due)}`}
-                      </p>
-                    </div>
-                    <div className="text-end">
-                      <p className="text-[14px] font-black tabular" style={{ color: tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
-                        {faMoney(remaining)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>از {faMoney(d.amount)}</span>
-                      </p>
-                      <button className="btn btn-mint btn-sm mt-1.5" disabled={remaining <= 0}
+        <div className="grid gap-3">
+          {list.length === 0 && <div className="card rise-in"><Empty text={tab === "debt" ? "هیچ بدهی‌ای نداری — آفرین! 🎉" : "طلبی ثبت نشده."} /></div>}
+          {list.map((d) => {
+            const remaining = d.amount - d.paid;
+            return (
+              <div key={d.id} className="card p-4 rise-in">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-black flex items-center gap-2">
+                      {d.kind === "debt" ? <ArrowUpLeft className="w-4 h-4" style={{ color: "var(--fp-coral)" }} /> : <ArrowDownRight className="w-4 h-4" style={{ color: "var(--fp-mint)" }} />}
+                      {d.person}
+                    </p>
+                    {d.note && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
+                    {d.due && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>سررسید: {faDate(d.due)}</p>}
+                  </div>
+                  <div className="text-end">
+                    <p className="text-[14px] font-black tabular" style={{ color: tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                      {faMoney(remaining)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>از {faMoney(d.amount)}</span>
+                    </p>
+                    <div className="flex gap-1.5 mt-1.5 justify-end">
+                      <button className="btn btn-mint btn-sm" disabled={remaining <= 0}
                         onClick={() => { setPayFor({ id: d.id, person: d.person, remaining, kind: d.kind }); setPayAmt(""); setPayAcc(state.accounts[0]?.id ?? ""); }}>
                         {tab === "debt" ? "پرداخت" : "دریافت"}
                       </button>
+                      {d.kind === "credit" && remaining > 0 && (
+                        <button className="btn btn-ghost btn-sm" onClick={() => setQr(d.person)} title="QR درخواست وجه"><QrCode className="w-4 h-4" /></button>
+                      )}
+                      <EditBtn onClick={() => setEditDebt({ id: d.id, kind: d.kind, person: d.person, amount: d.amount, paid: d.paid, due: d.due, note: d.note })} />
+                      <DeleteBtn onClick={() => { trashItem("debts", d.id, `${d.kind === "debt" ? "بدهی" : "طلب"} ${d.person}`); toast("warn", "حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
                     </div>
                   </div>
-                  <div className="mt-3"><Bar pct={(d.paid / d.amount) * 100} color={tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)"} /></div>
-                  <div className="flex gap-1.5 mt-3 pt-3 border-t" style={{ borderColor: "var(--fp-border)" }}>
-                    <button
-                      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105"
-                      style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 35%, transparent)" }}
-                      onClick={() => setEditDebt({ id: d.id, kind: d.kind, person: d.person, amount: d.amount, paid: d.paid, due: d.due, note: d.note })}>
-                      <PencilLine className="w-3.5 h-3.5" /> ویرایش
-                    </button>
-                    <button
-                      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105"
-                      style={{ background: "color-mix(in srgb, var(--fp-coral) 13%, transparent)", color: "var(--fp-coral)", border: "1px solid color-mix(in srgb, var(--fp-coral) 35%, transparent)" }}
-                      onClick={() => trashItem("debts", d.id, `${tab === "debt" ? "بدهی" : "طلب"} ${d.person}`)}>
-                      <Trash2 className="w-3.5 h-3.5" /> حذف
-                    </button>
-                  </div>
                 </div>
-              );
-            })}
-          </div>
-          <div className="rise-in" style={{ ["--d" as string]: "160ms" }}>{addForm}</div>
+                <div className="mt-3"><Bar pct={(d.paid / d.amount) * 100} color={tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)"} /></div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="grid gap-4">
-          {/* نوار خلاصه + ثبت قسط */}
-          <div className="flex flex-wrap items-center gap-3 rise-in" style={{ ["--d" as string]: "80ms" }}>
-            <div className="flex flex-wrap gap-2.5 grow">
-              <span className="chip !cursor-default !py-2" style={{ color: "var(--fp-text2)" }}>
-                <Repeat className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> {faNum(state.installments.length)} قسط فعال
-              </span>
-              <span className="chip !cursor-default !py-2 tabular" style={{ color: "var(--fp-coral)" }}>
-                باقی‌مانده: {faMoney(instTotals.remaining)}
-              </span>
-              <span className="chip !cursor-default !py-2 tabular" style={{ color: "var(--fp-accent)" }}>
-                سررسید این ماه: {faMoney(instTotals.thisMonthDue)}
-              </span>
-              {instTotals.overdueCount > 0 && (
-                <span className="chip !cursor-default !py-2 tabular" style={{ color: "#8f1d1d", background: "color-mix(in srgb, var(--fp-coral) 16%, transparent)" }}>
-                  ⚠ {faNum(instTotals.overdueCount)} قسط معوق
-                </span>
-              )}
-            </div>
-            <button className="btn btn-gold" onClick={() => startInstForm()}>
+          <div className="flex justify-end">
+            <button className="btn btn-gold btn-sm" onClick={() => setInstForm({ title: "", total: "", months: "12", amountPerMonth: "", start: todayISO(), accountId: state.accounts[0]?.id ?? "", categoryId: "" })}>
               <Plus className="w-4 h-4" strokeWidth={3} /> قسط جدید
             </button>
           </div>
-
           <div className="grid lg:grid-cols-2 gap-4">
-            {state.installments.length === 0 && (
-              <div className="lg:col-span-2 card rise-in" style={{ ["--d" as string]: "100ms" }}>
-                <Empty text="هیچ قسطی ثبت نشده — با «قسط جدید» برنامهٔ ماهانهٔ وام یا خرید قسطی‌ات را بساز." />
-              </div>
-            )}
-            {state.installments.map((i) => {
-              const st = instStats(i);
-              const sched = i.schedule ?? [];
-              const catName = i.categoryId ? catById(state, i.categoryId)?.name : undefined;
-              const today = todayISO();
-              const daysTo = (iso: string) => Math.round((new Date(iso + "T12:00:00").getTime() - new Date(today + "T12:00:00").getTime()) / 86400000);
-              return (
-                <div key={i.id} className="card card-hover p-4 rise-in" style={{ ["--d" as string]: "100ms" }}>
-                  {/* سربرگ */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[15px] font-black truncate">{i.title}</p>
-                      <p className="text-[11px] font-bold mt-1 flex flex-wrap gap-x-2 gap-y-0.5" style={{ color: "var(--fp-text3)" }}>
-                        <span>{accById(state, i.accountId)?.name}</span>
-                        {catName && <span>· {catName}</span>}
-                        <span>· شروع {jalaliShort(i.start)}</span>
-                      </p>
+            <div className="grid gap-3 content-start">
+              {state.installments.length === 0 && <div className="card p-5"><Empty text="هیچ قسطی ثبت نشده." /></div>}
+              {state.installments.map((x) => {
+                const pct = x.months > 0 ? (x.paidCount / x.months) * 100 : 0;
+                return (
+                  <div key={x.id} className="card p-4 rise-in">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="text-[14px] font-black flex items-center gap-2"><Repeat className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> {x.title}</p>
+                      <div className="flex gap-1.5">
+                        <EditBtn onClick={() => setInstForm({ id: x.id, title: x.title, total: String(x.total), months: String(x.months), amountPerMonth: String(x.amountPerMonth), start: x.start, accountId: x.accountId, categoryId: x.categoryId ?? "" })} />
+                        <DeleteBtn onClick={() => { trashItem("installments", x.id, x.title); toast("warn", "حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+                      </div>
                     </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      <EditBtn onClick={() => startInstForm(i)} />
-                      <DeleteBtn onClick={() => trashItem("installments", i.id, `قسط ${i.title}`)} />
+                    <div className="flex justify-between text-[11.5px] font-bold mb-1.5">
+                      <span style={{ color: "var(--fp-text2)" }}>قسط {faNum(x.paidCount)} از {faNum(x.months)} · ماهی {faMoney(x.amountPerMonth)}</span>
+                      <span style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.round(pct))}</span>
                     </div>
-                  </div>
-
-                  {/* آمار و پیشرفت */}
-                  <div className="flex items-center justify-between mt-3">
-                    <p className="text-[13px] font-black tabular">{faMoney(i.amountPerMonth)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>/ ماه</span></p>
-                    <p className="text-[12px] font-black tabular" style={{ color: st.remaining > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
-                      {st.remaining > 0 ? `${faMoney(st.remaining)} مانده` : "تسویه شد 🎉"}
-                    </p>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="grow"><Bar pct={st.pct} color={st.pct >= 100 ? "var(--fp-mint)" : "var(--fp-accent)"} /></div>
-                    <span className="text-[10.5px] font-black tabular shrink-0" style={{ color: "var(--fp-text3)" }}>
-                      {faNum(i.paidCount)} از {faNum(i.months)}
-                    </span>
-                  </div>
-                  {st.next && (
-                    <p className="text-[11px] font-bold mt-2 flex items-center gap-1.5">
-                      {st.next.due < today
-                        ? <span style={{ color: "var(--fp-coral)" }}>⚠ سررسید گذشته — {jalaliShort(st.next.due)} ({faNum(Math.abs(daysTo(st.next.due)))} روز تأخیر)</span>
-                        : <span style={{ color: "var(--fp-text2)" }}>⏳ سررسید بعدی: {jalaliShort(st.next.due)} ({faNum(daysTo(st.next.due))} روز دیگر)</span>}
-                    </p>
-                  )}
-
-                  {/* برنامهٔ ماهانه */}
-                  <div className="mt-3 border-t pt-2 max-h-56 overflow-y-auto grid gap-1" style={{ borderColor: "var(--fp-border)" }}>
-                    {sched.map((m, idx) => {
-                      const overdue = !m.paidAt && m.due < today;
-                      return (
-                        <div key={idx} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5"
-                          style={{ background: m.paidAt ? "color-mix(in srgb, var(--fp-mint) 7%, transparent)" : overdue ? "color-mix(in srgb, var(--fp-coral) 9%, transparent)" : "var(--fp-bg)" }}>
-                          <span className="w-6 h-6 rounded-md grid place-items-center text-[10.5px] font-black tabular shrink-0"
-                            style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)" }}>
-                            {faNum(idx + 1)}
+                    <Bar pct={pct} color="var(--fp-accent)" />
+                    <div className="grid gap-1.5 mt-3 max-h-48 overflow-y-auto">
+                      {x.schedule?.map((m, idx) => (
+                        <div key={idx} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--fp-bg)" }}>
+                          <span className="text-[10.5px] font-bold shrink-0" style={{ color: m.paidAt ? "var(--fp-mint)" : "var(--fp-text3)" }}>
+                            {m.paidAt ? <Check className="w-3.5 h-3.5 inline" /> : faNum(idx + 1)} قسط {faNum(idx + 1)}
                           </span>
-                          <span className="text-[11.5px] font-bold grow">{jalaliShort(m.due)}</span>
-                          <span className="text-[11.5px] font-black tabular shrink-0">{faMoney(m.amount)}</span>
-                          {m.paidAt ? (
-                            <button onClick={() => unpayMonth(i, idx)} title="لغو پرداخت (تراکنش را حذف نمی‌کند)"
-                              className="flex items-center gap-1 text-[10.5px] font-black px-2 py-1 rounded-md cursor-pointer transition-transform hover:scale-105 shrink-0"
-                              style={{ background: "color-mix(in srgb, var(--fp-mint) 18%, transparent)", color: "#1f7a56" }}>
-                              <Check className="w-3.5 h-3.5" strokeWidth={3} /> پرداخت شد
-                            </button>
-                          ) : (
-                            <button onClick={() => { setPayInst({ inst: i, idx }); setPayInstAcc(i.accountId); }}
-                              className="flex items-center gap-1 text-[10.5px] font-black px-2 py-1 rounded-md cursor-pointer transition-transform hover:scale-105 shrink-0"
-                              style={{ background: overdue ? "var(--fp-coral)" : "var(--fp-accent)", color: "#071b16" }}>
-                              <Wallet className="w-3.5 h-3.5" /> {overdue ? "پرداخت معوق" : "پرداخت"}
-                            </button>
+                          <span className="text-[10.5px] font-bold flex-1" style={{ color: "var(--fp-text3)" }}>{jalaliShort(m.due)}</span>
+                          <span className="text-[11px] font-black tabular">{faMoney(m.amount)}</span>
+                          {!m.paidAt && (
+                            <button className="btn btn-mint btn-sm !py-0.5 !text-[10px]" onClick={() => { setPayInst({ inst: x, idx }); setPayInstAcc(x.accountId); }}>پرداخت</button>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* مودال ثبت/ویرایش قسط */}
-          <Modal open={!!instForm} onClose={() => setInstForm(null)} title={instForm?.id ? "ویرایش قسط" : "ثبت قسط جدید"} wide>
-            {instForm && (
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="عنوان (مثلاً وام خرید لپ‌تاپ)"><TInput value={instForm.title} onChange={(e) => setInstForm({ ...instForm, title: e.target.value })} autoFocus /></Field>
-                <Field label="مبلغ کل (تومان)"><AmountInput value={instForm.total} onChange={(v) => setInstForm({ ...instForm, total: v })} /></Field>
-                <Field label="مبلغ هر قسط (تومان) — دستی">
-                  <AmountInput value={instForm.amountPerMonth} onChange={(v) => setInstForm({ ...instForm, amountPerMonth: v })} placeholder="مثلاً ۱٬۵۰۰٬۰۰۰" />
-                </Field>
-                <Field label="تعداد ماه"><TInput dir="ltr" value={faNum(instForm.months)} onChange={(e) => setInstForm({ ...instForm, months: e.target.value.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))) })} /></Field>
-                <Field label="اولین سررسید (شمسی)"><JalaliPicker value={instForm.start} onChange={(v) => setInstForm({ ...instForm, start: v })} /></Field>
-                <Field label="حساب پیش‌فرض پرداخت"><TSelect value={instForm.accountId} onChange={(e) => setInstForm({ ...instForm, accountId: e.target.value })}>{state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</TSelect></Field>
-                <Field label="دستهٔ هزینه (اختیاری)"><TSelect value={instForm.categoryId} onChange={(e) => setInstForm({ ...instForm, categoryId: e.target.value })}><option value="">— متفرقه —</option>{state.categories.filter((c) => c.type === "expense").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</TSelect></Field>
-                {(() => {
-                  const total = Number(instForm.total) || 0;
-                  const months = Math.max(1, Number(instForm.months) || 1);
-                  const apm = Number(instForm.amountPerMonth) || 0;
-                  const sum = apm * months;
-                  const diff = sum - total;
-                  const split = total > 0 ? Math.ceil(total / months) : 0;
-                  if (apm <= 0) return split > 0 ? (
-                    <p className="sm:col-span-2 text-[11.5px] font-bold px-3 py-2 rounded-lg" style={{ background: "var(--fp-bg)", color: "var(--fp-text3)", border: "1px dashed var(--fp-border2)" }}>
-                      تقسیم مساویِ مبلغ کل می‌شود ماهی {faMoney(split)} تومان — ولی مبلغ دلخواه خودت را وارد کن؛ قسط آخر مابه‌التفاوت را جذب می‌کند.
-                    </p>
-                  ) : null;
-                  return (
-                    <p className="sm:col-span-2 text-[12px] font-black px-3 py-2 rounded-lg leading-6" style={{ background: "color-mix(in srgb, var(--fp-accent) 10%, transparent)", color: "var(--fp-accent)" }}>
-                      جمع برنامه: {faNum(months)} × {faMoney(apm)} = {faMoney(sum)} تومان
-                      {total > 0 && (
-                        diff === 0
-                          ? " — دقیقاً برابر مبلغ کل ✅"
-                          : <span style={{ color: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
-                              {" "}(تفاوت با مبلغ کل: {diff > 0 ? "+" : "−"}{faMoney(Math.abs(diff))} — قسط آخر {diff > 0 ? "کمتر" : "بیشتر"} می‌شود)
-                            </span>
-                      )}
-                    </p>
-                  );
-                })()}
-                <div className="sm:col-span-2 flex justify-end gap-2 mt-2">
-                  <button className="btn btn-ghost" onClick={() => setInstForm(null)}>انصراف</button>
-                  <button className="btn btn-gold" onClick={saveInst}><Plus className="w-4 h-4" strokeWidth={3} /> {instForm.id ? "ذخیرهٔ تغییرات" : "ثبت قسط"}</button>
-                </div>
-              </div>
-            )}
-          </Modal>
-
-          {/* مودال پرداخت قسط — انتخاب حساب (کارت) */}
-          <Modal open={!!payInst} onClose={() => setPayInst(null)}
-            title={`پرداخت قسط ${faNum((payInst?.idx ?? 0) + 1)} «${payInst?.inst.title ?? ""}»`}>
-            {payInst && (() => {
-              const m = payInst.inst.schedule?.[payInst.idx];
-              return (
-                <div className="grid gap-4">
-                  <div className="flex items-center justify-between rounded-xl px-4 py-3"
-                    style={{ background: "color-mix(in srgb, var(--fp-accent) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 30%, transparent)" }}>
-                    <span className="text-[12px] font-black" style={{ color: "var(--fp-text2)" }}>
-                      سررسید: {m ? jalaliShort(m.due) : "—"}
-                    </span>
-                    <span className="font-display text-2xl tabular" style={{ color: "var(--fp-accent)" }}>
-                      {faMoney(m?.amount ?? 0)} <span className="text-[11px]" style={{ color: "var(--fp-text3)" }}>تومان</span>
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-[12px] font-black mb-2">این قسط از کدام حساب پرداخت شود؟</p>
-                    <div className="grid gap-2">
-                      {state.accounts.map((a) => {
-                        const on = payInstAcc === a.id;
-                        return (
-                          <button key={a.id} onClick={() => setPayInstAcc(a.id)}
-                            className="flex items-center gap-3 rounded-xl border px-3.5 py-3 text-start cursor-pointer transition-all duration-150"
-                            style={{
-                              borderColor: on ? "var(--fp-accent)" : "var(--fp-border)",
-                              background: on ? "color-mix(in srgb, var(--fp-accent) 9%, transparent)" : "var(--fp-bg)",
-                              boxShadow: on ? "0 6px 18px -8px color-mix(in srgb, var(--fp-accent) 60%, transparent)" : "none",
-                            }}>
-                            <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0"
-                              style={{ background: `color-mix(in srgb, ${a.color} 16%, transparent)`, color: a.color }}>
-                              <Banknote className="w-4.5 h-4.5" />
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="block text-[13px] font-black truncate">{a.name}</span>
-                              <span className="block text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</span>
-                            </span>
-                            <span className="text-[12px] font-black tabular shrink-0">
-                              {faMoney(a.balance)} <span className="text-[9.5px]" style={{ color: "var(--fp-text3)" }}>مانده</span>
-                            </span>
-                            <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 border"
-                              style={{ borderColor: on ? "var(--fp-accent)" : "var(--fp-border2)", background: on ? "var(--fp-accent)" : "transparent" }}>
-                              {on && <Check className="w-3.5 h-3.5" strokeWidth={3.5} style={{ color: "#071b16" }} />}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      ))}
                     </div>
                   </div>
-                  <div className="flex justify-end gap-2">
-                    <button className="btn btn-ghost" onClick={() => setPayInst(null)}>انصراف</button>
-                    <button className="btn btn-mint" onClick={() => {
-                      if (!payInstAcc) return toast("warn", "یک حساب انتخاب کن.");
-                      payMonth(payInst.inst, payInst.idx, payInstAcc);
-                      setPayInst(null);
-                    }}>
-                      <Check className="w-4 h-4" strokeWidth={3} /> ثبت پرداخت
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-          </Modal>
-
-          {/* ماشین‌حساب وام */}
-          <div className="card p-5 rise-in" style={{ ["--d" as string]: "160ms" }}>
-            <Head icon={<Scale className="w-4.5 h-4.5" />} title="ماشین‌حساب وام" />
-            <div className="grid gap-3 mt-4">
-              <Field label="مبلغ وام (تومان)"><AmountInput value={loan.p} onChange={(v) => setLoan({ ...loan, p: v })} /></Field>
-              <Field label="سود سالانه (٪)"><TInput dir="ltr" value={faNum(loan.r)} onChange={(e) => setLoan({ ...loan, r: e.target.value.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))) })} /></Field>
-              <Field label="تعداد ماه"><TInput dir="ltr" value={faNum(loan.n)} onChange={(e) => setLoan({ ...loan, n: e.target.value.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))) })} /></Field>
+                );
+              })}
             </div>
-            <div className="rounded-xl p-4 mt-4 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-              <div className="flex justify-between text-[12.5px] font-black"><span>قسط ماهانه</span><span className="tabular" style={{ color: "var(--fp-accent)" }}>{faMoney(emi.monthly)}</span></div>
-              <div className="flex justify-between text-[11.5px] font-bold mt-2" style={{ color: "var(--fp-text2)" }}><span>جمع بازپرداخت</span><span className="tabular">{faMoney(emi.total)}</span></div>
-              <div className="flex justify-between text-[11.5px] font-bold mt-1.5" style={{ color: "var(--fp-text2)" }}><span>سود پرداختی</span><span className="tabular" style={{ color: "var(--fp-coral)" }}>{faMoney(emi.interest)}</span></div>
+
+            <div className="card p-5 rise-in h-fit" style={{ ["--d" as string]: "80ms" }}>
+              <Head icon={<Scale className="w-4.5 h-4.5" />} title="ماشین‌حساب وام" />
+              <div className="grid gap-3 mt-4">
+                <Field label="مبلغ وام (تومان)"><AmountInput value={loan.p} onChange={(v) => setLoan({ ...loan, p: v })} /></Field>
+                <Field label="سود سالانه (٪)"><TInput dir="ltr" value={loan.r} onChange={(e) => setLoan({ ...loan, r: toEnDigitsLocal(e.target.value) })} /></Field>
+                <Field label="تعداد ماه"><TInput dir="ltr" value={loan.n} onChange={(e) => setLoan({ ...loan, n: toEnDigitsLocal(e.target.value) })} /></Field>
+              </div>
+              <div className="rounded-xl p-4 mt-4 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                <div className="flex justify-between text-[12.5px] font-black"><span>قسط ماهانه</span><span className="tabular" style={{ color: "var(--fp-accent)" }}>{faMoney(emi.monthly)}</span></div>
+                <div className="flex justify-between text-[11.5px] font-bold mt-2" style={{ color: "var(--fp-text2)" }}><span>جمع بازپرداخت</span><span className="tabular">{faMoney(emi.total)}</span></div>
+                <div className="flex justify-between text-[11.5px] font-bold mt-1.5" style={{ color: "var(--fp-text2)" }}><span>سود پرداختی</span><span className="tabular" style={{ color: "var(--fp-coral)" }}>{faMoney(emi.interest)}</span></div>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`${tab === "debt" ? "پرداخت به" : "دریافت از"} ${payFor?.person ?? ""}`}>
+      {adding && tab !== "inst" && (
+        <AddDebtForm kind={tab} onDone={() => setAdding(false)} />
+      )}
+
+      <Modal open={!!payFor} onClose={() => setPayFor(null)} title={`${payFor?.kind === "debt" ? "پرداخت به" : "دریافت از"} ${payFor?.person ?? ""}`}>
         <Field label={`مبلغ (تومان) — باقی‌مانده: ${faMoney(payFor?.remaining ?? 0)}`}>
           <AmountInput value={payAmt} onChange={setPayAmt} />
         </Field>
         {state.accounts.length > 0 && (
-          <Field label={payFor?.kind === "debt" ? "پرداخت از حساب" : "دریافت به حساب"}>
-            <TSelect value={payAcc} onChange={(e) => setPayAcc(e.target.value)}>
-              {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </TSelect>
-          </Field>
+          <div className="mt-3">
+            <Field label={payFor?.kind === "debt" ? "پرداخت از حساب" : "دریافت به حساب"}>
+              <TSelect value={payAcc} onChange={(e) => setPayAcc(e.target.value)}>
+                {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </TSelect>
+            </Field>
+          </div>
         )}
         <div className="flex justify-end gap-2 mt-5">
           <button className="btn btn-ghost" onClick={() => setPayFor(null)}>انصراف</button>
@@ -1687,7 +1063,6 @@ export function DebtsPage() {
             mutate((d) => {
               const x = d.debts.find((y) => y.id === payFor!.id);
               if (x) x.paid = Math.min(x.amount, x.paid + v);
-              /* ثبت تراکنش تا تسویه روی ماندهٔ حساب هم اثر بگذارد */
               const cat = d.categories.find((c) => c.type === (isDebt ? "expense" : "income"));
               d.transactions.unshift({
                 id: Math.random().toString(36).slice(2, 10), date: todayISO(),
@@ -1704,7 +1079,6 @@ export function DebtsPage() {
         </div>
       </Modal>
 
-      {/* مودال ویرایش بدهی/طلب */}
       <Modal open={!!editDebt} onClose={() => setEditDebt(null)} title={editDebt?.kind === "debt" ? "ویرایش بدهی" : "ویرایش طلب"}>
         {editDebt && (
           <div className="grid gap-3.5">
@@ -1732,6 +1106,101 @@ export function DebtsPage() {
         )}
       </Modal>
 
+      <Modal open={!!instForm} onClose={() => setInstForm(null)} title={instForm?.id ? "ویرایش قسط" : "قسط جدید"}>
+        {instForm && (
+          <div className="grid gap-3.5">
+            <Field label="عنوان"><TInput value={instForm.title} onChange={(e) => setInstForm({ ...instForm, title: e.target.value })} placeholder="مثلاً: وام خرید لپ‌تاپ" /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="مبلغ کل (تومان)"><AmountInput value={instForm.total} onChange={(v) => setInstForm({ ...instForm, total: v })} /></Field>
+              <Field label="تعداد ماه"><TInput dir="ltr" value={instForm.months} onChange={(e) => setInstForm({ ...instForm, months: toEnDigitsLocal(e.target.value) })} /></Field>
+            </div>
+            <Field label="مبلغ هر قسط (تومان) — دستی" hint="خودت وارد کن؛ قسط آخر مابه‌التفاوت را جذب می‌کند.">
+              <AmountInput value={instForm.amountPerMonth} onChange={(v) => setInstForm({ ...instForm, amountPerMonth: v })} />
+            </Field>
+            {(() => {
+              const total = Number(instForm.total) || 0;
+              const months = Math.max(1, Number(instForm.months) || 1);
+              const apm = Math.round(Number(instForm.amountPerMonth) || 0);
+              if (apm <= 0 || total <= 0) return null;
+              const sum = apm * months;
+              const diff = sum - total;
+              return (
+                <p className="text-[12px] font-black px-3 py-2 rounded-lg leading-6" style={{ background: "color-mix(in srgb, var(--fp-accent) 10%, transparent)", color: "var(--fp-accent)" }}>
+                  جمع برنامه: {faNum(months)} × {faMoney(apm)} = {faMoney(sum)} تومان
+                  {diff === 0
+                    ? " — دقیقاً برابر مبلغ کل ✅"
+                    : <span style={{ color: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                        {" "}(تفاوت با مبلغ کل: {diff > 0 ? "+" : "−"}{faMoney(Math.abs(diff))} — قسط آخر {diff > 0 ? "کمتر" : "بیشتر"} می‌شود)
+                      </span>}
+                </p>
+              );
+            })()}
+            <Field label="شروع (شمسی)"><JalaliPicker value={instForm.start} onChange={(v) => setInstForm({ ...instForm, start: v })} /></Field>
+            <Field label="حساب">
+              <TSelect value={instForm.accountId} onChange={(e) => setInstForm({ ...instForm, accountId: e.target.value })}>
+                {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </TSelect>
+            </Field>
+            <Field label="دسته (اختیاری)">
+              <TSelect value={instForm.categoryId} onChange={(e) => setInstForm({ ...instForm, categoryId: e.target.value })}>
+                <option value="">— بدون دسته —</option>
+                {state.categories.filter((c) => c.type === "expense").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </TSelect>
+            </Field>
+            <div className="flex justify-end gap-2 mt-2">
+              <button className="btn btn-ghost" onClick={() => setInstForm(null)}>انصراف</button>
+              <button className="btn btn-gold" onClick={saveInst}><Plus className="w-4 h-4" strokeWidth={3} /> {instForm.id ? "ذخیرهٔ تغییرات" : "ثبت قسط"}</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!payInst} onClose={() => setPayInst(null)} title={`پرداخت قسط ${faNum((payInst?.idx ?? 0) + 1)} «${payInst?.inst.title ?? ""}»`}>
+        {payInst && (() => {
+          const m = payInst.inst.schedule?.[payInst.idx];
+          return (
+            <div className="grid gap-4">
+              <div className="flex items-center justify-between rounded-xl px-4 py-3"
+                style={{ background: "color-mix(in srgb, var(--fp-accent) 9%, transparent)", border: "1px solid color-mix(in srgb, var(--fp-accent) 30%, transparent)" }}>
+                <span className="text-[12px] font-black" style={{ color: "var(--fp-text2)" }}>سررسید: {m ? jalaliShort(m.due) : "—"}</span>
+                <span className="font-display text-2xl tabular" style={{ color: "var(--fp-accent)" }}>{faMoney(m?.amount ?? 0)} <span className="text-[11px]" style={{ color: "var(--fp-text3)" }}>تومان</span></span>
+              </div>
+              <div>
+                <p className="text-[12px] font-black mb-2">این قسط از کدام حساب پرداخت شود؟</p>
+                <div className="grid gap-2">
+                  {state.accounts.map((a) => {
+                    const on = payInstAcc === a.id;
+                    return (
+                      <button key={a.id} onClick={() => setPayInstAcc(a.id)}
+                        className="flex items-center gap-3 rounded-xl border px-3.5 py-3 text-start cursor-pointer transition-all duration-150"
+                        style={{ borderColor: on ? "var(--fp-accent)" : "var(--fp-border)", background: on ? "color-mix(in srgb, var(--fp-accent) 9%, transparent)" : "var(--fp-bg)" }}>
+                        <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, ${a.color} 16%, transparent)`, color: a.color }}><Banknote className="w-4.5 h-4.5" /></span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13px] font-black truncate">{a.name}</span>
+                          <span className="block text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</span>
+                        </span>
+                        <span className="text-[12px] font-black tabular shrink-0">{faMoney(a.balance)} <span className="text-[9.5px]" style={{ color: "var(--fp-text3)" }}>مانده</span></span>
+                        <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 border" style={{ borderColor: on ? "var(--fp-accent)" : "var(--fp-border2)", background: on ? "var(--fp-accent)" : "transparent" }}>
+                          {on && <Check className="w-3.5 h-3.5" strokeWidth={3.5} style={{ color: "#071b16" }} />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button className="btn btn-ghost" onClick={() => setPayInst(null)}>انصراف</button>
+                <button className="btn btn-mint" onClick={() => {
+                  if (!payInstAcc) return toast("warn", "یک حساب انتخاب کن.");
+                  payMonth(payInst.inst, payInst.idx, payInstAcc);
+                  setPayInst(null);
+                }}><Check className="w-4 h-4" strokeWidth={3} /> ثبت پرداخت</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
       <Modal open={!!qr} onClose={() => setQr(null)} title="QR درخواست وجه">
         <FakeQR label={qr ?? ""} />
         <p className="text-[11.5px] font-bold text-center mt-3 leading-6" style={{ color: "var(--fp-text3)" }}>
@@ -1742,6 +1211,25 @@ export function DebtsPage() {
   );
 }
 
+function buildScheduleLocal(inst: { start: string; months: number; amountPerMonth: number; total: number }, paidCount: number) {
+  const out: { due: string; amount: number; paidAt?: number }[] = [];
+  const n = Math.max(1, inst.months | 0);
+  for (let i = 0; i < n; i++) {
+    const isLast = i === n - 1;
+    const rest = inst.total - inst.amountPerMonth * (n - 1);
+    const amount = isLast && rest > 0 ? rest : inst.amountPerMonth;
+    const d = new Date(inst.start + "T12:00:00");
+    d.setMonth(d.getMonth() + i);
+    const p = (x: number) => String(x).padStart(2, "0");
+    out.push({ due: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, amount, paidAt: i < paidCount ? Date.now() : undefined });
+  }
+  return out;
+}
+
+function toEnDigitsLocal(s: string): string {
+  return s.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+}
+
 function AddDebtForm({ kind, onDone }: { kind: "debt" | "credit"; onDone: () => void }) {
   const { mutate } = useStore();
   const [person, setPerson] = useState("");
@@ -1749,9 +1237,8 @@ function AddDebtForm({ kind, onDone }: { kind: "debt" | "credit"; onDone: () => 
   const [due, setDue] = useState(todayISO());
   const [note, setNote] = useState("");
   return (
-    <div className="card p-5 h-fit">
-      <Head icon={<Plus className="w-4.5 h-4.5" />} title={kind === "debt" ? "ثبت بدهی جدید" : "ثبت طلب جدید"} />
-      <div className="grid gap-3 mt-4">
+    <Modal open onClose={onDone} title={kind === "debt" ? "ثبت بدهی جدید" : "ثبت طلب جدید"}>
+      <div className="grid gap-3">
         <Field label="طرف حساب"><TInput value={person} onChange={(e) => setPerson(e.target.value)} placeholder="مثلاً: رضا" /></Field>
         <Field label="مبلغ (تومان)"><AmountInput value={amount} onChange={setAmount} /></Field>
         <Field label="سررسید"><JalaliPicker value={due} onChange={setDue} /></Field>
@@ -1766,7 +1253,7 @@ function AddDebtForm({ kind, onDone }: { kind: "debt" | "credit"; onDone: () => 
           <Plus className="w-4 h-4" strokeWidth={3} /> ثبت
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

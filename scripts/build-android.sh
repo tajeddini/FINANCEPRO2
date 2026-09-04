@@ -15,7 +15,7 @@ else
 fi
 
 echo ""
-echo "[2/4] پچ میرور Gradle برای اینترنت ایران (Aliyun) ..."
+echo "[2/4] پچ میرور Gradle برای اینترنت ایران ..."
 node patch-android-mirror.cjs
 
 echo ""
@@ -29,5 +29,6 @@ node patch-android-mirror.cjs >/dev/null
 
 echo ""
 echo "═══════════════════════════════════════════════════════════"
-echo " ✅ آماده است! حالا بزن:  npx cap open android"
+echo " آماده است! حالا بزن:  npx cap open android"
+echo " بعد در Android Studio:  Build -> Build APK(s)"
 echo "═══════════════════════════════════════════════════════════"

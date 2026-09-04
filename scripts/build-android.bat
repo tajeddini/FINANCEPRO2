@@ -1,60 +1,44 @@
 @echo off
-chcp 65001 >nul
 REM ═══════════════════════════════════════════════════════════
 REM  فایننس‌پرو — ساخت و سینک اپ اندروید (یک‌کلیکی، ویندوز)
-REM  بار اول: پروژهٔ اندروید را می‌سازد + میرور ایران را پچ می‌کند
-REM  دفعه‌های بعد: فقط بیلد سایت و سینک داخل اپ
 REM ═══════════════════════════════════════════════════════════
-cd /d "%~dp0.."
+chcp 65001 >nul
+cd /d "%~dp0\.."
 
+echo.
 if not exist "android\build.gradle" (
-  echo.
-  echo [1/5] ساخت پروژهٔ اندروید (فقط بار اول — چند دقیقه) ...
-  echo ────────────────────────────────────────────────
+  echo [1/4] ساخت پروژهٔ اندروید (فقط بار اول — چند دقیقه) ...
   call npx cap add android
-  if errorlevel 1 goto :error
+  if errorlevel 1 goto :fail
 ) else (
-  echo.
-  echo [1/5] پروژهٔ اندروید موجود است — از ساخت دوباره رد شد
+  echo [1/4] پروژهٔ اندروید موجود است — از ساخت دوباره رد شد
 )
 
 echo.
-echo [2/5] پچ میرور Gradle برای اینترنت ایران (Aliyun) ...
-echo ────────────────────────────────────────────────
+echo [2/4] پچ میرور Gradle برای اینترنت ایران ...
 node patch-android-mirror.cjs
 
 echo.
-echo [3/5] بیلد سایت (Vite) ...
-echo ────────────────────────────────────────────────
+echo [3/4] بیلد سایت (Vite) ...
 call npm run build
-if errorlevel 1 goto :error
+if errorlevel 1 goto :fail
 
 echo.
-echo [4/5] سینک سایت داخل اپ اندروید ...
-echo ────────────────────────────────────────────────
+echo [4/4] سینک سایت داخل اپ اندروید ...
 call npx cap sync android
-if errorlevel 1 goto :error
-
-echo.
-echo [5/5] پچ مجدد میرور (برای اطمینان بعد از سینک) ...
+if errorlevel 1 goto :fail
 node patch-android-mirror.cjs >nul
 
 echo.
 echo ═══════════════════════════════════════════════════════════
-echo  ✅ آماده است!
-echo.
-echo  حالا برای باز کردن در Android Studio بزن:
-echo      npx cap open android
-echo.
-echo  (بار اول: Trust Project بزن و ۵ تا ۱۵ دقیقه صبر کن تا
-echo   Gradle Sync سبز شود — بارهای بعد چند ثانیه است)
+echo  آماده است! حالا بزن:  npx cap open android
+echo  بعد در Android Studio:  Build -^> Build APK(s)
 echo ═══════════════════════════════════════════════════════════
 pause
-goto :eof
+exit /b 0
 
-:error
+:fail
 echo.
-echo  ❌ خطا رخ داد — متن قرمز بالا را بخوان و در CAPACITOR-GUIDE.md
-echo     بخش «عیب‌یابی» را ببین.
+echo ❌ خطا رخ داد — پیام‌های بالا را بررسی کنید.
 pause
 exit /b 1

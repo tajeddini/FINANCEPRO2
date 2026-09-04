@@ -1,6 +1,5 @@
 /* ---------- ویجت‌های تحلیلی: نقشهٔ حرارتی، پیش‌بینی، امتیاز سلامت، نشان‌ها ---------- */
 import { useMemo } from "react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 import type { AppState, Tx } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faNum, groupInt, inRange, jalaliMonthRange,
@@ -13,7 +12,7 @@ export function Heatmap({ txs }: { txs: Tx[] }) {
   const weeks = 14;
   const { cells, max } = useMemo(() => {
     const today = new Date();
-    const offset = (today.getDay() + 1) % 7; // شنبه = ۰
+    const offset = (today.getDay() + 1) % 7;
     const end = addDaysISO(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`, -offset + 6);
     const start = addDaysISO(end, -(weeks * 7 - 1));
     const byDay = new Map<string, number>();
@@ -84,7 +83,6 @@ export function computeHealthScore(s: AppState, monthTxs: Tx[], lastMonthTxs: Tx
   }
 
   const trendPct = lastExpense > 0 ? Math.round(Math.min(1, Math.max(0, 1 - (expense - lastExpense) / lastExpense)) * 100) : 70;
-  /* فقط اهدافی که target>0 دارند را بشمار — وگرنه تقسیم بر صفر → ۱۰۰٪ اشتباه */
   const validGoals = s.savings_goals.filter((g) => g.target > 0);
   const goalPct = validGoals.length
     ? Math.round(Math.min(1, Math.max(0, Math.max(...validGoals.map((g) => g.saved / g.target)))) * 100)
@@ -142,7 +140,7 @@ export function Forecast({ s }: { s: AppState }) {
         expense: txs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0),
       });
     }
-    const last3 = months.slice(2, 5); // سه ماه واقعیِ اخیر
+    const last3 = months.slice(2, 5);
     const avgInc = last3.reduce((a, m) => a + m.income, 0) / 3;
     const avgExp = last3.reduce((a, m) => a + m.expense, 0) / 3;
     const prev = months[4];
@@ -184,7 +182,6 @@ export function computeBadges(s: AppState): Badge[] {
   const expense = monthTxs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
   const saveRate = income > 0 ? (income - expense) / income : 0;
 
-  // زنجیرهٔ روزهای بدون خرج
   let streak = 0;
   const expenseDates = new Set(s.transactions.filter((x) => x.type === "expense").map((x) => x.date));
   const today = new Date();
@@ -201,7 +198,7 @@ export function computeBadges(s: AppState): Badge[] {
     { id: "saver", icon: "🏦", title: "پس‌اندازکننده", desc: "نرخ پس‌انداز بالای ۳۰٪ این ماه", earned: saveRate > 0.3 },
     { id: "streak3", icon: "🔥", title: "سه روز آرام", desc: "۳ روز پیاپی بدون خرج", earned: streak >= 3 },
     { id: "streak7", icon: "⚡", title: "هفتهٔ طلایی", desc: "۷ روز پیاپی بدون خرج", earned: streak >= 7 },
-    { id: "goal", icon: "🎯", title: "هدف‌دار", desc: "یک هدف پس‌انداز بالای ۵۰٪", earned: s.savings_goals.some((g) => g.saved / g.target >= 0.5) },
+    { id: "goal", icon: "🎯", title: "هدف‌دار", desc: "یک هدف پس‌انداز بالای ۵۰٪", earned: s.savings_goals.some((g) => g.target > 0 && g.saved / g.target >= 0.5) },
     { id: "clean", icon: "🕊️", title: "بدون بدهی", desc: "هیچ بدهی باز ندارید", earned: s.debts.filter((d) => d.kind === "debt" && d.paid < d.amount).length === 0 },
     { id: "bot", icon: "🤖", title: "همراه ربات", desc: "تراکنشی از ربات تلگرام ثبت شده", earned: s.transactions.some((x) => x.source === "bot") },
     { id: "budget", icon: "📐", title: "منضبط", desc: "بودجهٔ این ماه رعایت شده", earned: s.budgets.length > 0 && s.budgets.every((b) => monthTxs.filter((x) => x.categoryId === b.categoryId && x.type === "expense").reduce((a, x) => a + x.amount, 0) <= b.limit) },

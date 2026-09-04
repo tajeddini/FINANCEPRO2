@@ -189,7 +189,6 @@ export function periodRange(key: PeriodKey): { from: string; to: string } {
       return { from: jalaliMonthRange(ly, 1).from, to: jalaliMonthRange(ly, 12).to };
     }
     case "custom":
-      /* بازهٔ دلخواه توسط usePeriod مدیریت می‌شود؛ این fallback است */
       return { from: "2000-01-01", to: end };
     default:
       return { from: "2000-01-01", to: end };
