@@ -305,6 +305,12 @@ select.input option { background: var(--fp-bg2); color: var(--fp-text); }
 @keyframes spin-slow-kf { to { transform: rotate(360deg); } }
 .spin-slow { animation: spin-slow-kf 1s linear infinite; }
 
+@keyframes grow-x-kf {
+ from { transform: scaleX(0); }
+ to { transform: scaleX(1); }
+}
+.grow-x { transform-origin: right; animation: grow-x-kf 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+
 @keyframes mic-ring-kf {
  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--fp-coral) 50%, transparent); }
  100% { box-shadow: 0 0 0 12px transparent; }
