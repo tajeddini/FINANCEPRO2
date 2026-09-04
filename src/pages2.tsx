@@ -794,12 +794,12 @@ export function ReportsPage() {
               const diff = c.cur - c.prev;
               return (
                 <div key={c.name}>
-                  <div className="flex justify-between text-[11.5px] font-black mb-1.5">
-                    <span style={{ color: "var(--fp-text)" }}>{c.name}</span>
-                    <span className="flex items-center gap-2 tabular">
+                  <div className="flex flex-wrap justify-between gap-x-2 gap-y-1 text-[11.5px] font-black mb-1.5">
+                    <span className="min-w-0 truncate" style={{ color: "var(--fp-text)" }}>{c.name}</span>
+                    <span className="flex items-center gap-2 tabular whitespace-nowrap shrink-0">
                       <span style={{ color: "var(--fp-text3)" }}>{faMoney(c.prev)} ←</span>
                       <span style={{ color: "var(--fp-text)" }}>{faMoney(c.cur)}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: diff > 0 ? "color-mix(in srgb, var(--fp-coral) 15%, transparent)" : "color-mix(in srgb, var(--fp-mint) 15%, transparent)", color: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ background: diff > 0 ? "color-mix(in srgb, var(--fp-coral) 15%, transparent)" : "color-mix(in srgb, var(--fp-mint) 15%, transparent)", color: diff > 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>
                         {diff > 0 ? "▲" : "▼"} {faMoney(Math.abs(diff))}
                       </span>
                     </span>
@@ -826,7 +826,7 @@ export function ReportsPage() {
         </p>
         <textarea readOnly value={reportText} dir="rtl" rows={14}
           className="input !text-[11.5px] !leading-6 resize-y" style={{ background: "var(--fp-bg)" }} />
-        <div className="flex gap-2 mt-4">
+        <div className="flex flex-wrap gap-2 mt-4">
           <button className="btn btn-gold btn-sm" onClick={async () => { const ok = await copyText(reportText); toast(ok ? "ok" : "err", ok ? "گزارش کپی شد — حالا به هوش مصنوعی بدهید." : "کپی ناموفق بود."); }}>
             <Copy className="w-4 h-4" /> کپی گزارش
           </button>
@@ -914,15 +914,17 @@ function AccountsTab() {
         <button className="btn btn-gold btn-sm" onClick={() => setForm({ name: "", type: "کارت بانکی", initial: "0", color: "#57d9a3" })}><Plus className="w-4 h-4" strokeWidth={3} /> حساب جدید</button>
       </div>
       {state.accounts.map((a) => (
-        <div key={a.id} className="card p-4 flex items-center gap-3 rise-in">
-          <CatGlyph icon="wallet" color={a.color} className="w-10 h-10 rounded-xl" iconClass="w-5 h-5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-black">{a.name}</p>
-            <p className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type} · موجودی اولیه {faMoney(a.initial)}</p>
+        <div key={a.id} className="card p-4 flex flex-wrap items-center gap-x-3 gap-y-2 rise-in">
+          <CatGlyph icon="wallet" color={a.color} className="w-10 h-10 rounded-xl shrink-0" iconClass="w-5 h-5" />
+          <div className="flex-1 min-w-0 basis-32">
+            <p className="text-[13px] font-black truncate">{a.name}</p>
+            <p className="text-[10.5px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>{a.type} · موجودی اولیه {faMoney(a.initial)}</p>
           </div>
-          <p className="text-[13px] font-black tabular" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>{faMoney(a.balance)}</p>
-          <EditBtn onClick={() => setForm({ id: a.id, name: a.name, type: a.type, initial: String(a.initial), color: a.color })} />
-          <DeleteBtn onClick={() => { trashItem("accounts", a.id, a.name); toast("warn", "حساب حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+          <p className="text-[13px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>{faMoney(a.balance)}</p>
+          <span className="flex gap-1.5 shrink-0">
+            <EditBtn onClick={() => setForm({ id: a.id, name: a.name, type: a.type, initial: String(a.initial), color: a.color })} />
+            <DeleteBtn onClick={() => { trashItem("accounts", a.id, a.name); toast("warn", "حساب حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+          </span>
         </div>
       ))}
       {form && (
@@ -977,14 +979,16 @@ function CategoriesTab() {
         <button className="btn btn-gold btn-sm" onClick={() => setForm({ name: "", type: "expense", color: "#e8b04b", icon: "wallet" })}><Plus className="w-4 h-4" strokeWidth={3} /> دسته جدید</button>
       </div>
       {state.categories.map((c) => (
-        <div key={c.id} className="card p-4 flex items-center gap-3 rise-in">
-          <CatGlyph icon={c.icon} color={c.color} className="w-10 h-10 rounded-xl" iconClass="w-5 h-5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-black">{c.name}</p>
+        <div key={c.id} className="card p-4 flex flex-wrap items-center gap-x-3 gap-y-2 rise-in">
+          <CatGlyph icon={c.icon} color={c.color} className="w-10 h-10 rounded-xl shrink-0" iconClass="w-5 h-5" />
+          <div className="flex-1 min-w-0 basis-32">
+            <p className="text-[13px] font-black truncate">{c.name}</p>
             <p className="text-[10.5px] font-bold" style={{ color: c.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>{c.type === "income" ? "درآمد" : "هزینه"}</p>
           </div>
-          <EditBtn onClick={() => setForm({ id: c.id, name: c.name, type: c.type, color: c.color, icon: c.icon ?? "wallet" })} />
-          <DeleteBtn onClick={() => { trashItem("categories", c.id, c.name); toast("warn", "دسته حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+          <span className="flex gap-1.5 shrink-0">
+            <EditBtn onClick={() => setForm({ id: c.id, name: c.name, type: c.type, color: c.color, icon: c.icon ?? "wallet" })} />
+            <DeleteBtn onClick={() => { trashItem("categories", c.id, c.name); toast("warn", "دسته حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+          </span>
         </div>
       ))}
       {form && (
@@ -1053,20 +1057,22 @@ function TagsTab() {
       {tags.map((tg) => {
         const count = state.transactions.filter((t) => t.tag === tg.id).length;
         return (
-          <div key={tg.id} className="card p-4 flex items-center gap-3 rise-in">
+          <div key={tg.id} className="card p-4 flex flex-wrap items-center gap-x-3 gap-y-2 rise-in">
             <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0 text-[11px] font-black"
               style={{ background: `color-mix(in srgb, ${tg.color} 18%, transparent)`, color: tg.color }}>
               {tg.label.slice(0, 2)}
             </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-black flex items-center gap-2">
-                {tg.label}
-                {tg.builtin && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: "var(--fp-bg3)", color: "var(--fp-text3)" }}>پیش‌فرض</span>}
+            <div className="flex-1 min-w-0 basis-36">
+              <p className="text-[13px] font-black flex items-center gap-2 min-w-0">
+                <span className="truncate">{tg.label}</span>
+                {tg.builtin && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 whitespace-nowrap" style={{ background: "var(--fp-bg3)", color: "var(--fp-text3)" }}>پیش‌فرض</span>}
               </p>
-              <p className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{tg.desc || "—"} · {faNum(count)} تراکنش</p>
+              <p className="text-[10.5px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>{tg.desc || "—"} · {faNum(count)} تراکنش</p>
             </div>
-            <EditBtn onClick={() => setForm({ id: tg.id, label: tg.label, color: tg.color, desc: tg.desc ?? "" })} />
-            <DeleteBtn onClick={() => { trashItem("tags", tg.id, tg.label); toast("warn", "برچسب حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+            <span className="flex gap-1.5 shrink-0">
+              <EditBtn onClick={() => setForm({ id: tg.id, label: tg.label, color: tg.color, desc: tg.desc ?? "" })} />
+              <DeleteBtn onClick={() => { trashItem("tags", tg.id, tg.label); toast("warn", "برچسب حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+            </span>
           </div>
         );
       })}
@@ -1125,17 +1131,17 @@ function BudgetsTab() {
         return (
           <div key={b.id} className="card p-4 rise-in">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-[13px] font-black flex items-center gap-2">
-                <CatGlyph icon={cat?.icon} color={cat?.color} className="w-8 h-8" iconClass="w-4 h-4" /> {cat?.name ?? "—"}
+              <p className="text-[13px] font-black flex items-center gap-2 min-w-0">
+                <CatGlyph icon={cat?.icon} color={cat?.color} className="w-8 h-8 shrink-0" iconClass="w-4 h-4" /> <span className="truncate">{cat?.name ?? "—"}</span>
               </p>
-              <div className="flex gap-1.5">
+              <div className="flex gap-1.5 shrink-0">
                 <EditBtn onClick={() => setForm({ id: b.id, categoryId: b.categoryId, limit: String(b.limit) })} />
                 <DeleteBtn onClick={() => { trashItem("budgets", b.id, `بودجهٔ ${cat?.name}`); toast("warn", "بودجه حذف شد."); }} />
               </div>
             </div>
-            <div className="flex justify-between text-[11px] font-black mb-1.5">
-              <span style={{ color: "var(--fp-text2)" }}>{faMoney(spent)} از {faMoney(b.limit)}</span>
-              <span style={{ color: pct > 100 ? "var(--fp-coral)" : pct > 80 ? "var(--fp-accent)" : "var(--fp-mint)" }}>٪{faNum(Math.round(pct))}</span>
+            <div className="flex flex-wrap justify-between gap-x-2 gap-y-1 text-[11px] font-black mb-1.5">
+              <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-text2)" }}>{faMoney(spent)} از {faMoney(b.limit)}</span>
+              <span className="tabular whitespace-nowrap" style={{ color: pct > 100 ? "var(--fp-coral)" : pct > 80 ? "var(--fp-accent)" : "var(--fp-mint)" }}>٪{faNum(Math.round(pct))}</span>
             </div>
             <Bar pct={Math.min(100, pct)} color={pct > 100 ? "var(--fp-coral)" : pct > 80 ? "var(--fp-accent)" : "var(--fp-mint)"} />
           </div>
@@ -1188,15 +1194,15 @@ function GoalsTab() {
         return (
           <div key={g.id} className="card p-4 rise-in">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <p className="text-[13px] font-black flex items-center gap-2"><Target className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> {g.title}</p>
-              <div className="flex gap-1.5">
+              <p className="text-[13px] font-black flex items-center gap-2 min-w-0"><Target className="w-4 h-4 shrink-0" style={{ color: "var(--fp-accent)" }} /> <span className="truncate">{g.title}</span></p>
+              <div className="flex gap-1.5 shrink-0">
                 <EditBtn onClick={() => setForm({ id: g.id, title: g.title, target: String(g.target), saved: String(g.saved) })} />
                 <DeleteBtn onClick={() => { trashItem("savings_goals", g.id, g.title); toast("warn", "هدف حذف شد."); }} />
               </div>
             </div>
-            <div className="flex justify-between text-[11px] font-black mb-1.5">
-              <span style={{ color: "var(--fp-text2)" }}>{faMoney(g.saved)} از {faMoney(g.target)}</span>
-              <span style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.round(pct))}</span>
+            <div className="flex flex-wrap justify-between gap-x-2 gap-y-1 text-[11px] font-black mb-1.5">
+              <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-text2)" }}>{faMoney(g.saved)} از {faMoney(g.target)}</span>
+              <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.round(pct))}</span>
             </div>
             <Bar pct={Math.min(100, pct)} color="var(--fp-accent)" />
           </div>
@@ -1241,13 +1247,13 @@ function RecurringTab() {
       {state.recurring.map((r) => {
         const cat = state.categories.find((c) => c.id === r.categoryId);
         return (
-          <div key={r.id} className="card p-4 flex items-center gap-3 rise-in">
-            <CatGlyph icon={cat?.icon} color={cat?.color} className="w-10 h-10 rounded-xl" iconClass="w-5 h-5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-black flex items-center gap-2"><Repeat className="w-3.5 h-3.5" style={{ color: "var(--fp-accent)" }} /> {r.title}</p>
-              <p className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>روز {faNum(r.dayOfMonth)} هر ماه · {faMoney(r.amount)} تومان</p>
+          <div key={r.id} className="card p-4 flex flex-wrap items-center gap-x-3 gap-y-2 rise-in">
+            <CatGlyph icon={cat?.icon} color={cat?.color} className="w-10 h-10 rounded-xl shrink-0" iconClass="w-5 h-5" />
+            <div className="flex-1 min-w-0 basis-40">
+              <p className="text-[13px] font-black flex items-center gap-2 min-w-0"><Repeat className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-accent)" }} /> <span className="truncate">{r.title}</span></p>
+              <p className="text-[10.5px] font-bold tabular truncate" style={{ color: "var(--fp-text3)" }}>روز {faNum(r.dayOfMonth)} هر ماه · {faMoney(r.amount)} تومان</p>
             </div>
-            <DeleteBtn onClick={() => { trashItem("recurring", r.id, r.title); toast("warn", "حذف شد."); }} />
+            <span className="shrink-0"><DeleteBtn onClick={() => { trashItem("recurring", r.id, r.title); toast("warn", "حذف شد."); }} /></span>
           </div>
         );
       })}
@@ -1270,10 +1276,10 @@ function MethodsTab() {
         }}><Plus className="w-4 h-4" strokeWidth={3} /> افزودن</button>
       </div>
       {state.payment_methods.map((m) => (
-        <div key={m.id} className="card p-4 flex items-center gap-3 rise-in">
-          <Wallet className="w-5 h-5" style={{ color: "var(--fp-accent)" }} />
-          <p className="flex-1 text-[13px] font-black">{m.name}</p>
-          <DeleteBtn onClick={() => { trashItem("payment_methods", m.id, m.name); toast("warn", "حذف شد."); }} />
+        <div key={m.id} className="card p-4 flex flex-wrap items-center gap-x-3 gap-y-2 rise-in">
+          <Wallet className="w-5 h-5 shrink-0" style={{ color: "var(--fp-accent)" }} />
+          <p className="flex-1 min-w-0 basis-32 text-[13px] font-black truncate">{m.name}</p>
+          <span className="shrink-0"><DeleteBtn onClick={() => { trashItem("payment_methods", m.id, m.name); toast("warn", "حذف شد."); }} /></span>
         </div>
       ))}
     </div>
