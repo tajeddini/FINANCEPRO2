@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
 import {
-  pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud,
+  pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, envCloud,
   mergePulledState, sameLedgerContent,
   readSyncStatus, writeSyncStatus, type SyncStatus,
 } from "./lib/cloud";
@@ -157,19 +157,30 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
 
 function CloudConnectBox() {
   const toast = useToast();
-  const [cfg, setCfg] = useState(() => getCloud());
+  /* اتصال مؤثر: اولویت با تنظیم دستیِ ذخیره‌شده در مرورگر، بعد متغیرهای محیطی Vercel */
+  const envCfg = envCloud();
+  const [localCfg, setLocalCfg] = useState(() => getCloud());
+  const cfg = localCfg ?? envCfg;
+  const source: "manual" | "env" | null = localCfg ? "manual" : envCfg ? "env" : null;
   const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState(cfg?.url ?? "");
-  const [key, setKey] = useState(cfg?.key ?? "");
+  const [url, setUrl] = useState("");
+  const [key, setKey] = useState("");
 
   const save = () => {
     const u = url.trim();
     const k = key.trim();
     if (!u || !k) return toast("warn", "آدرس پروژه و کلید anon را کامل وارد کنید.");
     saveCloud({ url: u, key: k });
-    setCfg({ url: u, key: k });
+    setLocalCfg({ url: u, key: k });
     setOpen(false);
     toast("ok", "اتصال Supabase فعال شد — حالا با حساب دستگاه دیگر وارد شوید.");
+  };
+
+  /* بازکردن فرم با مقادیر مؤثر فعلی تا کاربر چیزی را از دست ندهد */
+  const openForm = () => {
+    setUrl(cfg?.url ?? "");
+    setKey(cfg?.key ?? "");
+    setOpen((o) => !o);
   };
 
   return (
@@ -183,14 +194,23 @@ function CloudConnectBox() {
         <span className="text-[11.5px] font-black flex items-center gap-1.5"
           style={{ color: cfg ? "var(--fp-mint)" : "var(--fp-accent)" }}>
           <span className={`w-1.5 h-1.5 rounded-full ${cfg ? "pulse-soft" : "blink-dot"}`} style={{ background: "currentColor" }} />
-          {cfg ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها" : "اتصال ابری (اختیاری) — برای سینک بین دستگاه‌ها"}
+          {source === "env"
+            ? "اتصال ابری فعال — از متغیرهای محیطی Vercel ✅"
+            : source === "manual"
+              ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها"
+              : "اتصال ابری (اختیاری) — برای سینک بین دستگاه‌ها"}
         </span>
         <button className="text-[10.5px] font-black underline underline-offset-2 cursor-pointer"
           style={{ color: "var(--fp-text3)" }}
-          onClick={() => setOpen((o) => !o)}>
+          onClick={openForm}>
           {cfg ? "ویرایش" : "فعال‌سازی"}
         </button>
       </div>
+      {source === "env" && !open && (
+        <p className="text-[10.5px] font-bold mt-1.5 leading-5" style={{ color: "var(--fp-text3)" }}>
+          آدرس و کلید Supabase به‌طور خودکار خوانده شدند — نیازی به وارد کردن دستی نیست.
+        </p>
+      )}
       {!cfg && !open && (
         <p className="text-[10.5px] font-bold mt-1.5 leading-5" style={{ color: "var(--fp-text3)" }}>
           بدون اتصال، حساب‌ها فقط در همین مرورگر ذخیره می‌شوند.

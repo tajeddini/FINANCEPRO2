@@ -20,14 +20,23 @@ export const saveCloud = (cfg: CloudCfg) => {
   } catch { /* ignore */ }
 };
 
+/** متغیرهای محیطی Vercel — به‌صورت مستقیم از import.meta.env خوانده می‌شوند
+    تا Vite در build زمان، مقادیر VITE_* را مطمئناً جایگذاری کند */
+export function envCloud(): CloudCfg | null {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const url = env.VITE_SUPABASE_URL ?? "";
+  const key = env.VITE_SUPABASE_ANON_KEY ?? "";
+  return url && key ? { url, key } : null;
+}
+
 /** تنظیمات مؤثر: ترجیح با prefs کاربر؛ اگر نبود، تنظیمات مشترک؛ بعد متغیرهای محیطی Vercel */
 export function effectivePrefs(p: Prefs): Prefs {
-  const env = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
+  const env = envCloud();
   const shared = getCloud();
   return {
     ...p,
-    syncUrl: p.syncUrl || shared?.url || env.VITE_SUPABASE_URL || "",
-    syncKey: p.syncKey || shared?.key || env.VITE_SUPABASE_ANON_KEY || "",
+    syncUrl: p.syncUrl || shared?.url || env?.url || "",
+    syncKey: p.syncKey || shared?.key || env?.key || "",
   };
 }
 
