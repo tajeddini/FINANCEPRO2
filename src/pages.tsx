@@ -698,22 +698,22 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                 return (
                   <div key={tx.id} className="flex items-center gap-2 px-4 py-2 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_2%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
                     <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-full shrink-0" iconClass="w-4 h-4" />
-                    <span className="text-[12px] font-semibold tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    <span className="order-1 text-[13px] font-semibold tabular shrink-0" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                       {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
                     </span>
-                    <span className="flex-1 min-w-0">
-                      <p className="text-[12px] font-medium truncate line-clamp-1" style={{ color: "var(--fp-text)" }}>
+                    <span className="order-2 flex-1 min-w-0">
+                      <p className="text-[13px] font-medium truncate line-clamp-2" style={{ color: "var(--fp-text)" }}>
                         <span>{tx.title}</span>
                         {tx.source === "bot" && <Bot className="w-3 h-3 me-1" style={{ color: "var(--fp-sky)" }} />}
-                        {tg && <span className="text-[8px] font-semibold rounded bg-[color-mix(in_srgb,${tg.color}_8%,_transparent)] px-1.5 py-0.5 me-1">{tg.label}</span>}
+                        {tg && <span className="text-[11px] font-semibold rounded bg-[color-mix(in_srgb,${tg.color}_8%,_transparent)] px-1.5 py-0.5 me-1">{tg.label}</span>}
                       </p>
                       {tx.note || tx.accountId || tx.payMethod ? (
-                        <p className="text-[10px] fade line-clamp-1" style={{ color: "var(--fp-subtext)" }}>
+                        <p className="text-[12px] font-medium truncate line-clamp-2" style={{ color: "var(--fp-subtext)" }}>
                           {tx.note ? `${tx.note} · ` : ""}{accById(state, tx.accountId)?.name ?? "—"}{tx.payMethod ? ` · ${tx.payMethod}` : ""}
                         </p>
                       ) : null}
                     </span>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity order-3">
                       <EditBtn size="sm" onClick={() => setEditing(tx)} />
                       <DeleteBtn size="sm" onClick={() => setConfirmDel(tx)} />
                     </div>
