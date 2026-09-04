@@ -2,7 +2,7 @@
    کش آفلاین + نمایش اعلان‌ها در پس‌زمینه
    ⚠️ بعد از هر تغییر مهم در فایل‌های JS/CSS، شمارهٔ نسخه را بالا ببرید
    تا کش قدیمی پاک شود و کاربران نسخهٔ تازه را بگیرند. */
-const CACHE = "financepro-v2";
+const CACHE = "financepro-v3";
 const PRECACHE = [".", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (e) => {

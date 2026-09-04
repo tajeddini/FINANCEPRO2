@@ -756,46 +756,58 @@ export function TransactionsPage({ initQuery, initCat }: { initQuery?: string; i
                 const c = catById(state, tx.categoryId);
                 const tg = tagById(state, tx.tag);
                 const acc = accById(state, tx.accountId);
-                const hasDetail = !!(tx.note || acc || tx.payMethod);
+                const detail = [tx.note, acc?.name, tx.payMethod].filter(Boolean).join(" · ");
+                const hasDetail = detail.length > 0;
+                const btnEdit = (
+                  <button title="ویرایش" onClick={() => setEditing(tx)}
+                    className="w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all hover:scale-110 active:scale-95"
+                    style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)" }}>
+                    <PencilLine className="w-3.5 h-3.5" />
+                  </button>
+                );
+                const btnDel = (
+                  <button title="حذف" onClick={() => setConfirmDel(tx)}
+                    className="w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all hover:scale-110 active:scale-95"
+                    style={{ background: "color-mix(in srgb, var(--fp-coral) 12%, transparent)", color: "var(--fp-coral)" }}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                );
                 return (
-                  <div key={tx.id} className="group flex items-center gap-2 px-4 py-2 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_3%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
+                  <div key={tx.id} className="flex items-center gap-2.5 px-4 py-2.5 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_3%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
                     {/* آیکون دسته */}
-                    <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-full shrink-0" iconClass="w-4 h-4" />
+                    <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-xl shrink-0" iconClass="w-4.5 h-4.5" />
 
-                    {/* همهٔ اطلاعات روی یک خط */}
-                    <p className="flex-1 min-w-0 truncate text-[12.5px]" style={{ color: "var(--fp-text)" }}>
-                      <span className="font-bold">{tx.title}</span>
-                      {tx.source === "bot" && <Bot className="w-3 h-3 inline -mt-0.5 mx-1" style={{ color: "var(--fp-sky)" }} />}
-                      {tg && (
-                        <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 mx-1 align-middle whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color }}>
-                          {tg.label}
-                        </span>
-                      )}
-                      {hasDetail && (
-                        <span className="font-medium" style={{ color: "var(--fp-text3)" }}>
-                          {tx.note ? ` · ${tx.note}` : ""}
-                          {acc ? ` · ${acc.name}` : ""}
-                          {tx.payMethod ? ` · ${tx.payMethod}` : ""}
-                        </span>
-                      )}
-                    </p>
-
-                    {/* دکمه‌های ویرایش و حذف — همیشه نمایان */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button title="ویرایش" onClick={() => setEditing(tx)}
-                        className="w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all hover:scale-110 active:scale-95"
-                        style={{ background: "color-mix(in srgb, var(--fp-accent) 13%, transparent)", color: "var(--fp-accent)" }}>
-                        <PencilLine className="w-3.5 h-3.5" />
-                      </button>
-                      <button title="حذف" onClick={() => setConfirmDel(tx)}
-                        className="w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all hover:scale-110 active:scale-95"
-                        style={{ background: "color-mix(in srgb, var(--fp-coral) 12%, transparent)", color: "var(--fp-coral)" }}>
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    {/* اطلاعات: دسکتاپ یک‌خط، موبایل/PWA دوخط خوانا */}
+                    <div className="flex-1 min-w-0">
+                      <p className="flex items-center gap-1.5 min-w-0 text-[13px] leading-6">
+                        <span className="font-black truncate" style={{ color: "var(--fp-text)" }}>{tx.title}</span>
+                        {tx.source === "bot" && <Bot className="w-3 h-3 shrink-0" style={{ color: "var(--fp-sky)" }} />}
+                        {tg && (
+                          <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0 whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color }}>
+                            {tg.label}
+                          </span>
+                        )}
+                        {hasDetail && (
+                          <span className="hidden md:inline text-[12px] font-medium truncate min-w-0" style={{ color: "var(--fp-text3)" }}>
+                            · {detail}
+                          </span>
+                        )}
+                      </p>
+                      <div className="flex items-center gap-1 md:hidden mt-0.5">
+                        {hasDetail ? (
+                          <p className="flex-1 min-w-0 truncate text-[11px] leading-5 font-medium" style={{ color: "var(--fp-text3)" }}>{detail}</p>
+                        ) : (
+                          <span className="flex-1" />
+                        )}
+                        <div className="flex gap-1 shrink-0">{btnEdit}{btnDel}</div>
+                      </div>
                     </div>
 
-                    {/* قیمت — سمت چپ */}
-                    <span className="text-[13px] font-bold tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                    {/* دکمه‌ها در دسکتاپ (در موبایل زیر جزئیات‌اند) */}
+                    <div className="hidden md:flex items-center gap-1 shrink-0">{btnEdit}{btnDel}</div>
+
+                    {/* قیمت — همیشه سمت چپ */}
+                    <span className="text-[13px] md:text-[13.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: tx.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                       {tx.type === "income" ? "+" : "−"}{faMoney(tx.amount)}
                     </span>
                   </div>
