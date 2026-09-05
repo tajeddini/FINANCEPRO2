@@ -1,6 +1,6 @@
 /* ---------- صفحهٔ تنظیمات ---------- */
 import { useRef, useState } from "react";
-import { Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
+import { Bell, Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
 import { migrateLoadedState, useStore, type AppState } from "../lib/data";
 import { copyText, faNum, todayISO } from "../lib/utils";
 import { listUsers, type User } from "../lib/auth";
@@ -10,6 +10,7 @@ import {
 } from "../lib/cloud";
 import { applyAccent, THEMES } from "../lib/themes";
 import { Field, TInput, useToast } from "../ui";
+import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import { dl } from "./shared";
 
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
@@ -97,19 +98,30 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
     toast("ok", "پشتیبان JSON دانلود شد.");
   };
 
+  /* منطق مشترک پارس پشتیبان — هم وب و هم بومی */
+  const applyBackupText = (text: string) => {
+    try {
+      const data = JSON.parse(text) as AppState;
+      if (!Array.isArray(data.transactions) || !Array.isArray(data.accounts)) throw new Error("bad");
+      mutate((d) => { Object.assign(d, migrateLoadedState(data), { prefs: d.prefs }); }, "بازیابی از پشتیبان");
+      toast("ok", "پشتیبان بازیابی شد — تنظیمات و اتصال ابری این دستگاه حفظ شد.");
+    } catch {
+      toast("err", "فایل پشتیبان معتبر نیست.");
+    }
+  };
+
+  /* مسیر وب/PWA */
   const importBackup = (file: File) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(String(reader.result)) as AppState;
-        if (!Array.isArray(data.transactions) || !Array.isArray(data.accounts)) throw new Error("bad");
-        mutate((d) => { Object.assign(d, migrateLoadedState(data), { prefs: d.prefs }); }, "بازیابی از پشتیبان");
-        toast("ok", "پشتیبان بازیابی شد — تنظیمات و اتصال ابری این دستگاه حفظ شد.");
-      } catch {
-        toast("err", "فایل پشتیبان معتبر نیست.");
-      }
-    };
+    reader.onload = () => applyBackupText(String(reader.result));
     reader.readAsText(file);
+  };
+
+  /* مسیر بومی (اندروید): انتخاب فایل پشتیبان با FilePicker */
+  const restoreBackupNative = async () => {
+    const picked = await pickFileNative(["application/json", "application/octet-stream", "text/plain"]);
+    if (!picked) return toast("warn", "فایلی انتخاب نشد.");
+    applyBackupText(base64ToUtf8(picked.base64));
   };
 
   const users = listUsers();
@@ -213,7 +225,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
         <h3 className="text-[14px] font-black flex items-center gap-2"><Download className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> پشتیبان‌گیری</h3>
         <div className="flex flex-wrap gap-2 mt-4">
           <button className="btn btn-ghost btn-sm" onClick={exportBackup}><Download className="w-4 h-4" /> دانلود پشتیبان JSON</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4" /> بازیابی از پشتیبان</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { if (isNativePlat()) void restoreBackupNative(); else fileRef.current?.click(); }}><Upload className="w-4 h-4" /> بازیابی از پشتیبان</button>
           <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }} />
         </div>
       </div>

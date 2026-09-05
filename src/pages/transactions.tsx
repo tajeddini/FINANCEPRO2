@@ -3,8 +3,9 @@ import { useMemo, useRef, useState } from "react";
 import { Bot, CalendarDays, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
 import { accById, catById, getTags, sumTx, tagById, useStore, type ID, type Tx } from "../lib/data";
 import { faDate, faMoney, faNum, inRange } from "../lib/utils";
-import { parseCSV, exportCSV } from "../excel";
+import { parseCSV, exportCSV, xlsxBytesToCsv } from "../excel";
 import { CatGlyph, Confirm, Empty, PeriodFilter, TInput, TSelect, usePeriod, useToast } from "../ui";
+import { base64ToBytes, base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import TxModal from "./tx-modal";
 
 export default function TransactionsPage({ initQuery, initCat }: { initQuery?: string; initCat?: string }) {
@@ -43,23 +44,60 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
     return [...m.entries()];
   }, [filtered]);
 
+  /* منطق مشترک پارس و ورود — هم مسیر وب و هم مسیر بومی از این استفاده می‌کنند */
+  const applyCsvText = (text: string, label: string) => {
+    const { rows, errors } = parseCSV(text, state);
+    if (!rows.length) return toast("err", `فایل خوانا نبود${errors ? ` (${faNum(errors)} خط خطا)` : ""}.`);
+    mutate((d) => {
+      for (const r of rows) {
+        d.transactions.unshift({
+          id: Math.random().toString(36).slice(2, 10), date: r.date, type: r.type, amount: r.amount,
+          title: r.title, categoryId: r.categoryId || d.categories[0]?.id || "", accountId: d.accounts[0]?.id || "",
+          createdAt: Date.now(), source: "app",
+        });
+      }
+    }, `ورود ${faNum(rows.length)} تراکنش از ${label}`);
+    toast("ok", `${faNum(rows.length)} تراکنش وارد شد${errors ? `، ${faNum(errors)} خط نادیده گرفته شد` : ""}.`);
+  };
+
+  /* مسیر وب/PWA */
   const onImport = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const { rows, errors } = parseCSV(String(reader.result), state);
-      if (!rows.length) return toast("err", `فایل خوانا نبود${errors ? ` (${faNum(errors)} خط خطا)` : ""}.`);
-      mutate((d) => {
-        for (const r of rows) {
-          d.transactions.unshift({
-            id: Math.random().toString(36).slice(2, 10), date: r.date, type: r.type, amount: r.amount,
-            title: r.title, categoryId: r.categoryId || d.categories[0]?.id || "", accountId: d.accounts[0]?.id || "",
-            createdAt: Date.now(), source: "app",
-          });
+    if (/\.xlsx$/i.test(file.name)) {
+      void file.arrayBuffer().then(async (buf) => {
+        try {
+          applyCsvText(await xlsxBytesToCsv(new Uint8Array(buf)), "Excel");
+        } catch {
+          toast("err", "خواندن فایل Excel ناموفق بود.");
         }
-      }, `ورود ${faNum(rows.length)} تراکنش از CSV`);
-      toast("ok", `${faNum(rows.length)} تراکنش وارد شد${errors ? `، ${faNum(errors)} خط نادیده گرفته شد` : ""}.`);
-    };
-    reader.readAsText(file);
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => applyCsvText(String(reader.result), "CSV");
+      reader.readAsText(file);
+    }
+  };
+
+  /* مسیر بومی (اندروید): انتخاب فایل با FilePicker و خواندن محتوا */
+  const onImportNative = async () => {
+    const picked = await pickFileNative([
+      "text/csv",
+      "text/comma-separated-values",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/octet-stream",
+    ]);
+    if (!picked) return toast("warn", "فایلی انتخاب نشد.");
+    try {
+      let text: string;
+      if (/\.xlsx$/i.test(picked.name)) {
+        text = await xlsxBytesToCsv(base64ToBytes(picked.base64));
+      } else {
+        text = base64ToUtf8(picked.base64);
+      }
+      applyCsvText(text, /\.xlsx$/i.test(picked.name) ? "Excel" : "CSV");
+    } catch {
+      toast("err", "خواندن فایل ناموفق بود — فرمت CSV یا XLSX را بررسی کنید.");
+    }
   };
 
   return (
@@ -67,10 +105,13 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
         <h1 className="font-display text-3xl md:text-4xl">تراکنش‌ها</h1>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()}>
-            <Upload className="w-4 h-4" /> ورود CSV
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => { if (isNativePlat()) void onImportNative(); else fileRef.current?.click(); }}
+          >
+            <Upload className="w-4 h-4" /> ورود CSV/Excel
           </button>
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = ""; }} />
+          <input ref={fileRef} type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = ""; }} />
           <button className="btn btn-ghost btn-sm" onClick={() => { exportCSV(state); toast("ok", "خروجی CSV دانلود شد."); }}>
             <Download className="w-4 h-4" /> خروجی CSV
           </button>
