@@ -1,12 +1,21 @@
 /* ---------- اجزای مشترک صفحه‌ها ---------- */
+import { exportFile } from "../lib/native-files";
 
-/** دانلود یک Blob با نام فایل */
+/* حدس MIME از پسوند — برای برگهٔ اشتراک بومی */
+const guessMime = (name: string): string => {
+  if (name.endsWith(".json")) return "application/json";
+  if (name.endsWith(".csv")) return "text/csv";
+  if (name.endsWith(".ics")) return "text/calendar";
+  if (name.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  return "application/octet-stream";
+};
+
+/**
+ * دانلود یک Blob با نام فایل.
+ * در وب/PWA → دانلود مرورگری؛ در اندروید → ذخیره + برگهٔ اشتراک بومی.
+ */
 export const dl = (blob: Blob, name: string) => {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  void exportFile(name, blob, blob.type || guessMime(name));
 };
 
 export function Head({ icon, title, small }: { icon: React.ReactNode; title: string; small?: boolean }) {

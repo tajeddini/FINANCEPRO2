@@ -120,6 +120,26 @@ node patch-android-mirror.cjs
 
 ---
 
+## امضای دیباگ ثابت (آپدیت بدون خطای «package conflicts»)
+
+اگر هنگام نصبِ APK جدید روی نسخهٔ قبلی خطای **«App not installed as package conflicts with an existing package»** گرفتید، یعنی دو APK با کلیدهای متفاوت امضا شده‌اند. پروژه این مشکل را حل کرده:
+
+- **`keys/debug.keystore.p12`** — کی‌استور ثابت (commit شده) که همهٔ بیلدها از آن استفاده می‌کنند:
+  - alias: `androiddebugkey` · password: `android` · نوع: PKCS12 · اعتبار: ۱۰۰ سال
+- **`keys/debug-signing.gradle`** — تنظیم امضا که به `android/app/build.gradle` الحاق می‌شود.
+- **Workflow گیت‌هاب** بعد از `cap sync` خودکار این امضا را اعمال می‌کند (چون `android/` در CI از نو ساخته می‌شود).
+- **اسکریپت‌های `build-android.bat/sh`** هم همان امضا را لوکال اعمال می‌کنند تا APK لوکال و CI هم‌امضا باشند.
+
+> ⚠️ **یک‌بار:** بعد از فعال‌شدن این تغییر، اپ نصب‌شدهٔ فعلی روی گوشی را **uninstall** کنید و APK جدید را نصب کنید. آپدیتهای بعد از آن، تمیز روی هم نصب می‌شوند.
+
+اگر روزی کی‌استور گم شد، با این فرمان دوباره ساخته می‌شود (اما امضای قبلی‌ها دیگر با آن نصب نمی‌شوند — فقط یک‌بار اجرا کنید و خروجی را commit کنید):
+
+```bash
+node scripts/gen-debug-keystore.mjs --force
+```
+
+---
+
 ## انتشار در گوگل‌پلی
 
 ۱. حق توسعه‌دهنده ۲۵ دلار (یک‌بار) در [play.google.com/console](https://play.google.com/console)

@@ -1,0 +1,27 @@
+/* ═══════════════════════════════════════════════════════════
+   امضای دیباگ ثابت — فایننس‌پرو
+   ═══════════════════════════════════════════════════════════
+   این فایل توسط workflow گیت‌هاب (و اسکریپت‌های build-android)
+   به android/app/build.gradle الحاق می‌شود تا همهٔ بیلدهای APK
+   با یک کلید ثابت امضا شوند → آپدیت اپ روی نسخهٔ قبلی بدون
+   خطای «package conflicts» نصب می‌شود.
+
+   ⚠️ فقط برای دیباگ — انتشار گوگل‌پلی کلید جداگانه دارد.
+   کی‌استور: keys/debug.keystore.p12 (alias=androiddebugkey, pass=android) */
+
+android {
+    signingConfigs {
+        fpDebug {
+            storeFile new File(rootDir, "../keys/debug.keystore.p12")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+            storeType "PKCS12"
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.fpDebug
+        }
+    }
+}

@@ -27,6 +27,12 @@ echo "[4/4] سینک سایت داخل اپ اندروید ..."
 npx cap sync android
 node patch-android-mirror.cjs >/dev/null
 
+# امضای دیباگ ثابت — همان کلید CI تا APK لوکال و CI هم‌امضا باشند
+if [ -f "keys/debug.keystore.p12" ] && ! grep -q "keys/debug-signing.gradle" android/app/build.gradle; then
+  echo "apply from: '$(pwd)/keys/debug-signing.gradle'" >> android/app/build.gradle
+  echo "✅ امضای دیباگ ثابت اعمال شد."
+fi
+
 echo ""
 echo "═══════════════════════════════════════════════════════════"
 echo " آماده است! حالا بزن:  npx cap open android"
