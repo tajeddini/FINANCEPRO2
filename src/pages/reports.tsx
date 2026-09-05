@@ -1,6 +1,7 @@
 /* ---------- صفحهٔ گزارش‌ها و تحلیل ---------- */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowLeftRight, BarChart3, Copy, Download, FileDown, Printer, Shield, Sparkles, Target, TrendingUp } from "lucide-react";
+import { printOrPdf } from "../lib/pdf";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { catById, getTags, useStore, type AppState } from "../lib/data";
 import { addJalaliMonths, copyText, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange, jalaliToday } from "../lib/utils";
@@ -120,13 +121,27 @@ export default function ReportsPage() {
   const [reportText, setReportText] = useState("");
   const openReport = () => { setReportText(buildSmartReport(state)); setReportOpen(true); };
 
+  /* چاپ / PDF — در اندروید PDF ساخته و ذخیره می‌شود */
+  const pageRef = useRef<HTMLDivElement>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const doPdf = async () => {
+    setPdfBusy(true);
+    try {
+      await printOrPdf(pageRef.current, `financepro-report-${pf.label.replace(/\s+/g, "-")}`);
+    } catch {
+      toast("err", "ساخت PDF ناموفق بود — دوباره تلاش کنید.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-5" ref={pageRef}>
       <div className="flex flex-wrap items-center justify-between gap-3 rise-in">
         <h1 className="font-display text-3xl md:text-4xl flex items-center gap-3">
           <BarChart3 className="w-8 h-8" style={{ color: "var(--fp-accent)" }} /> گزارش‌ها و تحلیل
         </h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2" data-nopdf>
           <button className="btn btn-mint btn-sm" onClick={openReport}>
             <Sparkles className="w-4 h-4" /> گزارش هوشمند
           </button>
@@ -136,13 +151,15 @@ export default function ReportsPage() {
           <button className="btn btn-ghost btn-sm" onClick={() => { exportCSV(state); toast("ok", "خروجی CSV دانلود شد."); }}>
             <FileDown className="w-4 h-4" /> CSV
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>
-            <Printer className="w-4 h-4" /> چاپ / PDF
+          <button className="btn btn-ghost btn-sm" onClick={() => void doPdf()} disabled={pdfBusy}>
+            <Printer className="w-4 h-4" /> {pdfBusy ? "در حال ساخت PDF…" : "چاپ / PDF"}
           </button>
         </div>
       </div>
 
-      <PeriodFilter pf={pf} count={<>{faNum(monthTxs.length)} تراکنش</>} className="rise-in" />
+      <div data-nopdf>
+        <PeriodFilter pf={pf} count={<>{faNum(monthTxs.length)} تراکنش</>} className="rise-in" />
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-5 flex flex-col items-center rise-in" style={{ ["--d" as string]: "60ms" }}>

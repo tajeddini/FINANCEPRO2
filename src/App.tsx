@@ -406,15 +406,21 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     }
   }, [now, state.appointments, state.prefs.notifyEnabled, toast]);
 
-  /* پاکسازی سطل */
+  /* توست «فایل ذخیره شد» — توسط exportFile در اندروید منتشر می‌شود */
   useEffect(() => {
-    purgeTrash();
-  }, [now, purgeTrash]);
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ where: string; name: string }>).detail;
+      toastRef.current("ok", `«${d.name}» در ${d.where} ذخیره شد — می‌توانید ارسالش هم بکنید.`);
+    };
+    window.addEventListener("fp-file-saved", h);
+    return () => window.removeEventListener("fp-file-saved", h);
+  }, []);
 
   /* باززمان‌بندی یادآورهای بومی (اندروید) — با دیباونس تا با هر تغییر داده،
      اعلان‌ها دوباره ساخته شوند. فقط وقتی یادآورهای بومی فعال باشند. */
   useEffect(() => {
-    if (!state.prefs.nativeReminders) return;
+    /* خودِ rescheduleReminders تصمیم می‌گیرد کدام اعلان‌ها لازم است؛
+       اگر هیچ‌کدام فعال نباشد بی‌صدا برمی‌گردد. */
     const id = setTimeout(() => {
       void rescheduleReminders(state);
     }, 800);
@@ -422,10 +428,12 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     state.prefs.nativeReminders,
+    state.prefs.notifyEnabled,
     state.debts,
     state.installments,
     state.budgets,
     state.transactions,
+    state.appointments,
   ]);
 
   const tryPin = () => {

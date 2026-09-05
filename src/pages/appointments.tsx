@@ -8,6 +8,8 @@ import {
   useNow, WEEKDAYS_MIN,
 } from "../lib/utils";
 import { DeleteBtn, EditBtn, Field, JalaliPicker, MicButton, Modal, TInput, useToast } from "../ui";
+import { isNativePlat } from "../lib/native-files";
+import { requestNotificationPermission } from "../lib/reminders";
 import { dl } from "./shared";
 
 export default function AppointmentsPage() {
@@ -66,6 +68,15 @@ export default function AppointmentsPage() {
           </div>
         ) : (
           <button className="btn btn-mint btn-sm" onClick={async () => {
+            if (isNativePlat()) {
+              /* در اپ، اجازهٔ اعلان بومی (POST_NOTIFICATIONS) گرفته می‌شود —
+                 WebView اجازهٔ Notification مرورگری ندارد */
+              const granted = await requestNotificationPermission();
+              if (!granted) return toast("warn", "اجازهٔ اعلان داده نشد — از تنظیمات گوشی، اعلان‌ها را برای فایننس‌پرو روشن کنید.");
+              mutate((d) => { d.prefs.notifyEnabled = true; }, "یادآور قرارها فعال شد");
+              toast("ok", "یادآور فعال شد — سرِ ساعتِ قرارها اعلان می‌گیرید، حتی اگر اپ بسته باشد.");
+              return;
+            }
             let granted = true;
             if ("Notification" in window && Notification.permission === "default") {
               granted = (await Notification.requestPermission()) === "granted";
