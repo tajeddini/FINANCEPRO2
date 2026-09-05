@@ -40,6 +40,22 @@ jobs:
       - name: Sync Capacitor (copies dist/ into the app)
         run: npx cap sync android
 
+      # امضای دیباگ ثابت: هر اجرا با همان کلید commit‌شده امضا می‌کند تا
+      # آپدیت APK روی نسخهٔ نصب‌شده بدون خطای «package conflicts» انجام شود.
+      - name: Apply fixed debug signing
+        run: |
+          if [ ! -f "keys/debug.keystore.p12" ]; then
+            echo "::error::keys/debug.keystore.p12 not found — run 'node scripts/gen-debug-keystore.mjs' once and commit it."
+            exit 1
+          fi
+          MARKER="keys/debug-signing.gradle"
+          if ! grep -q "$MARKER" android/app/build.gradle; then
+            echo "apply from: '$GITHUB_WORKSPACE/keys/debug-signing.gradle'" >> android/app/build.gradle
+            echo "✅ Fixed debug signing applied."
+          else
+            echo "ℹ️ Signing already applied — skipped."
+          fi
+
       - name: Build debug APK
         run: |
           cd android

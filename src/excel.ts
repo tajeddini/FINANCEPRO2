@@ -5,13 +5,11 @@
 import type ExcelJS from "exceljs";
 import { getTags, type AppState, type Tx } from "./lib/data";
 import { faDate, jalaliDateStr, toEnDigits } from "./lib/utils";
+import { exportFile } from "./lib/native-files";
 
+/** دانلود/اشتراک فایل — در اندروید برگهٔ ذخیرهٔ بومی باز می‌شود، در وب دانلود مرورگری */
 function download(blob: Blob, name: string) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  void exportFile(name, blob, blob.type);
 }
 
 const PINE = "FF0D2C24";
