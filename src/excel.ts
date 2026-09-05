@@ -1,5 +1,8 @@
-/* ---------- خروجی اکسل حرفه‌ای چندبرگی با ExcelJS + CSV + ICS ---------- */
-import ExcelJS from "exceljs";
+/* ---------- خروجی اکسل حرفه‌ای چندبرگی با ExcelJS + CSV + ICS ----------
+   ⚡ ExcelJS فقط به‌صورت «تایپ» در سطح ماژول وارد می‌شود (بدون هزینهٔ runtime)
+   و کتابخانهٔ واقعی هنگام exportExcel به‌صورت داینامیک لود می‌شود تا
+   حدود ۹۰۰ کیلوبایت از باندلٔ اولیهٔ اپ خارج شود. */
+import type ExcelJS from "exceljs";
 import { getTags, type AppState, type Tx } from "./lib/data";
 import { faDate, jalaliDateStr, toEnDigits } from "./lib/utils";
 
@@ -161,7 +164,9 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
 
 /* ---------- خروجی اصلی ---------- */
 export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?: string }) {
-  const wb = new ExcelJS.Workbook();
+  /* لود داینامیک — فقط هنگام گرفتن خروجی اکسل دانلود می‌شود */
+  const { default: ExcelLib } = await import("exceljs");
+  const wb: ExcelJS.Workbook = new ExcelLib.Workbook();
   wb.creator = "FinancePro";
   wb.lastModifiedBy = "FinancePro";
   const txs = [...(opts?.txs ?? s.transactions)].sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
