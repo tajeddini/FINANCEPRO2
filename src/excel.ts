@@ -296,6 +296,30 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   download(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `financepro-${periodLabel.replace(/\s+/g, "-")}.xlsx`);
 }
 
+/** تبدیل بایت‌های یک فایل XLSX به متن CSV (برای ورود بومی در اندروید)
+    برگهٔ اول خوانده می‌شود و هر سلول به‌صورت ستون CSV درآمد می‌شود. */
+export async function xlsxBytesToCsv(bytes: Uint8Array): Promise<string> {
+  const { default: ExcelLib } = await import("exceljs");
+  const wb: ExcelJS.Workbook = new ExcelLib.Workbook();
+  await wb.xlsx.load(bytes.buffer as ArrayBuffer);
+  const ws = wb.worksheets[0];
+  if (!ws) return "";
+  const lines: string[] = [];
+  ws.eachRow((row) => {
+    /* row.values ایندکس ۱-مبنا است؛ ایندکس ۰ خالی است */
+    const cells = (row.values as unknown[]).slice(1).map((v) => {
+      if (v == null) return "";
+      /* سلول‌های فرمول/غنی — مقدار نهایی را بگیر */
+      const o = v as { result?: unknown; text?: string };
+      const raw = typeof o === "object" && "result" in o && o.result != null ? o.result : v;
+      const txt = String(raw).trim();
+      return `"${txt.replace(/"/g, '""')}"`;
+    });
+    lines.push(cells.join(","));
+  });
+  return lines.join("\n");
+}
+
 /* ---------- CSV ---------- */
 export function exportCSV(s: AppState) {
   const rows = [["date", "type", "title", "category", "amount"]];

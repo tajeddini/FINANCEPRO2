@@ -13,6 +13,16 @@ import {
   faDate, faNum, groupInt, isoToJalali, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange, jalaliShort,
   jalaliToday, jalaliToISO, MONTHS_FA, PERIODS, periodRange, todayISO, toEnDigits, type PeriodKey,
 } from "./lib/utils";
+import { Capacitor } from "@capacitor/core";
+
+/* پلتفرم بومی؟ — برای شاخه‌بندی بین Web Speech API و پلاگین اندروید */
+export const isNativePlatform = (): boolean => {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+};
 
 /* ================= توست ================= */
 type ToastKind = "ok" | "err" | "warn";
@@ -253,16 +263,34 @@ export function MicButton({
   const activeRef = useRef(false);
   const fieldRef = useRef("");
   const startBaseRef = useRef("");
-  const supported = typeof window !== "undefined" &&
-    !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition);
+  const native = isNativePlatform();
+  const supported = native || (typeof window !== "undefined" &&
+    !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition));
   const toast = useToast();
   const lastEmittedRef = useRef("");
+  /* هندل حذف لیسنر پلاگین بومی */
+  const nativeListenerRef = useRef<{ remove: () => Promise<void> } | null>(null);
 
   useEffect(() => () => {
     activeRef.current = false;
     sessionIdRef.current++;
     try { recRef.current?.abort(); } catch { /* ignore */ }
+    void stopNativeQuiet();
   }, []);
+
+  /* توقف بی‌صدای پلاگین بومی (بدون توست) */
+  const stopNativeQuiet = async () => {
+    try {
+      await nativeListenerRef.current?.remove();
+    } catch { /* ignore */ }
+    nativeListenerRef.current = null;
+    if (isNativePlatform()) {
+      try {
+        const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+        await SpeechRecognition.stop();
+      } catch { /* ignore */ }
+    }
+  };
 
   const hardStop = (msg?: string, kind: ToastKind = "err") => {
     activeRef.current = false;
@@ -270,7 +298,56 @@ export function MicButton({
     setListening(false);
     setHeard("");
     try { recRef.current?.abort(); } catch { /* ignore */ }
+    void stopNativeQuiet();
     if (msg) toast(kind, msg);
+  };
+
+  /* ---------- نشست بومی (اندروید) با پلاگین SpeechRecognition ---------- */
+  const beginNativeSession = async () => {
+    const myId = ++sessionIdRef.current;
+    startBaseRef.current = fieldRef.current.trim();
+    lastEmittedRef.current = "";
+    try {
+      const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+      const avail = await SpeechRecognition.available();
+      if (!avail.available) {
+        toast("warn", "تشخیص صوتی روی این دستگاه در دسترس نیست.");
+        return;
+      }
+      await SpeechRecognition.requestPermissions();
+
+      /* لیسنر نتایج زنده — با همان منطق idempotent وب (appendSmart) */
+      const handle = await SpeechRecognition.addListener(
+        "partialResults",
+        (data: { matches: string[] }) => {
+          if (myId !== sessionIdRef.current) return;
+          const current = (data.matches || []).join(" ").trim();
+          if (!current) return;
+          setHeard(current);
+          const merged = appendSmart(startBaseRef.current, current);
+          if (merged !== lastEmittedRef.current) {
+            lastEmittedRef.current = merged;
+            onText(merged);
+          }
+        }
+      );
+      nativeListenerRef.current = handle;
+
+      await SpeechRecognition.start({
+        language: "fa-IR",
+        maxResults: 10,
+        partialResults: true,
+        popup: false,
+      });
+      activeRef.current = true;
+      setListening(true);
+      setHeard("");
+    } catch {
+      activeRef.current = false;
+      setListening(false);
+      setHeard("");
+      toast("err", "تشخیص صوتی ناموفق بود — دسترسی میکروفون را بررسی کنید.");
+    }
   };
 
   const beginSession = () => {
@@ -345,7 +422,7 @@ export function MicButton({
 
   const toggle = () => {
     if (!supported) {
-      toast("warn", "مرورگر شما از تایپ صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
+      toast("warn", "دستگاه شما از تایپ صوتی پشتیبانی نمی‌کند.");
       return;
     }
     if (listening || activeRef.current) {
@@ -353,7 +430,9 @@ export function MicButton({
       return;
     }
     fieldRef.current = baseText;
-    beginSession();
+    /* شاخه‌بندی: پلتفرم بومی از پلاگین اندروید، وب از Web Speech API */
+    if (native) void beginNativeSession();
+    else beginSession();
   };
 
   return (

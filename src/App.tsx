@@ -18,6 +18,7 @@ import {
 import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
 import { ToastProvider, useToast, TInput, Field } from "./ui";
 import { GlobalSearch } from "./components/global-search";
+import { rescheduleReminders } from "./lib/reminders";
 import TxModal from "./pages/tx-modal";
 
 /* بارگذاری تنبل صفحه‌ها — هر صفحه فقط وقتی باز شود دانلود می‌شود */
@@ -409,6 +410,23 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   useEffect(() => {
     purgeTrash();
   }, [now, purgeTrash]);
+
+  /* باززمان‌بندی یادآورهای بومی (اندروید) — با دیباونس تا با هر تغییر داده،
+     اعلان‌ها دوباره ساخته شوند. فقط وقتی یادآورهای بومی فعال باشند. */
+  useEffect(() => {
+    if (!state.prefs.nativeReminders) return;
+    const id = setTimeout(() => {
+      void rescheduleReminders(state);
+    }, 800);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    state.prefs.nativeReminders,
+    state.debts,
+    state.installments,
+    state.budgets,
+    state.transactions,
+  ]);
 
   const tryPin = () => {
     const en = pinInput.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));

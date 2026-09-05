@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Mic, Search, StickyNote } from "lucide-react";
 import { useStore } from "../lib/data";
 import { faNum } from "../lib/utils";
-import { appendSmart, CatGlyph, useToast } from "../ui";
+import { appendSmart, CatGlyph, isNativePlatform, useToast } from "../ui";
 
 export function GlobalSearch({ onNavigate }: {
   onNavigate: (page: string, drill?: { cat?: string; query?: string }) => void;
@@ -17,8 +17,72 @@ export function GlobalSearch({ onNavigate }: {
   const activeRecRef = useRef(false);
   const vsSessionRef = useRef(0);
   const vsLastEmittedRef = useRef("");
+  const nativeListenerRef = useRef<{ remove: () => Promise<void> } | null>(null);
+
+  /* ---------- جست‌وجوی صوتی بومی (اندروید) با پلاگین ---------- */
+  const voiceSearchNative = async () => {
+    const myId = ++vsSessionRef.current;
+    vsLastEmittedRef.current = "";
+    try {
+      const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+      const avail = await SpeechRecognition.available();
+      if (!avail.available) {
+        toast("warn", "جست‌وجوی صوتی روی این دستگاه در دسترس نیست.");
+        return;
+      }
+      await SpeechRecognition.requestPermissions();
+      const handle = await SpeechRecognition.addListener(
+        "partialResults",
+        (data: { matches: string[] }) => {
+          if (myId !== vsSessionRef.current) return;
+          const current = (data.matches || []).join(" ").trim();
+          if (!current) return;
+          const merged = appendSmart("", current);
+          if (merged !== vsLastEmittedRef.current) {
+            vsLastEmittedRef.current = merged;
+            setQ(merged);
+            setOpen(true);
+          }
+        }
+      );
+      nativeListenerRef.current = handle;
+      activeRecRef.current = true;
+      await SpeechRecognition.start({
+        language: "fa-IR",
+        maxResults: 10,
+        partialResults: true,
+        popup: false,
+      });
+      setListening(true);
+    } catch {
+      setListening(false);
+      activeRecRef.current = false;
+      toast("err", "جست‌وجوی صوتی ناموفق بود — دسترسی میکروفون را بررسی کنید.");
+    }
+  };
+
+  /* توقف ضبط بومی هنگام کلیک دوباره */
+  const stopNative = async () => {
+    vsSessionRef.current++;
+    setListening(false);
+    activeRecRef.current = false;
+    try { await nativeListenerRef.current?.remove(); } catch { /* ignore */ }
+    nativeListenerRef.current = null;
+    try {
+      const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+      await SpeechRecognition.stop();
+    } catch { /* ignore */ }
+  };
 
   const voiceSearch = () => {
+    /* شاخهٔ بومی: پلاگین اندروید */
+    if (isNativePlatform()) {
+      if (activeRecRef.current) { void stopNative(); return; }
+      void voiceSearchNative();
+      return;
+    }
+
+    /* شاخهٔ وب: Web Speech API (بدون تغییر) */
     const W = window as unknown as Record<string, unknown>;
     const SR = (W.SpeechRecognition || W.webkitSpeechRecognition) as (new () => {
       lang: string; interimResults: boolean; continuous: boolean;
