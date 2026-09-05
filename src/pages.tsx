@@ -1,9 +1,9 @@
 /* ---------- صفحه‌های اصلی برنامه (بخش اول) ---------- */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDownRight, ArrowUpLeft, Banknote, Bot, CalendarDays, Check, Coins, Download, Filter,
+  ArrowDownRight, ArrowUpLeft, Banknote, Bot, Calculator, CalendarDays, Check, Coins, Download, Filter,
   Landmark, Lightbulb, MessageSquare, PencilLine, Plus, QrCode, Receipt, Repeat,
-  Scale, Search, Sparkles, Trash2, Upload, Wallet,
+  Scale, Search, Sparkles, Trash2, Upload, Wallet, X,
 } from "lucide-react";
 import {
   accById, catById, detectSmart, getTags, normalizeInstallments, sumTx, tagById, useStore,
@@ -53,6 +53,7 @@ export function TxModal({
   const [suggestCat, setSuggestCat] = useState("");
   const [smsOpen, setSmsOpen] = useState(false);
   const [smsText, setSmsText] = useState("");
+  const [calcOpen, setCalcOpen] = useState(false);
   const [smsResult, setSmsResult] = useState<SmsParse | null>(null);
 
   useEffect(() => {
@@ -324,7 +325,20 @@ export function TxModal({
             className="input resize-none !text-[13.5px] !leading-6" />
           <div className="mt-2"><MicButton onText={(t) => onNote(t)} baseText={note} /></div>
         </Field>
-        <Field label="مبلغ (تومان)"><AmountInput value={amount} onChange={setAmount} /></Field>
+        <Field label="مبلغ (تومان)">
+          <div className="flex gap-1.5 items-stretch">
+            <AmountInput value={amount} onChange={setAmount} />
+            <button type="button" onClick={() => setCalcOpen(true)} title="ماشین‌حساب"
+              className="w-12 shrink-0 rounded-xl border grid place-items-center cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95"
+              style={{
+                borderColor: "color-mix(in srgb, var(--fp-accent) 45%, transparent)",
+                color: "var(--fp-accent)",
+                background: "color-mix(in srgb, var(--fp-accent) 9%, var(--fp-bg))",
+              }}>
+              <Calculator className="w-5 h-5" />
+            </button>
+          </div>
+        </Field>
         <Field label="دسته">
           <TSelect value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setTouchedCat(true); }}>
             {cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -364,7 +378,144 @@ export function TxModal({
       </div>
       </>
       )}
+
+      <CalculatorModal open={calcOpen} onClose={() => setCalcOpen(false)} initialValue={amount}
+        onApply={(v) => { setAmount(String(Math.round(v))); setCalcOpen(false); }} />
     </Modal>
+  );
+}
+
+/* ================= ماشین‌حساب ساده (برای ورود مبلغ) ================= */
+function CalculatorModal({ open, onClose, onApply, initialValue }: {
+  open: boolean; onClose: () => void; onApply: (v: number) => void; initialValue?: string;
+}) {
+  const [display, setDisplay] = useState("0");
+  const [acc, setAcc] = useState<number | null>(null);
+  const [op, setOp] = useState<"+" | "-" | "*" | "/" | null>(null);
+  const [fresh, setFresh] = useState(true);
+
+  useEffect(() => {
+    if (open) {
+      const v = Number(initialValue) || 0;
+      setDisplay(v > 0 ? String(v) : "0");
+      setAcc(null); setOp(null); setFresh(v <= 0);
+    }
+  }, [open]);
+
+  const compute = (a: number, b: number, o: string): number => {
+    switch (o) {
+      case "+": return a + b;
+      case "-": return a - b;
+      case "*": return a * b;
+      case "/": return b === 0 ? 0 : a / b;
+      default: return b;
+    }
+  };
+  const opSymbol = (o: string) => (o === "+" ? "+" : o === "-" ? "−" : o === "*" ? "×" : "÷");
+
+  const digit = (d: string) => {
+    if (fresh) {
+      setDisplay(d === "." ? "0." : d);
+      setFresh(false);
+    } else {
+      if (d === "." && display.includes(".")) return;
+      setDisplay(display === "0" && d !== "." ? d : display + d);
+    }
+  };
+  const applyOp = (nextOp: "+" | "-" | "*" | "/") => {
+    const cur = parseFloat(display) || 0;
+    if (acc === null || op === null) {
+      setAcc(cur);
+    } else if (!fresh) {
+      const res = compute(acc, cur, op);
+      setAcc(res);
+      setDisplay(String(Math.round(res)));
+    }
+    setOp(nextOp);
+    setFresh(true);
+  };
+  const equals = () => {
+    if (op === null || acc === null) return;
+    const res = compute(acc, parseFloat(display) || 0, op);
+    setDisplay(String(Math.round(res)));
+    setAcc(null); setOp(null); setFresh(true);
+  };
+  const clearAll = () => { setDisplay("0"); setAcc(null); setOp(null); setFresh(true); };
+  const backspace = () => {
+    if (fresh) return;
+    const next = display.length > 1 ? display.slice(0, -1) : "0";
+    setDisplay(next === "" || next === "-" ? "0" : next);
+    if (next === "0") setFresh(true);
+  };
+  const percent = () => {
+    setDisplay(String(Math.round((parseFloat(display) || 0) / 100)));
+    setFresh(true);
+  };
+
+  const fmtNum = (s: string): string => {
+    const [i, d] = s.split(".");
+    const intPart = i === "" || i === "-" ? "0" : i;
+    const grouped = faNum(groupInt(Number(intPart)));
+    return d !== undefined ? grouped + "٫" + faNum(d) : grouped;
+  };
+
+  if (!open) return null;
+
+  const numBtn = "h-12 rounded-xl text-[16px] font-black cursor-pointer transition-all duration-100 hover:brightness-110 active:scale-95";
+
+  return (
+    <div className="fixed inset-0 z-[140] grid place-items-center p-4" role="dialog" aria-modal>
+      <div className="absolute inset-0" style={{ background: "rgba(3,15,10,0.75)", backdropFilter: "blur(4px)" }} onClick={onClose} />
+      <div className="pop-in relative w-full max-w-xs card p-5" style={{ background: "var(--fp-bg2)", borderColor: "var(--fp-border2)" }}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl flex items-center gap-2" style={{ color: "var(--fp-accent)" }}>
+            <Calculator className="w-5 h-5" /> ماشین‌حساب
+          </h2>
+          <button className="icon-btn" onClick={onClose} title="بستن"><X className="w-4.5 h-4.5" /></button>
+        </div>
+
+        <div className="rounded-xl px-4 py-3 text-end mb-4 overflow-hidden" style={{ background: "var(--fp-bg)", border: "1px solid var(--fp-border)" }}>
+          {op !== null && acc !== null && (
+            <p className="text-[12px] font-bold tabular" style={{ color: "var(--fp-text3)" }} dir="ltr">
+              {faNum(groupInt(acc))} {opSymbol(op)}
+            </p>
+          )}
+          <p className="font-display text-[28px] leading-tight tabular truncate" style={{ color: "var(--fp-text)" }} dir="ltr">
+            {fmtNum(display)}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2" dir="ltr">
+          <button className={numBtn} style={{ background: "color-mix(in srgb, var(--fp-coral) 15%, var(--fp-bg))", color: "var(--fp-coral)" }} onClick={clearAll}>C</button>
+          <button className={numBtn} style={{ background: "var(--fp-bg)", color: "var(--fp-text2)" }} onClick={backspace}>⌫</button>
+          <button className={numBtn} style={{ background: "var(--fp-bg)", color: "var(--fp-text2)" }} onClick={percent}>٪</button>
+          <button className={numBtn} style={{ background: "color-mix(in srgb, var(--fp-accent) 18%, var(--fp-bg))", color: "var(--fp-accent)" }} onClick={() => applyOp("/")}>÷</button>
+
+          {["7", "8", "9"].map((d) => (
+            <button key={d} className={numBtn} style={{ background: "var(--fp-bg)", color: "var(--fp-text)" }} onClick={() => digit(d)}>{faNum(d)}</button>
+          ))}
+          <button className={numBtn} style={{ background: "color-mix(in srgb, var(--fp-accent) 18%, var(--fp-bg))", color: "var(--fp-accent)" }} onClick={() => applyOp("*")}>×</button>
+
+          {["4", "5", "6"].map((d) => (
+            <button key={d} className={numBtn} style={{ background: "var(--fp-bg)", color: "var(--fp-text)" }} onClick={() => digit(d)}>{faNum(d)}</button>
+          ))}
+          <button className={numBtn} style={{ background: "color-mix(in srgb, var(--fp-accent) 18%, var(--fp-bg))", color: "var(--fp-accent)" }} onClick={() => applyOp("-")}>−</button>
+
+          {["1", "2", "3"].map((d) => (
+            <button key={d} className={numBtn} style={{ background: "var(--fp-bg)", color: "var(--fp-text)" }} onClick={() => digit(d)}>{faNum(d)}</button>
+          ))}
+          <button className={numBtn} style={{ background: "color-mix(in srgb, var(--fp-accent) 18%, var(--fp-bg))", color: "var(--fp-accent)" }} onClick={() => applyOp("+")}>+</button>
+
+          <button className={`${numBtn} col-span-2`} style={{ background: "var(--fp-bg)", color: "var(--fp-text)" }} onClick={() => digit("0")}>۰</button>
+          <button className={numBtn} style={{ background: "var(--fp-bg)", color: "var(--fp-text)" }} onClick={() => digit(".")}>,</button>
+          <button className={numBtn} style={{ background: "var(--fp-accent)", color: "#071b16" }} onClick={equals}>=</button>
+        </div>
+
+        <button className="btn btn-gold w-full mt-4" onClick={() => onApply(parseFloat(display) || 0)}>
+          <Check className="w-4 h-4" strokeWidth={3} /> استفاده در مبلغ
+        </button>
+      </div>
+    </div>
   );
 }
 
