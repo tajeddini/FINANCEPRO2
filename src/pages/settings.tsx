@@ -11,6 +11,7 @@ import {
 import { applyAccent, THEMES } from "../lib/themes";
 import { Field, TInput, useToast } from "../ui";
 import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
+import { requestNotificationPermission, rescheduleReminders } from "../lib/reminders";
 import { dl } from "./shared";
 
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
@@ -124,6 +125,22 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
     applyBackupText(base64ToUtf8(picked.base64));
   };
 
+  const isNative = isNativePlat();
+
+  const toggleNativeReminders = async () => {
+    const turningOn = !p.nativeReminders;
+    if (turningOn) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        toast("warn", "اجازهٔ اعلان داده نشد — از تنظیمات اندروید اجازه بدهید.");
+        return;
+      }
+    }
+    mutate((d) => { d.prefs.nativeReminders = turningOn; }, turningOn ? "یادآورهای بومی فعال شد" : "یادآورهای بومی غیرفعال شد");
+    toast("ok", turningOn ? "یادآورهای بومی فعال شد — سررسیدها اطلاع‌رسانی می‌شوند." : "یادآورهای بومی خاموش شد.");
+    if (turningOn) void rescheduleReminders(state);
+  };
+
   const users = listUsers();
 
   return (
@@ -177,6 +194,21 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
           )}
         </div>
       </div>
+
+      {isNative && (
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "100ms" }}>
+          <h3 className="text-[14px] font-black flex items-center gap-2"><Bell className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> یادآورهای بومی (اندروید)</h3>
+          <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+            برای یادآوری سررسید بدهی‌ها و اقساط و هشدار عبور از سقف بودجه، اعلان محلی دریافت کنید.
+          </p>
+          <div className="flex items-center justify-between mt-4">
+            <span className="text-[12.5px] font-bold">{p.nativeReminders ? "فعال است" : "غیرفعال"}</span>
+            <button className={`chip ${p.nativeReminders ? "chip-on" : ""}`} onClick={toggleNativeReminders}>
+              <Bell className="w-3.5 h-3.5" /> {p.nativeReminders ? "خاموش کردن" : "فعال‌سازی"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "120ms" }}>
         <h3 className="text-[14px] font-black flex items-center gap-2"><Cloud className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> همگام‌سازی ابری (Supabase)</h3>
