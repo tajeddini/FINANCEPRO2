@@ -65,9 +65,11 @@ export async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /**
- * ذخیرهٔ فایل در حافظهٔ موقت اپ و بازکردن برگهٔ اشتراک/ذخیرهٔ بومی.
- * کاربر از آنجا می‌تواند در Downloads ذخیره کند یا به تلگرام و… بفرستد.
- * فقط در پلتفرم بومی صدا زده شود.
+ * ذخیرهٔ دائمی فایل + بازکردن برگهٔ اشتراک بومی.
+ * ترتیب ذخیره: ۱) Download/FinancePro (در اندروید قدیمی مستقیم به Downloads می‌رود)
+ *               ۲) Documents/FinancePro (همیشه در دسترس اپ)
+ * بعد برگهٔ اشتراک باز می‌شود تا کاربر بتواند ارسال یا جابه‌جا کند.
+ * رویداد `fp-file-saved` با مسیر ذخیره منتشر می‌شود (پوسته توست می‌دهد).
  */
 export async function saveAndShareNative(
   filename: string,
@@ -80,21 +82,45 @@ export async function saveAndShareNative(
       import("@capacitor/share"),
     ]);
     const data = await blobToBase64(blob);
-    const written = await Filesystem.writeFile({
-      path: filename,
-      data,
-      directory: Directory.Cache,
-      recursive: false,
-    });
+
+    /* ۱) تلاش برای ذخیره در Download (اندروید ≤۹: مستقیم به Downloads سیستم) */
+    let savedUri = "";
+    let savedWhere = "";
+    try {
+      const w = await Filesystem.writeFile({
+        path: `Download/FinancePro/${filename}`,
+        data,
+        directory: Directory.ExternalStorage,
+        recursive: true,
+      });
+      savedUri = w.uri;
+      savedWhere = "Download/FinancePro";
+    } catch {
+      /* ۲) ذخیرهٔ مطمئن در Documents اپ */
+      const w = await Filesystem.writeFile({
+        path: `FinancePro/${filename}`,
+        data,
+        directory: Directory.Documents,
+        recursive: true,
+      });
+      savedUri = w.uri;
+      savedWhere = "Documents/FinancePro";
+    }
+
+    /* اطلاع به پوسته برای توست «ذخیره شد» */
+    try {
+      window.dispatchEvent(new CustomEvent("fp-file-saved", { detail: { where: savedWhere, name: filename } }));
+    } catch { /* ignore */ }
+
+    /* برگهٔ اشتراک — برای ارسال به تلگرام/واتساپ یا جابه‌جایی دستی */
     await Share.share({
       title: filename,
-      text: filename,
-      url: written.uri,
-      dialogTitle: "ذخیره یا اشتراک‌گذاری فایل",
+      url: savedUri,
+      dialogTitle: "فایل ذخیره شد — ارسال یا جابه‌جایی",
     });
     return true;
   } catch {
-    /* کاربر برگه را بست یا خطا — فایل در Cache مانده */
+    /* کاربر برگه را بست یا خطای ذخیره */
     return false;
   }
 }

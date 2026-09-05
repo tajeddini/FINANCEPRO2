@@ -1,8 +1,14 @@
 /* ---------- یادآورهای بومی (اندروید) با @capacitor/local-notifications ----------
-   زمان‌بندی اعلان‌ها برای: سررسید بدهی‌ها، سررسید اقساط، و عبور از سقف بودجه.
+   زمان‌بندی اعلان‌ها برای:
+     - قرارها: دقیقاً سرِ ساعت (با ترجیح «یادآور صوتی» صفحهٔ قرارها)
+     - سررسید بدهی‌ها: ۲ روز قبل
+     - سررسید اقساط: ۱ روز قبل
+     - هشدار بودجه: عبور از ۸۰٪ و ۱۰۰٪ سقف (یک‌بار در ماه برای هر دسته)
+   همهٔ اعلان‌ها با allowWhileIdle زمان‌بندی می‌شوند تا حتی اگر اپ کاملاً
+   بسته باشد (Force-stop / Doze) باز هم به‌موقع در نوار اعلان گوشی بیایند.
    فقط در پلتفرم بومی اجرا می‌شود؛ وب/PWA مسیر اعلان مرورگری خودش را دارد. */
 import type { AppState } from "./data";
-import { faDate, faMoney, inRange, jalaliMonthRange, jalaliToday, todayISO } from "./utils";
+import { faDate, faMoney, faTime, inRange, jalaliMonthRange, jalaliToday, todayISO } from "./utils";
 import { isNativePlat } from "./native-files";
 
 /* هش deterministیک رشته به عدد صحیح (برای id اعلان) */
@@ -15,7 +21,7 @@ const hashId = (s: string): number => {
   return Math.abs(h | 0);
 };
 
-/* ساخت Date از ISO + ساعت ۹ صبح یا n روز قبل */
+/* ساخت Date از ISO + ساعت ۹ صبحِ n روز قبل */
 const atMorning = (iso: string, daysBefore: number): Date => {
   const d = new Date(iso + "T09:00:00");
   d.setDate(d.getDate() - daysBefore);
@@ -32,23 +38,28 @@ let permissionAsked = false;
  */
 export async function rescheduleReminders(state: AppState): Promise<void> {
   if (!isNativePlat()) return;
-  if (!state.prefs.nativeReminders) return;
 
-  try {
-    const { LocalNotifications } = await import("@capacitor/local-notifications");
+  const now = Date.now();
+  const notes: ScheduledNote[] = [];
 
-    /* اجازهٔ اعلان (اندروید ۱۳+ / API 33) — فقط یک‌بار در هر نشست */
-    if (!permissionAsked) {
-      permissionAsked = true;
-      try {
-        await LocalNotifications.requestPermissions();
-      } catch { /* کاربر رد کرد — اعلان‌ها بی‌صدا می‌مانند */ }
+  /* ---- قرارها: دقیقاً سرِ ساعت قرار (با ترجیح «یادآور صوتی») ---- */
+  if (state.prefs.notifyEnabled) {
+    for (const a of state.appointments) {
+      if (a.done) continue;
+      const at = new Date(`${a.date}T${a.time}:00`);
+      if (Number.isNaN(at.getTime()) || at.getTime() <= now) continue;
+      notes.push({
+        id: hashId("appt:" + a.id + ":" + a.date),
+        title: "یادآوری قرار",
+        body: `${a.title} — ساعت ${faTime(at)}`,
+        at,
+      });
     }
+  }
 
-    const now = Date.now();
-    const notes: ScheduledNote[] = [];
-
-    /* ---- سررسید بدهی‌ها: ۲ روز قبل ---- */
+  /* ---- بدهی‌ها، اقساط و بودجه (با ترجیح «یادآورهای بومی» در تنظیمات) ---- */
+  if (state.prefs.nativeReminders) {
+    /* سررسید بدهی‌ها: ۲ روز قبل */
     for (const d of state.debts) {
       if (d.kind !== "debt" || !d.due) continue;
       if (d.amount - d.paid <= 0) continue; /* تسویه شده */
@@ -62,7 +73,7 @@ export async function rescheduleReminders(state: AppState): Promise<void> {
       });
     }
 
-    /* ---- سررسید اقساط: ۱ روز قبل ---- */
+    /* سررسید اقساط: ۱ روز قبل */
     for (const inst of state.installments) {
       for (const m of inst.schedule || []) {
         if (m.paidAt) continue;
@@ -78,7 +89,7 @@ export async function rescheduleReminders(state: AppState): Promise<void> {
       }
     }
 
-    /* ---- هشدار بودجه: عبور از ۸۰٪ سقف (یک‌بار در ماه برای هر دسته) ---- */
+    /* هشدار بودجه: عبور از ۸۰٪ سقف (یک‌بار در ماه برای هر دسته) */
     const t = jalaliToday();
     const mr = jalaliMonthRange(t.jy, t.jm);
     const monthKey = `${t.jy}-${t.jm}`;
@@ -106,8 +117,23 @@ export async function rescheduleReminders(state: AppState): Promise<void> {
         at: new Date(now + 5000),
       });
     }
+  }
 
-    /* ---- لغو اعلان‌های قبلی و زمان‌بندی مجموعهٔ تازه ---- */
+  /* چیزی برای زمان‌بندی نیست — اجازه هم درخواست نکن */
+  if (notes.length === 0) return;
+
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+
+    /* اجازهٔ اعلان (اندروید ۱۳+ / API 33) — فقط یک‌بار در هر نشست */
+    if (!permissionAsked) {
+      permissionAsked = true;
+      try {
+        await LocalNotifications.requestPermissions();
+      } catch { /* کاربر رد کرد — اعلان‌ها بی‌صدا می‌مانند */ }
+    }
+
+    /* لغو اعلان‌های قبلی */
     try {
       const pending = await LocalNotifications.getPending();
       if (pending.notifications.length) {
@@ -117,17 +143,22 @@ export async function rescheduleReminders(state: AppState): Promise<void> {
       }
     } catch { /* ignore */ }
 
-    if (notes.length) {
-      await LocalNotifications.schedule({
-        notifications: notes.map((n) => ({
-          id: n.id,
-          title: n.title,
-          body: n.body,
-          schedule: { at: n.at },
-          /* در برخی نسخه‌ها smallIcon الزامی است */
-          smallIcon: "ic_stat_icon_config_sample",
-        })),
-      });
+    const toPayload = (idle: boolean) =>
+      notes.map((n) => ({
+        id: n.id,
+        title: n.title,
+        body: n.body,
+        schedule: { at: n.at, allowWhileIdle: idle },
+        /* در برخی نسخه‌ها smallIcon الزامی است */
+        smallIcon: "ic_stat_icon_config_sample",
+      }));
+
+    try {
+      /* ترجیح: زنگ دقیق حتی در حالت Doze/بسته‌بودن اپ */
+      await LocalNotifications.schedule({ notifications: toPayload(true) });
+    } catch {
+      /* دستگاه اجازهٔ زنگ دقیق نداد (اندروید ۱۲+) — زنگ غیردقیق باز هم می‌آید */
+      await LocalNotifications.schedule({ notifications: toPayload(false) });
     }
   } catch {
     /* خطای کلی — اعلان‌ها اختیاری‌اند؛ نباید اپ را متوقف کنند */

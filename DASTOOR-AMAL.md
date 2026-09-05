@@ -15,6 +15,7 @@
 - **اعداد فارسی** با جداکنندهٔ هزارگان — از `faNum()` و `faMoney()` استفاده شود، نه `toLocaleString` خالی
 - **چندکاربره** — هر کاربر دادهٔ کاملاً جدا دارد + حالت مهمان
 - **PWA** — نصب روی موبایل و دسکتاپ، کارکرد آفلاین
+- **اپ بومی اندروید** (Capacitor) — با قابلیت‌های بومی: دیکتهٔ صوتی، انتخاب/ذخیره/اشتراک فایل، یادآورهای سررسید؛ همه با شاخه‌بندی `isNativePlatform()` و بدون تغییر نسخهٔ وب/PWA
 - **سینک ابری Supabase** — بین دستگاه‌ها، با کلید مشترک `fp-user-<نام‌کاربری>`
 - **حذف امن** — سطل زبالهٔ ۳۰ ثانیه‌ای با قابلیت بازگشت
 
@@ -35,7 +36,10 @@
 | بک‌اند/دیتابیس | Supabase (PostgreSQL + REST + Realtime) |
 | میزبانی سایت | Vercel |
 | ربات تلگرام | Node.js بدون وابستگی (Polling روی VPS) |
-| اپ اندروید | Capacitor |
+| اپ اندروید | Capacitor 8.5 |
+| قابلیت‌های بومی اندروید | @capacitor-community/speech-recognition (دیکته صوتی) · @capawesome/capacitor-file-picker (انتخاب فایل) · @capacitor/local-notifications (یادآورها) · @capacitor/filesystem + @capacitor/share (ذخیره/اشتراک فایل) |
+| ساخت کی‌استور دیباگ | node-forge (devDependency — چون keytool در CI نیست) |
+| CI ساخت APK | GitHub Actions (`.github/workflows/build-android.yml` — هر push به main) |
 
 ---
 
@@ -43,33 +47,61 @@
 
 ```
 financepro/
-├── index.html                ← ورودی HTML (RTL، فونت‌ها، PWA)
-├── capacitor.config.ts       ← پیکربندی اپ اندروید
-├── patch-android-mirror.cjs  ← پچ Gradle برای اینترنت ایران
+├── index.html                  ← ورودی HTML (RTL، فونت‌ها، PWA)
+├── capacitor.config.ts         ← پیکربندی اپ اندروید (appId, appName, webDir)
+├── patch-android-mirror.cjs    ← پچ Gradle برای اینترنت ایران (میرور + پروکسی)
+├── .github/
+│   └── workflows/
+│       └── build-android.yml   ← CI: ساخت APK خودکار در هر push به main
+├── keys/                       ← امضای دیباگ ثابت (commit شده)
+│   ├── debug.keystore.p12      ← کی‌استور PKCS12 ثابت برای همهٔ بیلدها
+│   ├── debug.keystore.b64      ← نسخهٔ Base64 برای مرجع
+│   └── debug-signing.gradle    ← تنظیم امضا برای Gradle
 ├── src/
-│   ├── main.tsx              ← بوت‌استرپ + ثبت Service Worker
-│   ├── App.tsx               ← پوسته: مسیریابی، ورود، جست‌وجو، یادآوری، نوار بازگشت
-│   ├── index.css             ← سیستم طراحی: همهٔ تم‌ها + کامپوننت‌ها
-│   ├── ui.tsx                ← کتابخانه UI: توست، مودال، تقویم، دستیار صوتی، فیلتر بازه
-│   ├── pages.tsx             ← داشبورد، تراکنش‌ها، گزارش دسته‌ها، بدهی‌ها و اقساط
-│   ├── pages2.tsx            ← قرارها، گزارش‌ها+AI، مدیریت، تنظیمات، یادداشت‌ها، روزانه
-│   ├── widgets.tsx           ← نقشه حرارتی، پیش‌بینی، امتیاز سلامت، نشان‌ها
-│   ├── excel.ts              ← خروجی اکسل چندبرگی + CSV + ICS
+│   ├── main.tsx                ← بوت‌استرپ + ثبت Service Worker
+│   ├── App.tsx                 ← پوسته: مسیریابی، ورود، جست‌وجو، یادآوری، نوار بازگشت، سینک
+│   ├── index.css               ← سیستم طراحی: همهٔ تم‌ها + کامپوننت‌ها
+│   ├── ui.tsx                  ← کتابخانه UI: توست، مودال، تقویم، دستیار صوتی (وب+بومی)، فیلتر بازه
+│   ├── widgets.tsx             ← نقشه حرارتی، پیش‌بینی، امتیاز سلامت، نشان‌ها
+│   ├── excel.ts                ← خروجی اکسل چندبرگی + CSV + ICS + خواندن XLSX
+│   ├── components/
+│   │   └── global-search.tsx   ← جست‌وجوی سراسری + جست‌وجوی صوتی (وب+بومی)
+│   ├── pages/                  ← هر صفحه یک ماژول مستقل (React.lazy)
+│   │   ├── shared.tsx          ← اجزای مشترک: Head، EyeOn/EyeOff، dl (دانلود/اشتراک)
+│   │   ├── tx-modal.tsx        ← فرم ثبت/ویرایش تراکنش + ماشین‌حساب + پیام بانکی
+│   │   ├── dashboard.tsx       ← داشبورد + تحلیل رفتار خرج با تگ‌ها
+│   │   ├── transactions.tsx    ← تراکنش‌ها + ورود CSV/XLSX (وب+بومی)
+│   │   ├── categories.tsx      ← گزارش دسته‌ها + پنل تراکنش‌های زیر دسته
+│   │   ├── debts.tsx           ← بدهی‌ها و اقساط + ماشین‌حساب وام + QR
+│   │   ├── appointments.tsx    ← قرارها + تقویم شمسی + ICS + یادآور صوتی
+│   │   ├── daily.tsx           ← حالت روزانه
+│   │   ├── notes.tsx           ← یادداشت‌ها + دسته‌بندی + سنجاق
+│   │   ├── reports.tsx         ← گزارش‌ها + نمودار + مقایسه ماهانه + گزارش هوشمند
+│   │   ├── manage.tsx          ← مدیریت ۱۲ ابزار + تب برچسب‌ها
+│   │   └── settings.tsx        ← تنظیمات: تم، پین، سینک، هوش مصنوعی، ربات، یادآور بومی
 │   └── lib/
-│       ├── data.tsx          ← مدل داده + Store مرکزی + تگ‌ها + سنگ‌قبر + اقساط
-│       ├── auth.ts           ← احراز هویت چندکاربره
-│       ├── cloud.ts          ← سینک Supabase + ادغام چنددستگاهه
-│       ├── utils.ts          ← تقویم شمسی + اعداد فارسی + بازه‌ها + اعلان
-│       ├── sms.ts            ← پارسر پیام‌های بانکی (ملی/ملت/رسالت)
-│       ├── themes.ts         ← تعریف تم‌های رنگی
-│       └── native.ts         ← تشخیص پلتفرم (وب/بومی)
-├── bot/                      ← ربات تلگرام (بدون وابستگی)
+│       ├── data.tsx            ← مدل داده + Store مرکزی + تگ‌ها + سنگ‌قبر + اقساط
+│       ├── auth.ts             ← احراز هویت چندکاربره (+ ورود از ابر)
+│       ├── cloud.ts            ← سینک Supabase + ادغام چنددستگاهه
+│       ├── utils.ts            ← تقویم شمسی + اعداد فارسی + بازه‌ها + اعلان
+│       ├── sms.ts              ← پارسر پیام‌های بانکی (ملی/ملت/رسالت)
+│       ├── themes.ts           ← تعریف تم‌های رنگی (۶ تم + شیشه‌ای تیره)
+│       ├── native.ts           ← تشخیص پلتفرم (وب/بومی)
+│       ├── native-files.ts     ← انتخاب/خواندن/ذخیرهٔ فایل در اندروید (FilePicker/Filesystem/Share)
+│       └── reminders.ts        ← زمان‌بندی یادآورهای بومی (سررسید بدهی/قسط + هشدار بودجه)
+├── bot/                        ← ربات تلگرام (بدون وابستگی)
 │   ├── bot.js
 │   └── package.json
-├── scripts/                  ← اسکریپت‌های ساخت اپ اندروید
-├── public/                   ← PWA: manifest + sw.js + icon.svg
-├── CAPACITOR-GUIDE.md        ← راهنمای ساخت اپ اندروید
-└── VPS-GUIDE.md              ← راهنمای ربات تلگرام روی VPS
+├── scripts/                    ← اسکریپت‌های ساخت اپ اندروید
+│   ├── build-android.bat       ← یک‌کلیکی ویندوز (+ اعمال امضای ثابت)
+│   ├── build-android.sh        ← یک‌کلیکی لینوکس/مک (+ اعمال امضای ثابت)
+│   ├── gen-debug-keystore.mjs  ← ساخت کی‌استور دیباگ (node-forge)
+│   └── make-icons.mjs          ← ساخت آیکون‌های اندروید از SVG
+├── public/                     ← PWA: manifest + sw.js + icon.svg
+├── assets/icon.svg             ← آیکون برند اپ
+├── CAPACITOR-GUIDE.md          ← راهنمای ساخت اپ اندروید + امضای ثابت
+├── VPS-GUIDE.md                ← راهنمای ربات تلگرام روی VPS
+└── DASTOOR-AMAL.md             ← همین سند (با هر تغییر به‌روز می‌شود)
 ```
 
 ---
@@ -154,6 +186,20 @@ create policy "open_anon" on public.fp_users for all using (true) with check (tr
 - [x] پیکربندی اپ اندروید (Capacitor)
 - [x] گزارش هوشمند + تحلیل با هوش مصنوعی
 - [x] تم شیشه‌ای تیره
+- [x] دیکتهٔ صوتی بومی در اپ (SpeechRecognition)
+- [x] واردکردن فایل JSON/Excel در اپ (FilePicker)
+- [x] یادآورهای بومی (اعلان سررسید بدهی/قسط/بودجه + قرارها حتی با اپِ بسته)
+- [x] ذخیره/اشتراک بومی فایل‌ها در اپ (Filesystem + Share)
+- [x] خروجی PDF از گزارش‌ها در اپ (jsPDF + html2canvas-pro)
+- [x] CI ساخت APK با امضای دیباگ ثابت (GitHub Actions)
+- [x] Code Splitting کامل (React.lazy) — باندل اولیه ۸۴٪ سبک‌تر (v1.33)
+- [x] **CI خودکار ساخت APK** در هر push به main (GitHub Actions + Node 22 + artifact) (v1.34)
+- [x] **دیکتهٔ صوتی بومی در اندروید** (پلاگین SpeechRecognition — وب بدون تغییر) (v1.34)
+- [x] **انتخاب/واردکردن فایل بومی در اندروید** (CSV/XLSX/JSON — FilePicker) (v1.34)
+- [x] **یادآورهای بومی** (سررسید بدهی/قسط + هشدار بودجه ۸۰٪/۱۰۰٪ — LocalNotifications) (v1.34)
+- [x] **امضای دیباگ ثابت** (کی‌استور commit‌شده — رفع خطای package conflicts هنگام آپدیت) (v1.35)
+- [x] **ذخیره/اشتراک بومی فایل در اندروید** (پشتیبان JSON، اکسل، ICS — Filesystem + Share) (v1.35)
+- [x] **اعلان قرارها حتی با اپِ بسته** (allowWhileIdle + fallback زنگ غیردقیق) + **خروجی PDF از گزارش‌ها** (jsPDF + html2canvas-pro) + **ذخیرهٔ مستقیم فایل‌ها** (Download/FinancePro) (v1.36)
 
 ### ایده‌های آینده
 - [ ] محدود کردن RLS سوپابیس برای تولید
@@ -185,7 +231,9 @@ create policy "open_anon" on public.fp_users for all using (true) with check (tr
 | v1.29 | **چیدمان تک‌خطی ردیف تراکنش:** قیمت به سمت چپ منتقل شد؛ همهٔ اطلاعات (دسته + برچسب + توضیح + حساب + روش پرداخت) روی یک خط خوانا با truncate؛ دکمه‌های ویرایش/حذف به‌صورت آیکون‌دار کوچک و **همیشه‌نما** (رفع پنهان‌ماندن با هاور — در موبایل هم دیده می‌شوند) |
 | v1.30 | **چیدمان واکنش‌گرای ردیف تراکنش برای PWA/موبایل:** در صفحه‌های باریک (PWA) اطلاعات روی **دو خط خوانا** می‌رود — خط اول: دسته + برچسب، خط دوم: توضیح · حساب · روش پرداخت + دکمه‌های ویرایش/حذف در انتهای همان خط؛ در دسکتاپ همان چیدمان تک‌خطی حفظ می‌شود. قیمت در هر دو حالت **سمت چپ**. نسخهٔ کش Service Worker به `financepro-v3` ارتقا یافت تا PWAهای نصب‌شده بعد از دیپلوی، نسخهٔ جدید را بگیرند و کش قدیمی پاک شود |
 | v1.32 | **ماشین‌حساب ساده در فرم ثبت تراکنش:** دکمهٔ ماشین‌حساب (آیکون Calculator با رنگ تأکیدی) کنار فیلد «مبلغ» اضافه شد که یک پنجرهٔ شناور (z-140، روی مودال اصلی) باز می‌کند. ماشین‌حساب شامل چهار عمل اصلی (+ − × ÷)، درصد (٪)، پاک‌کردن (C)، حذف رقم (⌫) و مساوی (=) است؛ اعداد با ارقام فارسی و جداکنندهٔ هزارگان نمایش داده می‌شوند و عبارتِ در حال محاسبه بالای نمایشگر دیده می‌شود. دکمهٔ «استفاده در مبلغ» نتیجهٔ گردشده را مستقیم در فیلد مبلغ می‌نویسد و پنجره را می‌بندد. هنگام باز شدن، اگر مبلغی از قبل وارد شده باشد همان به‌عنوان نقطهٔ شروع لود می‌شود |
+| v1.36 | **سه رفع بومی برای اپ اندروید:** ۱) **اعلان قرارها حتی با اپِ بسته:** `lib/reminders.ts` بازنویسی شد — قرارها دقیقاً سرِ ساعت با `allowWhileIdle: true` زمان‌بندی می‌شوند (زنگ دقیق AlarmManager حتی در حالت Doze/Force-stop)؛ اگر دستگاه اجازهٔ زنگ دقیق نداد (اندروید ۱۲+) به‌صورت خودکار به زنگ غیردقیق fallback می‌کند؛ effect باززمان‌بندی در App.tsx حالا `appointments` و `notifyEnabled` را هم watch می‌کند؛ کلید «فعال‌سازی» در صفحهٔ قرارها در پلتفرم بومی به‌جای `Notification.requestPermission` مرورگری (که در WebView همیشه denied است) از `requestNotificationPermission` پلاگین استفاده می‌کند — این ریشهٔ اصلی فعال‌نشدن یادآور در اپ بود ۲) **دکمهٔ چاپ/PDF:** `lib/pdf.ts` جدید با `printOrPdf(el, name)` — وب همان `window.print()` (دست‌نخورده)؛ اندروید: `html2canvas-pro` (پشتیبانی از رنگ‌های مدرن Tailwind v4 مثل oklch + متن فارسی به‌صورت تصویر) → `jsPDF` چندصفحه‌ای A4 → ذخیره/اشتراک؛ دکمه و فیلترها با `data-nopdf` از خروجی حذف می‌شوند؛ کتابخانه‌ها داینامیک (چانک جدا، فقط هنگام ساخت PDF لود می‌شوند) ۳) **ذخیرهٔ مستقیم فایل‌ها:** `saveAndShareNative` اول در `Download/FinancePro` (اندروید قدیمی: مستقیم به Downloads سیستم) و در صورت نشدن در `Documents/FinancePro` **ذخیرهٔ دائمی** می‌کند، بعد برگهٔ اشتراک «فایل ذخیره شد — ارسال یا جابه‌جایی» باز می‌شود؛ رویداد `fp-file-saved` منتشر و پوسته توست «ذخیره شد: <مسیر>» می‌دهد. پکیج‌ها: `jspdf` + `html2canvas-pro` (داینامیک) | `src/lib/reminders.ts`، `src/lib/pdf.ts`، `src/lib/native-files.ts`، `src/App.tsx`، `src/pages/reports.tsx`، `src/pages/appointments.tsx` |
 | v1.35 | **دو رفع بومی برای اپ اندروید:** ۱) **امضای دیباگ ثابت (رفع خطای «package conflicts» هنگام آپدیت):** کی‌استور PKCS12 ثابت با `scripts/gen-debug-keystore.mjs` (node-forge — چون keytool در محیط CI/سندباکس نیست) ساخته و در `keys/debug.keystore.p12` (alias=androiddebugkey, pass=android, اعتبار ۱۰۰ سال) commit شد؛ `keys/debug-signing.gradle` تنظیم امضا را تعریف می‌کند و workflow گیت‌هاب بعد از `cap sync` یک خط `apply from:` به `android/app/build.gradle` الحاق می‌کند (با grep مارکر، idempotent) — چون android/ در gitignore است، امضا بعد از بازتولید پلتفرم اعمال می‌شود؛ اسکریپت‌های `build-android.bat/sh` هم همان امضا را لوکال اعمال می‌کنند تا APK لوکال و CI هم‌امضا باشند. نکته: اولین نصب بعد از این تغییر نیاز به یک‌بار uninstall دارد؛ آپدیتهای بعدی تمیز نصب می‌شوند ۲) **دانلود/اشتراک فایل در اندروید (رفع کارنکردن پشتیبان JSON و خروجی اکسل):** تابع `exportFile()` در `lib/native-files.ts` — در وب مسیر قبلی Blob+`<a download>` و در اندروید `Filesystem.writeFile` به `Directory.Cache` + `Share.share` (برگهٔ ذخیره/اشتراک بومی؛ کاربر می‌تواند در Downloads ذخیره یا به تلگرام بفرستد)؛ `blobToBase64` تکه‌تکه برای فایل‌های بزرگ؛ هر دو helper دانلود (`dl` در pages/shared و `download` در excel) به آن وصل شدند → پشتیبان JSON، خروجی اکسل و فایل ICS قرارها هر سه درست شدند؛ fallback به مسیر وب اگر مسیر بومی شکست خورد. پکیج‌ها: `@capacitor/filesystem` + `@capacitor/share` (چانک‌های جدا، فقط در اندروید لود می‌شوند) و `node-forge` (فقط devDependency برای ساخت کی‌استور) | `keys/*`، `scripts/gen-debug-keystore.mjs`، `scripts/build-android.{bat,sh}`، `.github/workflows/build-android.yml`، `src/lib/native-files.ts`، `src/pages/shared.tsx`، `src/excel.ts` |
+| v1.34 | **پایهٔ بومی اپ اندروید — CI خودکار + سه قابلیت بومی (وب/PWA دست‌نخورده):** ۱) **GitHub Actions:** فایل `.github/workflows/build-android.yml` — در هر push به `main` به‌طور خودکار APK دیباگ می‌سازد و به‌عنوان artifact آپلود می‌کند (checkout → Node 22 → Temurin JDK 21 → npm install/build → `cap add android` فقط در صورت نبودن پوشه → `cap sync` → `gradlew assembleDebug` → upload-artifact). اصلاح Node 20→22 چون Capacitor CLI 8.5 به Node ≥22 نیاز دارد. اسکریپت `typecheck` (`tsc --noEmit`) در package.json تأیید شد و بیلد سبز ماند ۲) **دیکتهٔ صوتی بومی:** WebView اندروید Web Speech API را ندارد؛ `MicButton` (ui.tsx) و جست‌وجوی صوتی (global-search.tsx) با `isNativePlatform()` شاخه‌بندی شدند — در اندروید از `@capacitor-community/speech-recognition` با `requestPermissions()` + `start({ language:"fa-IR", partialResults:true, popup:false })` + رویداد `partialResults` (فیلد `matches`)؛ منطق idempotent موجود (`appendSmart`، session token، lastEmitted) حفظ و فقط منبع متن عوض شد؛ در وب مسیر `webkitSpeechRecognition` بدون تغییر. مجوز `RECORD_AUDIO` از manifest خود پلاگین merge می‌شود ۳) **انتخاب فایل بومی (ورود CSV/XLSX/JSON):** WebView دیالوگ `<input type="file">` را پیاده نمی‌کند؛ ماژول جدید `lib/native-files.ts` با `pickFileNative()` (پلاگین `@capawesome/capacitor-file-picker` با `readData:true`) + `base64ToUtf8/Bytes`؛ `transactions.tsx` و `settings.tsx` شاخهٔ بومی گرفتند و همان منطق parse قبلی را صدا می‌زنند؛ `excel.ts` تابع `xlsxBytesToCsv()` برای تبدیل اکسل گرفت؛ مسیر وب بدون تغییر ۴) **یادآورهای بومی:** ماژول جدید `lib/reminders.ts` با `rescheduleReminders()` — زمان‌بندی اعلان برای سررسید بدهی‌ها (۲ روز قبل)، سررسید اقساط (۱ روز قبل) و هشدار بودجه (۸۰٪ و ۱۰۰٪، یک‌بار در ماه برای هر دسته با کلید localStorage) — با `@capacitor/local-notifications`؛ اجازهٔ `POST_NOTIFICATIONS` (اندروید ۱۳+) با `requestPermissions()` و پیام فارسی؛ effect با debounce در App.tsx که با تغییر داده‌ها باززمان‌بندی می‌کند؛ pref جدید `nativeReminders` + کارت «یادآورهای بومی (اندروید)» در تنظیمات (فقط در پلتفرم بومی). همهٔ پلاگین‌ها چانک‌های جدا دارند و در وب/PWA اصلاً لود نمی‌شوند؛ کل منطق بومی با `isNativePlatform()`/`isNativePlat()` محافظت شده | `.github/workflows/build-android.yml`، `src/lib/native-files.ts`، `src/lib/reminders.ts`، `src/ui.tsx`، `src/components/global-search.tsx`، `src/pages/transactions.tsx`، `src/pages/settings.tsx`، `src/excel.ts`، `src/lib/data.tsx`، `src/App.tsx`، `package.json` |
 | v1.33 | **رفکتور بزرگ ساختاری + Code Splitting کامل (بدون هیچ تغییر عملکرد):** ۱) `src/pages.tsx` (۱۵۳۱ خط) به ۶ ماژول مستقل تقسیم شد: `src/pages/{shared,tx-modal,dashboard,transactions,categories,debts}.tsx` ۲) `src/pages2.tsx` (۱۵۵۰ خط) به ۶ ماژول: `src/pages/{appointments,daily,notes,reports,manage,settings}.tsx` — هر دو فایل غول‌پیکر حذف شدند ۳) `GlobalSearch` به `src/components/global-search.tsx` منتقل شد (App.tsx از ۸۰۰ به ~۶۴۰ خط رسید) ۴) همهٔ ۱۰ صفحه با `React.lazy()` + `Suspense` و لودر `PageLoader` بارگذاری تنبل می‌شوند — هر صفحه فقط هنگام بازدید دانلود می‌شود. **نتیجهٔ بیلد:** باندل اولیه از ۱٬۷۳۹KB (گزیپ ۴۹۷KB) به **۲۷۱KB (گزیپ ۸۵KB)** رسید — **۸۴٪ سبک‌تر**؛ chunk صفحهٔ گزارش‌ها (شامل recharts، ۳۹۵KB) و exceljs (۹۴۰KB) فقط هنگام استفاده لود می‌شوند. راهنمای ساختار: هر صفحه یک فایل مستقل زیر `src/pages/`؛ اجزای مشترک در `pages/shared.tsx` (Head، EyeOn/EyeOff، dl) و `components/` | `src/pages/*` (۱۲ فایل جدید)، `src/components/global-search.tsx`، `src/App.tsx`؛ حذف `src/pages.tsx` و `src/pages2.tsx` |
 | v1.31 | **ممیزی کامل چیدمان و رفع سرریز فیلدها در همهٔ صفحه‌ها (سایت+PWA):** اعمال `min-w-0` / `shrink-0` / `whitespace-nowrap` / `truncate` / `flex-wrap` روی همهٔ ردیف‌های دارای مبلغ و دکمه — داشبورد (ردیف حساب‌ها، فعالیت اخیر، ارز خارجی، چالش، تحلیل برچسب‌ها)، گزارش دسته‌ها (کارت‌ها و پنل تراکنش‌های زیر دسته)، بدهی‌ها (کارت‌های بدهی/طلب و ردیف‌های اقساط + ماشین‌حساب وام)، مدیریت (حساب‌ها، دسته‌ها، برچسب‌ها، بودجه، هدف، دوره‌ای، روش پرداخت)، مقایسهٔ ماهانه، و عنوان مودال‌ها (truncate). نوار بالا: باکس جست‌وجو `min-w-0` گرفت تا دکمه‌ها را بیرون نزند. دو قاعدهٔ سراسری CSS اضافه شد: ورودی‌ها `min-width:0` (تا در ردیف‌های فشرده بیرون نزنند) و `svg { flex-shrink:0 }` (تا آیکون‌ها هیچ‌وقت له نشوند) — این دو به‌همراه کلاس‌های موردی، جلوی سرریز و به‌هم‌ریختگی فیلدها را در هر فرم و ردیفی می‌گیرند. کش Service Worker به `financepro-v4` ارتقا یافت |
 
