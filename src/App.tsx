@@ -317,10 +317,10 @@ function GlobalSearch({ onNavigate }: {
   const none = has && !txHits.length && !noteHits.length && !apptHits.length && !catHits.length;
 
   return (
-    <div ref={boxRef} className="relative flex-1 max-w-sm mx-auto">
+    <div ref={boxRef} className="relative flex-1 min-w-0 max-w-sm mx-auto">
       <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" style={{ color: "var(--fp-text3)" }} />
       <input
-        className="input !py-2 !ps-9 !pe-10 !text-[12.5px]"
+        className="input !py-2 !ps-9 !pe-10 !text-[12.5px] !w-full min-w-0"
         placeholder={listening ? "در حال گوش دادن…" : "جست‌وجو — تایپ کن یا بگو 🎙"}
         value={q}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}

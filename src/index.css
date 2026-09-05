@@ -251,6 +251,11 @@ body {
 .input::placeholder { color: var(--fp-text3); font-weight: 500; }
 select.input option { background: var(--fp-bg2); color: var(--fp-text); }
 
+/* دفاع در برابر سرریز: فیلدها داخل ردیف‌های فشرده بیرون نزنند */
+.input, textarea.input, select.input { min-width: 0; }
+/* آیکون‌ها هیچ‌وقت در ردیف‌های فشرده له نشوند */
+svg { flex-shrink: 0; }
+
 .icon-btn {
  display: grid;
  place-items: center;

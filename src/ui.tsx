@@ -61,9 +61,9 @@ export function Modal({
       <div className="absolute inset-0" style={{ background: "rgba(3, 15, 10, 0.7)", backdropFilter: "blur(4px)" }} onClick={onClose} />
       <div className={`pop-in relative w-full ${wide ? "max-w-2xl" : "max-w-md"} card p-6 max-h-[88vh] overflow-y-auto`}
         style={{ background: "var(--fp-bg2)", borderColor: "var(--fp-border2)" }}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-2xl" style={{ color: "var(--fp-accent)" }}>{title}</h2>
-          <button className="icon-btn" onClick={onClose} title="بستن"><X className="w-4.5 h-4.5" /></button>
+        <div className="flex items-center justify-between gap-2 mb-5">
+          <h2 className="font-display text-2xl min-w-0 truncate" style={{ color: "var(--fp-accent)" }}>{title}</h2>
+          <button className="icon-btn shrink-0" onClick={onClose} title="بستن"><X className="w-4.5 h-4.5" /></button>
         </div>
         {children}
       </div>

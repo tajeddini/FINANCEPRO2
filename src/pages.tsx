@@ -257,8 +257,8 @@ export function TxModal({
           background: smart ? "color-mix(in srgb, var(--fp-accent) 9%, transparent)" : "var(--fp-bg)",
         }}>
         <Sparkles className="w-5 h-5 shrink-0" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text3)" }} />
-        <span className="text-[13px] font-black" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text2)" }}>تشخیص هوشمند</span>
-        <span className="text-[10.5px] font-bold flex-1" style={{ color: "var(--fp-text3)" }}>مبلغ، دسته و کارت بانکی را از توضیحات حدس می‌زند</span>
+        <span className="text-[13px] font-black shrink-0" style={{ color: smart ? "var(--fp-accent)" : "var(--fp-text2)" }}>تشخیص هوشمند</span>
+        <span className="text-[10.5px] font-bold flex-1 min-w-0 truncate" style={{ color: "var(--fp-text3)" }}>مبلغ، دسته و کارت بانکی را از توضیحات حدس می‌زند</span>
         <span className="w-11 h-6 rounded-full p-1 flex transition-all duration-200 shrink-0"
           style={{ background: smart ? "var(--fp-accent)" : "var(--fp-border2)", justifyContent: smart ? "flex-end" : "flex-start" }}>
           <span className="w-4 h-4 rounded-full bg-white shadow transition-transform" />
@@ -284,9 +284,9 @@ export function TxModal({
         <button onClick={() => { setSmsOpen((o) => !o); setSmsResult(null); }}
           className="w-full flex items-center gap-3 px-4 py-3 cursor-pointer">
           <MessageSquare className="w-5 h-5 shrink-0" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text3)" }} />
-          <span className="text-[13px] font-black" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text2)" }}>ثبت از پیام بانکی</span>
-          <span className="text-[10.5px] font-bold flex-1 text-start" style={{ color: "var(--fp-text3)" }}>پیامک بانک را بچسبان تا خودکار پر شود</span>
-          <span className="text-[11px] font-black" style={{ color: "var(--fp-text3)" }}>{smsOpen ? "▲" : "▼"}</span>
+          <span className="text-[13px] font-black shrink-0" style={{ color: smsOpen ? "var(--fp-sky)" : "var(--fp-text2)" }}>ثبت از پیام بانکی</span>
+          <span className="text-[10.5px] font-bold flex-1 min-w-0 truncate text-start" style={{ color: "var(--fp-text3)" }}>پیامک بانک را بچسبان تا خودکار پر شود</span>
+          <span className="text-[11px] font-black shrink-0" style={{ color: "var(--fp-text3)" }}>{smsOpen ? "▲" : "▼"}</span>
         </button>
         {smsOpen && (
           <div className="p-4 grid gap-3 border-t" style={{ borderColor: "var(--fp-border)" }}>
@@ -473,9 +473,9 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
                 <CatGlyph icon="wallet" color={a.color} className="w-10 h-10 rounded-xl" iconClass="w-5 h-5" />
                 <div className="min-w-0 flex-1">
                   <p className="text-[12.5px] font-black truncate">{a.name}</p>
-                  <p className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>{a.type}</p>
+                  <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>{a.type}</p>
                 </div>
-                <p className="text-[13px] font-black tabular" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-text)" }}>
+                <p className="text-[13px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-text)" }}>
                   {hideAcc ? hiddenMoney : faMoney(a.balance)}
                 </p>
               </div>
@@ -499,7 +499,7 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
                       {x.source === "bot" && <span className="flex items-center gap-0.5" style={{ color: "var(--fp-sky)" }}><Bot className="w-3 h-3" /> ربات</span>}
                     </p>
                   </div>
-                  <span className="text-[12px] font-black tabular" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
+                  <span className="text-[12px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                     {x.type === "income" ? "+" : "−"}{faMoney(x.amount)}
                   </span>
                 </div>
@@ -514,9 +514,9 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
           <div className="card p-5 rise-in" style={{ ["--d" as string]: "160ms" }}>
             <Head icon={<Sparkles className="w-4.5 h-4.5" />} title={challenge.title} />
             <div className="mt-3">
-              <div className="flex justify-between text-[12px] font-black mb-1.5">
-                <span style={{ color: "var(--fp-text2)" }}>{faMoney(challenge.saved)} از {faMoney(challenge.target)}</span>
-                <span style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.min(100, Math.round((challenge.saved / challenge.target) * 100)))}</span>
+              <div className="flex flex-wrap justify-between gap-x-2 gap-y-1 text-[12px] font-black mb-1.5">
+                <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-text2)" }}>{faMoney(challenge.saved)} از {faMoney(challenge.target)}</span>
+                <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.min(100, Math.round((challenge.saved / challenge.target) * 100)))}</span>
               </div>
               <Bar pct={(challenge.saved / challenge.target) * 100} color="var(--fp-accent)" />
               <p className="text-[10.5px] font-bold mt-2" style={{ color: "var(--fp-text3)" }}>روزی {faMoney(challenge.perDay)} تومان</p>
@@ -528,9 +528,9 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
             <Head icon={<Coins className="w-4.5 h-4.5" />} title="ارز خارجی" />
             <div className="grid gap-2 mt-3">
               {state.currencies.map((c) => (
-                <div key={c.id} className="flex items-center justify-between rounded-lg px-2 py-1.5">
-                  <span className="text-[12px] font-black">{c.name} <span style={{ color: "var(--fp-text3)" }}>({c.symbol})</span></span>
-                  <span className="text-[12px] font-black tabular">{faMoney(c.rate * c.qty)} <span className="text-[9.5px]" style={{ color: "var(--fp-text3)" }}>تومان</span></span>
+                <div key={c.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
+                  <span className="text-[12px] font-black min-w-0 truncate">{c.name} <span style={{ color: "var(--fp-text3)" }}>({c.symbol})</span></span>
+                  <span className="text-[12px] font-black tabular shrink-0 whitespace-nowrap">{faMoney(c.rate * c.qty)} <span className="text-[9.5px]" style={{ color: "var(--fp-text3)" }}>تومان</span></span>
                 </div>
               ))}
             </div>
@@ -560,11 +560,11 @@ export function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
             <div className="grid gap-3">
               {tagAnalysis.rows.slice(0, 4).map((r, i) => (
                 <div key={r.label}>
-                  <div className="flex justify-between text-[11px] font-black mb-1">
-                    <span style={{ color: r.color }}>
+                  <div className="flex justify-between gap-2 text-[11px] font-black mb-1">
+                    <span className="min-w-0 truncate" style={{ color: r.color }}>
                       {r.label} <span style={{ color: "var(--fp-text3)" }}>({faNum(r.count)})</span>
                     </span>
-                    <span className="tabular" style={{ color: "var(--fp-text)" }}>{faMoney(r.sum)}</span>
+                    <span className="tabular shrink-0 whitespace-nowrap" style={{ color: "var(--fp-text)" }}>{faMoney(r.sum)}</span>
                   </div>
                   <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--fp-bg3)" }}>
                     <div className="h-full rounded-full grow-x" style={{ width: `${Math.max(4, (r.sum / expense) * 100)}%`, background: r.color, animationDelay: `${i * 90}ms` }} />
@@ -595,16 +595,16 @@ function StatCard({ icon, title, value, suffix, color, hide, onHide, foot, ring 
     <div className="card card-hover p-5 relative overflow-hidden rise-in">
       <div className="absolute -top-8 -start-8 w-28 h-28 rounded-full opacity-[0.12]" style={{ background: color }} />
       {ring !== undefined && <GlassRing pct={ring} />}
-      <div className="flex items-center justify-between relative">
-        <span className="flex items-center gap-2 text-[12px] font-black" style={{ color: "var(--fp-text3)" }}>
-          <span className="w-8 h-8 rounded-lg grid place-items-center" style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>{icon}</span>
-          {title}
+      <div className="flex items-center justify-between relative gap-2">
+        <span className="flex items-center gap-2 text-[12px] font-black min-w-0" style={{ color: "var(--fp-text3)" }}>
+          <span className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}>{icon}</span>
+          <span className="truncate">{title}</span>
         </span>
-        <button className="icon-btn !w-8 !h-8" onClick={onHide} title={hide ? "نمایش" : "مخفی کردن"}>
+        <button className="icon-btn !w-8 !h-8 shrink-0" onClick={onHide} title={hide ? "نمایش" : "مخفی کردن"}>
           {hide ? <EyeOff /> : <EyeOn />}
         </button>
       </div>
-      <p className="font-display text-[26px] md:text-3xl mt-3 tabular relative" style={{ color: hide ? "var(--fp-text3)" : color }}>
+      <p className="font-display text-[clamp(1.25rem,5.5vw,1.875rem)] mt-3 tabular relative leading-tight whitespace-nowrap" style={{ color: hide ? "var(--fp-text3)" : color }}>
         {value} {!hide && <span className="text-[12px] font-body font-bold" style={{ color: "var(--fp-text3)" }}>{suffix}</span>}
       </p>
       <div className="mt-2.5 relative">{foot}</div>
@@ -875,7 +875,7 @@ export function CategoriesPage() {
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
           <Head icon={<Scale className="w-4.5 h-4.5" />} title="جمع دوره" />
-          <p className="font-display text-3xl mt-3 tabular" style={{ color: type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>{faMoney(total)}</p>
+          <p className="font-display text-[clamp(1.25rem,5.5vw,1.875rem)] mt-3 tabular whitespace-nowrap" style={{ color: type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>{faMoney(total)}</p>
           <p className="text-[11px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>تومان · {pf.label}</p>
           <div className="mt-4 grid gap-1.5">
             {rows.slice(0, 5).map((r) => (
@@ -904,13 +904,13 @@ export function CategoriesPage() {
                       background: isSel ? `color-mix(in srgb, ${r.cat!.color} 10%, var(--fp-bg))` : "var(--fp-bg)",
                       boxShadow: isSel ? `0 8px 24px -12px color-mix(in srgb, ${r.cat!.color} 55%, transparent)` : "none",
                     }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="flex items-center gap-2 text-[13px] font-black">
-                        <CatGlyph icon={r.cat!.icon} color={r.cat!.color} className="w-8 h-8" iconClass="w-4 h-4" />
-                        {r.cat!.name}
-                        <span className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{faNum(count)} تراکنش</span>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="flex items-center gap-2 text-[13px] font-black min-w-0">
+                        <CatGlyph icon={r.cat!.icon} color={r.cat!.color} className="w-8 h-8 shrink-0" iconClass="w-4 h-4" />
+                        <span className="truncate">{r.cat!.name}</span>
+                        <span className="text-[10.5px] font-bold shrink-0 whitespace-nowrap" style={{ color: "var(--fp-text3)" }}>{faNum(count)} تراکنش</span>
                       </span>
-                      <span className="text-[13px] font-black tabular">
+                      <span className="text-[13px] font-black tabular shrink-0 whitespace-nowrap">
                         {faMoney(r.sum)} <span className="text-[10.5px]" style={{ color: r.cat!.color }}>٪{faNum(Math.round(pct))}</span>
                       </span>
                     </div>
@@ -927,9 +927,9 @@ export function CategoriesPage() {
                       <div className="max-h-64 overflow-y-auto grid gap-1.5">
                         {selTxs.map((t) => (
                           <div key={t.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--fp-bg2)" }}>
-                            <span className="text-[10.5px] font-bold shrink-0" style={{ color: "var(--fp-text3)" }}>{jalaliShort(t.date)}</span>
-                            <span className="text-[11.5px] font-black flex-1 truncate">{t.note || t.title}</span>
-                            <span className="text-[11.5px] font-black tabular" style={{ color: "var(--fp-text)" }}>{faMoney(t.amount)}</span>
+                            <span className="text-[10.5px] font-bold shrink-0 whitespace-nowrap" style={{ color: "var(--fp-text3)" }}>{jalaliShort(t.date)}</span>
+                            <span className="text-[11.5px] font-black flex-1 min-w-0 truncate">{t.note || t.title}</span>
+                            <span className="text-[11.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: "var(--fp-text)" }}>{faMoney(t.amount)}</span>
                           </div>
                         ))}
                       </div>
@@ -1039,20 +1039,20 @@ export function DebtsPage() {
             const remaining = d.amount - d.paid;
             return (
               <div key={d.id} className="card p-4 rise-in">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-1 basis-40">
                     <p className="text-[14px] font-black flex items-center gap-2">
-                      {d.kind === "debt" ? <ArrowUpLeft className="w-4 h-4" style={{ color: "var(--fp-coral)" }} /> : <ArrowDownRight className="w-4 h-4" style={{ color: "var(--fp-mint)" }} />}
-                      {d.person}
+                      <span className="shrink-0">{d.kind === "debt" ? <ArrowUpLeft className="w-4 h-4" style={{ color: "var(--fp-coral)" }} /> : <ArrowDownRight className="w-4 h-4" style={{ color: "var(--fp-mint)" }} />}</span>
+                      <span className="truncate">{d.person}</span>
                     </p>
-                    {d.note && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
+                    {d.note && <p className="text-[10.5px] font-bold mt-0.5 truncate" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
                     {d.due && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>سررسید: {faDate(d.due)}</p>}
                   </div>
-                  <div className="text-end">
-                    <p className="text-[14px] font-black tabular" style={{ color: tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
+                  <div className="text-end shrink-0">
+                    <p className="text-[14px] font-black tabular whitespace-nowrap" style={{ color: tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
                       {faMoney(remaining)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>از {faMoney(d.amount)}</span>
                     </p>
-                    <div className="flex gap-1.5 mt-1.5 justify-end">
+                    <div className="flex flex-wrap gap-1.5 mt-1.5 justify-end">
                       <button className="btn btn-mint btn-sm" disabled={remaining <= 0}
                         onClick={() => { setPayFor({ id: d.id, person: d.person, remaining, kind: d.kind }); setPayAmt(""); setPayAcc(state.accounts[0]?.id ?? ""); }}>
                         {tab === "debt" ? "پرداخت" : "دریافت"}
@@ -1085,8 +1085,8 @@ export function DebtsPage() {
                 return (
                   <div key={x.id} className="card p-4 rise-in">
                     <div className="flex items-center justify-between gap-3 mb-2">
-                      <p className="text-[14px] font-black flex items-center gap-2"><Repeat className="w-4 h-4" style={{ color: "var(--fp-accent)" }} /> {x.title}</p>
-                      <div className="flex gap-1.5">
+                      <p className="text-[14px] font-black flex items-center gap-2 min-w-0"><Repeat className="w-4 h-4 shrink-0" style={{ color: "var(--fp-accent)" }} /> <span className="truncate">{x.title}</span></p>
+                      <div className="flex gap-1.5 shrink-0">
                         <EditBtn onClick={() => setInstForm({ id: x.id, title: x.title, total: String(x.total), months: String(x.months), amountPerMonth: String(x.amountPerMonth), start: x.start, accountId: x.accountId, categoryId: x.categoryId ?? "" })} />
                         <DeleteBtn onClick={() => { trashItem("installments", x.id, x.title); toast("warn", "حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
                       </div>
@@ -1099,13 +1099,13 @@ export function DebtsPage() {
                     <div className="grid gap-1.5 mt-3 max-h-48 overflow-y-auto">
                       {x.schedule?.map((m, idx) => (
                         <div key={idx} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--fp-bg)" }}>
-                          <span className="text-[10.5px] font-bold shrink-0" style={{ color: m.paidAt ? "var(--fp-mint)" : "var(--fp-text3)" }}>
-                            {m.paidAt ? <Check className="w-3.5 h-3.5 inline" /> : faNum(idx + 1)} قسط {faNum(idx + 1)}
+                          <span className="text-[10.5px] font-bold shrink-0 whitespace-nowrap flex items-center gap-1" style={{ color: m.paidAt ? "var(--fp-mint)" : "var(--fp-text3)" }}>
+                            {m.paidAt && <Check className="w-3.5 h-3.5" />} قسط {faNum(idx + 1)}
                           </span>
-                          <span className="text-[10.5px] font-bold flex-1" style={{ color: "var(--fp-text3)" }}>{jalaliShort(m.due)}</span>
-                          <span className="text-[11px] font-black tabular">{faMoney(m.amount)}</span>
+                          <span className="text-[10.5px] font-bold flex-1 min-w-0 truncate" style={{ color: "var(--fp-text3)" }}>{jalaliShort(m.due)}</span>
+                          <span className="text-[11px] font-black tabular shrink-0 whitespace-nowrap">{faMoney(m.amount)}</span>
                           {!m.paidAt && (
-                            <button className="btn btn-mint btn-sm !py-0.5 !text-[10px]" onClick={() => { setPayInst({ inst: x, idx }); setPayInstAcc(x.accountId); }}>پرداخت</button>
+                            <button className="btn btn-mint btn-sm !py-0.5 !text-[10px] shrink-0" onClick={() => { setPayInst({ inst: x, idx }); setPayInstAcc(x.accountId); }}>پرداخت</button>
                           )}
                         </div>
                       ))}
@@ -1123,9 +1123,9 @@ export function DebtsPage() {
                 <Field label="تعداد ماه"><TInput dir="ltr" value={loan.n} onChange={(e) => setLoan({ ...loan, n: toEnDigitsLocal(e.target.value) })} /></Field>
               </div>
               <div className="rounded-xl p-4 mt-4 border" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
-                <div className="flex justify-between text-[12.5px] font-black"><span>قسط ماهانه</span><span className="tabular" style={{ color: "var(--fp-accent)" }}>{faMoney(emi.monthly)}</span></div>
-                <div className="flex justify-between text-[11.5px] font-bold mt-2" style={{ color: "var(--fp-text2)" }}><span>جمع بازپرداخت</span><span className="tabular">{faMoney(emi.total)}</span></div>
-                <div className="flex justify-between text-[11.5px] font-bold mt-1.5" style={{ color: "var(--fp-text2)" }}><span>سود پرداختی</span><span className="tabular" style={{ color: "var(--fp-coral)" }}>{faMoney(emi.interest)}</span></div>
+                <div className="flex justify-between gap-2 text-[12.5px] font-black"><span>قسط ماهانه</span><span className="tabular whitespace-nowrap" style={{ color: "var(--fp-accent)" }}>{faMoney(emi.monthly)}</span></div>
+                <div className="flex justify-between gap-2 text-[11.5px] font-bold mt-2" style={{ color: "var(--fp-text2)" }}><span>جمع بازپرداخت</span><span className="tabular whitespace-nowrap">{faMoney(emi.total)}</span></div>
+                <div className="flex justify-between gap-2 text-[11.5px] font-bold mt-1.5" style={{ color: "var(--fp-text2)" }}><span>سود پرداختی</span><span className="tabular whitespace-nowrap" style={{ color: "var(--fp-coral)" }}>{faMoney(emi.interest)}</span></div>
               </div>
             </div>
           </div>
