@@ -87,6 +87,11 @@ for folder_name, size in mipmap_sizes.items():
 
 colors_path = android_res / 'values' / 'colors.xml'
 colors_path.parent.mkdir(parents=True, exist_ok=True)
+
+stale_color_file = colors_path.parent / 'ic_launcher_background.xml'
+if stale_color_file.exists():
+    stale_color_file.unlink()
+
 colors_path.write_text(
     '<?xml version="1.0" encoding="utf-8"?>\n'
     '<resources>\n'
