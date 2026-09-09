@@ -43,8 +43,8 @@ def make_bg(size: int) -> Image.Image:
 def draw_m(img: Image.Image, size: int, line_width: int) -> None:
     draw = ImageDraw.Draw(img)
     pad = size * 0.18
-    scale = (size - 2 * pad) / 290
-    pts = [(110, 300), (110, 180), (182, 250), (256, 172), (330, 250), (402, 180), (402, 300)]
+    scale = (size - 2 * pad) / 260
+    pts = [(118, 310), (118, 198), (194, 262), (256, 176), (318, 262), (394, 198), (394, 310)]
     mapped = [(pad + x * scale, pad + y * scale) for x, y in pts]
 
     for i, color in enumerate((GOLD_1, GOLD_2, GOLD_3)):
@@ -53,7 +53,7 @@ def draw_m(img: Image.Image, size: int, line_width: int) -> None:
 
 def make_icon(size: int) -> Image.Image:
     img = make_bg(size)
-    draw_m(img, size, max(20, int(size * 0.12)))
+    draw_m(img, size, max(22, int(size * 0.14)))
     return img
 
 
@@ -69,22 +69,48 @@ def make_foreground(size: int) -> Image.Image:
 
 
 public_dir.mkdir(parents=True, exist_ok=True)
-for size in (192, 512):
-    make_icon(size).save(public_dir / f'icon-{size}.png')
+source_candidates = [
+    public_dir / 'app-icon.png',
+    public_dir / 'app-icon.png.png',
+]
+source_icon = next((p for p in source_candidates if p.exists()), None)
+if source_icon is not None:
+    base = Image.open(source_icon).convert('RGBA')
+    for size in (192, 512):
+        resized = base.resize((size, size), Image.LANCZOS)
+        resized.save(public_dir / f'icon-{size}.png')
 
-mipmap_sizes = {
-    'mipmap-mdpi': 48,
-    'mipmap-hdpi': 72,
-    'mipmap-xhdpi': 96,
-    'mipmap-xxhdpi': 144,
-    'mipmap-xxxhdpi': 192,
-}
-for folder_name, size in mipmap_sizes.items():
-    folder = android_res / folder_name
-    folder.mkdir(parents=True, exist_ok=True)
-    make_icon(size).save(folder / 'ic_launcher.png')
-    make_icon(size).save(folder / 'ic_launcher_round.png')
-    make_foreground(size).save(folder / 'ic_launcher_foreground.png')
+    mipmap_sizes = {
+        'mipmap-mdpi': 48,
+        'mipmap-hdpi': 72,
+        'mipmap-xhdpi': 96,
+        'mipmap-xxhdpi': 144,
+        'mipmap-xxxhdpi': 192,
+    }
+    for folder_name, size in mipmap_sizes.items():
+        folder = android_res / folder_name
+        folder.mkdir(parents=True, exist_ok=True)
+        resized = base.resize((size, size), Image.LANCZOS)
+        resized.save(folder / 'ic_launcher.png')
+        resized.save(folder / 'ic_launcher_round.png')
+        resized.save(folder / 'ic_launcher_foreground.png')
+else:
+    for size in (192, 512):
+        make_icon(size).save(public_dir / f'icon-{size}.png')
+
+    mipmap_sizes = {
+        'mipmap-mdpi': 48,
+        'mipmap-hdpi': 72,
+        'mipmap-xhdpi': 96,
+        'mipmap-xxhdpi': 144,
+        'mipmap-xxxhdpi': 192,
+    }
+    for folder_name, size in mipmap_sizes.items():
+        folder = android_res / folder_name
+        folder.mkdir(parents=True, exist_ok=True)
+        make_icon(size).save(folder / 'ic_launcher.png')
+        make_icon(size).save(folder / 'ic_launcher_round.png')
+        make_foreground(size).save(folder / 'ic_launcher_foreground.png')
 
 colors_path = android_res / 'values' / 'colors.xml'
 colors_path.parent.mkdir(parents=True, exist_ok=True)
