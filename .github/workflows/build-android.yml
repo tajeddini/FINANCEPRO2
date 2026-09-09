@@ -40,6 +40,9 @@ jobs:
       - name: Sync Capacitor (copies dist/ into the app)
         run: npx cap sync android
 
+      - name: Install icon generation dependency
+        run: python3 -m pip install pillow
+
       - name: Regenerate Android launcher icons from design
         run: python3 scripts/gen-icon-pngs.py
 
