@@ -16,6 +16,7 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
   const [q, setQ] = useState(initQuery ?? "");
   const [catFilter, setCatFilter] = useState(initCat ?? "");
   const [tagFilter, setTagFilter] = useState<ID | "">("");
+  const [accountFilter, setAccountFilter] = useState<ID | "">("");
   const [payMethodFilter, setPayMethodFilter] = useState<string | "">("");
   const [editing, setEditing] = useState<Tx | null>(null);
   const [confirmDel, setConfirmDel] = useState<Tx | null>(null);
@@ -28,10 +29,11 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
       .filter((t) => inRange(t.date, range))
       .filter((t) => !catFilter || t.categoryId === catFilter)
       .filter((t) => !tagFilter || t.tag === tagFilter)
+      .filter((t) => !accountFilter || t.accountId === accountFilter)
       .filter((t) => !payMethodFilter || t.payMethod === payMethodFilter)
       .filter((t) => !q.trim() || (t.note || t.title).includes(q.trim()))
       .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-  }, [state.transactions, type, range, catFilter, tagFilter, payMethodFilter, q]);
+  }, [state.transactions, type, range, catFilter, tagFilter, accountFilter, payMethodFilter, q]);
 
   const income = sumTx(filtered, "income");
   const expense = sumTx(filtered, "expense");
@@ -135,6 +137,10 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
         <TSelect className="!w-auto" value={catFilter} onChange={(e) => setCatFilter(e.target.value)}>
           <option value="">همهٔ دسته‌ها</option>
           {state.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </TSelect>
+        <TSelect className="!w-auto" value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}>
+          <option value="">همهٔ حساب‌ها</option>
+          {state.accounts.map((acc) => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
         </TSelect>
         <TSelect className="!w-auto" value={payMethodFilter} onChange={(e) => setPayMethodFilter(e.target.value)}>
           <option value="">همهٔ روش‌ها</option>
