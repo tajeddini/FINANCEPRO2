@@ -5,7 +5,7 @@ import {
 } from "react";
 import {
   AlertTriangle, Apple, Baby, Beef, Book, Briefcase, Bus, CandlestickChart, Car, Check,
-  ChevronLeft, ChevronRight, Coffee, Croissant, CupSoda, Film, Gamepad2, Gift, GraduationCap,
+  ChevronLeft, ChevronRight, Coffee, Croissant, CupSoda, Film, Flame, Gamepad2, Gift, GraduationCap,
   HeartPulse, Home, Landmark, Mic, MicOff, Music, PawPrint, PencilLine, Plane, Receipt,
   Shirt, Smartphone, Trash2, Utensils, Wallet, Wifi, Wrench, X, Coins, Fuel, CalendarDays,
 } from "lucide-react";
@@ -13,6 +13,16 @@ import {
   faDate, faNum, groupInt, isoToJalali, jalaliFirstOffset, jalaliMonthLen, jalaliMonthRange, jalaliShort,
   jalaliToday, jalaliToISO, MONTHS_FA, PERIODS, periodRange, todayISO, toEnDigits, type PeriodKey,
 } from "./lib/utils";
+import { Capacitor } from "@capacitor/core";
+
+/* پلتفرم بومی؟ — برای شاخه‌بندی بین Web Speech API و پلاگین اندروید */
+export const isNativePlatform = (): boolean => {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+};
 
 /* ================= توست ================= */
 type ToastKind = "ok" | "err" | "warn";
@@ -61,9 +71,9 @@ export function Modal({
       <div className="absolute inset-0" style={{ background: "rgba(3, 15, 10, 0.7)", backdropFilter: "blur(4px)" }} onClick={onClose} />
       <div className={`pop-in relative w-full ${wide ? "max-w-2xl" : "max-w-md"} card p-6 max-h-[88vh] overflow-y-auto`}
         style={{ background: "var(--fp-bg2)", borderColor: "var(--fp-border2)" }}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-2xl" style={{ color: "var(--fp-accent)" }}>{title}</h2>
-          <button className="icon-btn" onClick={onClose} title="بستن"><X className="w-4.5 h-4.5" /></button>
+        <div className="flex items-center justify-between gap-2 mb-5">
+          <h2 className="font-display text-2xl min-w-0 truncate" style={{ color: "var(--fp-accent)" }}>{title}</h2>
+          <button className="icon-btn shrink-0" onClick={onClose} title="بستن"><X className="w-4.5 h-4.5" /></button>
         </div>
         {children}
       </div>
@@ -158,7 +168,6 @@ export function JalaliPicker({ value, onChange }: { value: string; onChange: (is
   const [view, setView] = useState(() => {
     try {
       const j = isoToJalali(value);
-      /* مقدار نامعتبر (رشتهٔ خالی/خراب) → NaN می‌شود؛ در این حالت ماه جاری */
       if (Number.isFinite(j.jy) && Number.isFinite(j.jm)) return { jy: j.jy, jm: j.jm };
     } catch { /* مقدار غیرقابل‌تبدیل */ }
     const t = jalaliToday();
@@ -218,22 +227,8 @@ export function JalaliPicker({ value, onChange }: { value: string; onChange: (is
   );
 }
 
-function toJalaliSafe(iso: string) {
-  const { isoToJalali } = { isoToJalali: (v: string) => {
-    const [y, m, d] = v.split("-").map(Number);
-    const dd = new Date(y, m - 1, d, 12);
-    const j = (window as unknown as Record<string, never>);
-    void dd; void j;
-    /* از jalaali-js استفاده می‌شود — import مستقیم برای سادگی */
-    return jalaliToday();
-  } };
-  void iso;
-  return isoToJalali(iso);
-}
-
 /* ---------- افزودن هوشمند (idempotent) ----------
-   هم‌پوشانی متن قبلی و متن جدید را پیدا می‌کند تا تکرار پیش نیاید.
-   اگر موتور تشخیص، جمله‌ای را دوباره تحویل دهد، خروجی تغییر نمی‌کند. */
+   هم‌پوشانی متن قبلی و متن جدید را پیدا می‌کند تا تکرار پیش نیاید. */
 export function appendSmart(base: string, add: string): string {
   const b = base.trim();
   const a = add.trim();
@@ -250,13 +245,10 @@ export function appendSmart(base: string, add: string): string {
   return (b + " " + rest).trim();
 }
 
-/* ================= دستیار صوتی (fa-IR) — معماری نهایی =================
-   - هر نشست = نمونهٔ تازهٔ SpeechRecognition (نتایج قبلی باقی نمی‌مانند)
-   - گارد نشست یکتا (sessionId) — رویدادهای نشست‌های قدیمی نادیده گرفته می‌شوند
-   - بازسازی متن نهایی از صفر: در هر رویداد، همهٔ e.results پیمایش و فقط isFinalها به هم می‌چسبند
-   - حالت افزودنی: گفته‌های جدید به انتهای متن فعلی اضافه می‌شوند، متن قبلی پاک نمی‌شود
-   - حذف تکرار (appendSmart) + ارسال فقط هنگام تغییر واقعی — تکرار کلمات غیرممکن است
-   - حلقهٔ restart ممنوع — عامل اصلی تکرار کلمات در نسخه‌های قدیمی بود */
+/* ================= دستیار صوتی (fa-IR) — معماری idempotent =================
+   - هر نشست = نمونهٔ تازهٔ SpeechRecognition
+   - بازسازی متن نهایی از صفر در هر رویداد (همهٔ results، فقط isFinalها)
+   - حالت افزودنی + حذف تکرار (appendSmart) + ارسال فقط هنگام تغییر */
 export function MicButton({
   onText, baseText = "", disabled,
 }: {
@@ -271,17 +263,34 @@ export function MicButton({
   const activeRef = useRef(false);
   const fieldRef = useRef("");
   const startBaseRef = useRef("");
-  const supported = typeof window !== "undefined" &&
-    !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition);
+  const native = isNativePlatform();
+  const supported = native || (typeof window !== "undefined" &&
+    !!((window as unknown as Record<string, unknown>).SpeechRecognition || (window as unknown as Record<string, unknown>).webkitSpeechRecognition));
   const toast = useToast();
-  /* آخرین مقدار ارسال‌شده — فقط وقتی نتیجهٔ ادغام واقعاً عوض شد onText صدا زده می‌شود */
   const lastEmittedRef = useRef("");
+  /* هندل حذف لیسنر پلاگین بومی */
+  const nativeListenerRef = useRef<{ remove: () => Promise<void> } | null>(null);
 
   useEffect(() => () => {
     activeRef.current = false;
     sessionIdRef.current++;
     try { recRef.current?.abort(); } catch { /* ignore */ }
+    void stopNativeQuiet();
   }, []);
+
+  /* توقف بی‌صدای پلاگین بومی (بدون توست) */
+  const stopNativeQuiet = async () => {
+    try {
+      await nativeListenerRef.current?.remove();
+    } catch { /* ignore */ }
+    nativeListenerRef.current = null;
+    if (isNativePlatform()) {
+      try {
+        const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+        await SpeechRecognition.stop();
+      } catch { /* ignore */ }
+    }
+  };
 
   const hardStop = (msg?: string, kind: ToastKind = "err") => {
     activeRef.current = false;
@@ -289,7 +298,56 @@ export function MicButton({
     setListening(false);
     setHeard("");
     try { recRef.current?.abort(); } catch { /* ignore */ }
+    void stopNativeQuiet();
     if (msg) toast(kind, msg);
+  };
+
+  /* ---------- نشست بومی (اندروید) با پلاگین SpeechRecognition ---------- */
+  const beginNativeSession = async () => {
+    const myId = ++sessionIdRef.current;
+    startBaseRef.current = fieldRef.current.trim();
+    lastEmittedRef.current = "";
+    try {
+      const { SpeechRecognition } = await import("@capacitor-community/speech-recognition");
+      const avail = await SpeechRecognition.available();
+      if (!avail.available) {
+        toast("warn", "تشخیص صوتی روی این دستگاه در دسترس نیست.");
+        return;
+      }
+      await SpeechRecognition.requestPermissions();
+
+      /* لیسنر نتایج زنده — با همان منطق idempotent وب (appendSmart) */
+      const handle = await SpeechRecognition.addListener(
+        "partialResults",
+        (data: { matches: string[] }) => {
+          if (myId !== sessionIdRef.current) return;
+          const current = (data.matches || []).join(" ").trim();
+          if (!current) return;
+          setHeard(current);
+          const merged = appendSmart(startBaseRef.current, current);
+          if (merged !== lastEmittedRef.current) {
+            lastEmittedRef.current = merged;
+            onText(merged);
+          }
+        }
+      );
+      nativeListenerRef.current = handle;
+
+      await SpeechRecognition.start({
+        language: "fa-IR",
+        maxResults: 10,
+        partialResults: true,
+        popup: false,
+      });
+      activeRef.current = true;
+      setListening(true);
+      setHeard("");
+    } catch {
+      activeRef.current = false;
+      setListening(false);
+      setHeard("");
+      toast("err", "تشخیص صوتی ناموفق بود — دسترسی میکروفون را بررسی کنید.");
+    }
   };
 
   const beginSession = () => {
@@ -301,19 +359,16 @@ export function MicButton({
     };
     const rec = new SR();
     rec.lang = "fa-IR";
-    rec.interimResults = true;
-    rec.continuous = true;
+    rec.interimResults = false;
+    rec.continuous = false;
     rec.maxAlternatives = 1;
     const myId = ++sessionIdRef.current;
     startBaseRef.current = fieldRef.current.trim();
     lastEmittedRef.current = "";
 
     rec.onresult = (e: unknown) => {
-      if (myId !== sessionIdRef.current) return; /* رویداد نشستِ باطل‌شده — نادیده بگیر */
+      if (myId !== sessionIdRef.current) return;
       const ev = e as { results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> };
-      /* بازسازی کامل متن نهایی از صفر در هر رویداد: همهٔ e.results پیمایش و فقط
-         isFinalها به هم می‌چسبند. تحویلِ دوبارهٔ یک نتیجهٔ قبلی توسط موتور، خروجی را
-         تغییر نمی‌دهد — همین idempotent بودن، ریشهٔ تکرار کلمات را می‌خشکاند. */
       let finalText = "";
       let interim = "";
       for (let i = 0; i < ev.results.length; i++) {
@@ -348,7 +403,7 @@ export function MicButton({
       else if (err === "no-speech")
         toast("warn", "صدایی شنیده نشد — نزدیک‌تر صحبت کنید و دوباره بزنید.");
       else if (err === "network")
-        toast("err", "خطای شبکه در تشخیص صوت — اینترنت را بررسی کنید (در نسخهٔ نصب‌شده هم همین‌طور).");
+        toast("err", "خطای شبکه در تشخیص صوت — اینترنت را بررسی کنید.");
       else if (err === "audio-capture")
         toast("err", "میکروفونی روی دستگاه پیدا نشد.");
       else if (err !== "aborted")
@@ -367,7 +422,7 @@ export function MicButton({
 
   const toggle = () => {
     if (!supported) {
-      toast("warn", "مرورگر شما از تایپ صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
+      toast("warn", "دستگاه شما از تایپ صوتی پشتیبانی نمی‌کند.");
       return;
     }
     if (listening || activeRef.current) {
@@ -375,7 +430,9 @@ export function MicButton({
       return;
     }
     fieldRef.current = baseText;
-    beginSession();
+    /* شاخه‌بندی: پلتفرم بومی از پلاگین اندروید، وب از Web Speech API */
+    if (native) void beginNativeSession();
+    else beginSession();
   };
 
   return (
@@ -390,8 +447,7 @@ export function MicButton({
           background: listening ? "color-mix(in srgb, var(--fp-coral) 16%, transparent)" : "var(--fp-bg3)",
           color: listening ? "var(--fp-coral)" : "var(--fp-text2)",
           border: `1px solid ${listening ? "var(--fp-coral)" : "var(--fp-border2)"}`,
-        }}
-      >
+        }}>
         <span className="relative grid place-items-center">
           {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
           {listening && <i className="absolute -top-1 -left-1 w-2 h-2 rounded-full blink-dot not-italic" style={{ background: "var(--fp-coral)" }} />}
@@ -414,42 +470,41 @@ export function MicButton({
 }
 
 /* ================= دکمه‌های ویرایش و حذف — پررنگ و همیشه‌نما ================= */
-export function EditBtn({ onClick, title = "ویرایش" }: { onClick: () => void; title?: string }) {
+export function EditBtn({ onClick, title = "ویرایش", size }: { onClick: () => void; title?: string; size?: "sm" }) {
+  const sm = size === "sm";
   return (
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0"
+      className={`flex items-center gap-1 font-black rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${sm ? "text-[10px] px-2 py-1" : "text-[11px] px-2.5 py-1.5"}`}
       style={{
         background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)",
         color: "var(--fp-accent)",
         border: "1px solid color-mix(in srgb, var(--fp-accent) 40%, transparent)",
-      }}
-    >
-      <PencilLine className="w-3.5 h-3.5" /> ویرایش
+      }}>
+      <PencilLine className={sm ? "w-3 h-3" : "w-3.5 h-3.5"} /> ویرایش
     </button>
   );
 }
 
-export function DeleteBtn({ onClick, title = "حذف" }: { onClick: () => void; title?: string }) {
+export function DeleteBtn({ onClick, title = "حذف", size }: { onClick: () => void; title?: string; size?: "sm" }) {
+  const sm = size === "sm";
   return (
     <button
       onClick={onClick}
       title={title}
-      className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0"
+      className={`flex items-center gap-1 font-black rounded-lg cursor-pointer transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${sm ? "text-[10px] px-2 py-1" : "text-[11px] px-2.5 py-1.5"}`}
       style={{
         background: "color-mix(in srgb, var(--fp-coral) 14%, transparent)",
         color: "var(--fp-coral)",
         border: "1px solid color-mix(in srgb, var(--fp-coral) 40%, transparent)",
-      }}
-    >
-      <Trash2 className="w-3.5 h-3.5" /> حذف
+      }}>
+      <Trash2 className={sm ? "w-3 h-3" : "w-3.5 h-3.5"} /> حذف
     </button>
   );
 }
 
 /* ================= آیکون‌های دسته ================= */
-/* نمادهای مرد/زن در lucide نیستند — SVG دستی */
 function MarsIcon(p: { className?: string; strokeWidth?: number }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth ?? 2} strokeLinecap="round" strokeLinejoin="round" className={p.className}>
@@ -464,29 +519,26 @@ function VenusIcon(p: { className?: string; strokeWidth?: number }) {
     </svg>
   );
 }
-
-/* ComponentType<any>: هم آیکون‌های lucide و هم SVGهای دستی (مرد/زن/ورزش) را می‌پذیرد */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type CatIcon = ComponentType<any>;
-
-export const CATEGORY_ICONS: Record<string, CatIcon> = {
-  food: Utensils, apple: Apple, croissant: Croissant, beef: Beef, "cup-soda": CupSoda, coffee: Coffee,
-  car: Car, bus: Bus, fuel: Fuel, home: Home, receipt: Receipt, wifi: Wifi,
-  health: HeartPulse, medical: HeartPulse, fitness: Flame_, game: Gamepad2, film: Film, music: Music,
-  plane: Plane, shirt: Shirt, graduation: GraduationCap, book: Book, gift: Gift,
-  baby: Baby, paw: PawPrint, wrench: Wrench, candlestick: CandlestickChart,
-  male: MarsIcon, female: VenusIcon, landmark: Landmark,
-  coins: Coins, briefcase: Briefcase, wallet: Wallet, phone: Smartphone,
-};
-
-/* آیکون ورزش — lucide نسخه‌های مختلف نام متفاوت دارند؛ SVG ساده */
-function Flame_(p: { className?: string; strokeWidth?: number }) {
+function FlameIcon(p: { className?: string; strokeWidth?: number }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.strokeWidth ?? 2} strokeLinecap="round" strokeLinejoin="round" className={p.className}>
       <path d="M12 3c1 3-3 4.5-3 8a3.5 3.5 0 0 0 7 0c0-1.5-.5-2.5-1-3.5 2 .5 4 2.5 4 6a7 7 0 0 1-14 0c0-5 5-7 7-10.5z" />
     </svg>
   );
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CatIcon = ComponentType<any>;
+
+export const CATEGORY_ICONS: Record<string, CatIcon> = {
+  food: Utensils, apple: Apple, croissant: Croissant, beef: Beef, "cup-soda": CupSoda, coffee: Coffee,
+  car: Car, bus: Bus, fuel: Fuel, home: Home, receipt: Receipt, wifi: Wifi,
+  health: HeartPulse, medical: HeartPulse, fitness: FlameIcon, game: Gamepad2, film: Film, music: Music,
+  plane: Plane, shirt: Shirt, graduation: GraduationCap, book: Book, gift: Gift,
+  baby: Baby, paw: PawPrint, wrench: Wrench, candlestick: CandlestickChart,
+  male: MarsIcon, female: VenusIcon, landmark: Landmark,
+  coins: Coins, briefcase: Briefcase, wallet: Wallet, phone: Smartphone,
+};
 
 export const CATEGORY_ICON_LABELS: Record<string, string> = {
   food: "غذا", apple: "میوه", croissant: "نان و شیرینی", beef: "گوشت و پروتئین",
@@ -514,7 +566,7 @@ export function CatGlyph({
   );
 }
 
-/** نمایش آیکون دسته به‌صورت inline (برای چیپ‌ها و نشان‌ها) */
+/** نمایش آیکون دسته به‌صورت inline */
 export function CatIconInline({ icon, className = "w-3.5 h-3.5", color }: { icon?: string; className?: string; color?: string }) {
   const I = CATEGORY_ICONS[icon ?? ""] ?? Wallet;
   return <span style={{ color: color ?? "currentColor" }} className="inline-grid place-items-center"><I className={className} strokeWidth={2.4} /></span>;

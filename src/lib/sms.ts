@@ -25,7 +25,6 @@ export interface SmsParse {
   amountToman: number;
   rawAmount: number;
   unit: "rial" | "toman" | "unknown";
-  /** واحد در پیام نبود و «ریال» (عرف بانک‌های ایران) فرض شد */
   unitInferred: boolean;
   dateISO?: string;
   jalali?: string;
@@ -34,14 +33,11 @@ export interface SmsParse {
   accountNo?: string;
   merchant?: string;
   balanceToman?: number;
-  /** شمارهٔ ارجاع تراکنش (مثل 10.10070145.1 در فرمت رسالت) */
   reference?: string;
   confidence: "high" | "medium" | "low";
-  /** یادداشت‌های تحلیلی برای نمایش (مثلاً حدس سال یا واحد) */
   notes: string[];
 }
 
-/** نرمال‌سازی متن: ارقام فارسی/عربی ← لاتین، کاف و یای عربی ← فارسی، جداکننده‌ها */
 const normalize = (s: string) =>
   toEnDigits(s)
     .replace(/[ك]/g, "ک")
@@ -57,13 +53,12 @@ export function parseBankSMS(raw: string): SmsParse {
   const normalized = normalize(raw);
   const notes: string[] = [];
 
-  /* ================= شمارهٔ ارجاع (فرمت رسالت: 10.10070145.1) =================
-     قبل از هر چیز استخراج و از متنِ کاری حذف می‌شود تا با مبلغ یا تاریخ اشتباه گرفته نشود. */
+  /* شمارهٔ ارجاع (فرمت رسالت) — قبل از هر چیز جدا می‌شود */
   const refM = normalized.match(/\b([0-9]{1,6}\.[0-9]{4,}\.[0-9]{1,4})\b/);
   const reference = refM ? refM[1] : undefined;
   const text = reference ? normalized.replace(reference, " ") : normalized;
 
-  /* ================= مبلغ ================= */
+  /* ---------- مبلغ ---------- */
   let rawAmount = 0;
   let unit: SmsParse["unit"] = "unknown";
   let explicitSign: "+" | "-" | "" = "";
@@ -72,7 +67,7 @@ export function parseBankSMS(raw: string): SmsParse {
   const unitAt = (s: string): "rial" | "toman" | "unknown" =>
     /ریال|ر‌یال/.test(s) ? "rial" : /تومان|تومن/.test(s) ? "toman" : "unknown";
 
-  /* ۱) «مبلغ ۱٬۲۳۴ ریال» — صریح‌ترین حالت */
+  /* ۱) «مبلغ ۱٬۲۳۴ ریال» */
   let m = text.match(
     /مبلغ\s*[:\-–]?\s*([+-]?)\s*([0-9][0-9,.]*)\s*([+-]?)\s*(میلیون\s*)?(هزار\s*)?(ریال|تومان|تومن)?/
   );
@@ -84,7 +79,7 @@ export function parseBankSMS(raw: string): SmsParse {
     amountFound = true;
   }
 
-  /* ۲) «انتقال:4,509,000-» / «برداشت: 500,000-» / «واریز: +1,000,000» — فرمت بانک ملی */
+  /* ۲) «انتقال:4,509,000-» — فرمت بانک ملی */
   if (!amountFound) {
     m = text.match(
       /(انتقال|برداشت|واریز|خرید|پرداخت|کسر|دریافت|بستانکار|بدهکار)\s*[:\-–]?\s*([+-]?)\s*([0-9][0-9,.]*)\s*([+-]?)\s*(میلیون\s*)?(هزار\s*)?(ریال|تومان|تومن)?/
@@ -98,7 +93,7 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
-  /* ۳) عدد + واحد بدون کلیدواژه: «1,234,567 ریال» */
+  /* ۳) عدد + واحد بدون کلیدواژه */
   if (!amountFound) {
     m = text.match(/([0-9][0-9,.]*)\s*(میلیون\s*)?(هزار\s*)?(ریال|تومان|تومن)\b/);
     if (m) {
@@ -109,8 +104,7 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
-  /* ۴) عدد گروه‌دارِ تنها با علامت — فرمت رسالت: «-10,314,000» در یک خط جدا
-     (بدون کلیدواژه و بدون واحد؛ علامت +/- الزامی است تا با مانده اشتباه نشود) */
+  /* ۴) عدد گروه‌دارِ تنها با علامت — فرمت رسالت */
   if (!amountFound) {
     m = text.match(/(?:^|\n)\s*([+-])\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{5,})\s*(?=\n|$)/);
     if (m && parseFloat(m[2]) > 0) {
@@ -121,19 +115,18 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
-  /* واحد نامشخص → عرف بانک‌های ایران «ریال» است */
   const unitInferred = amountFound && unit === "unknown";
   if (unitInferred) {
     unit = "rial";
-    notes.push("واحد پول در پیام نبود — «ریال» (عرف پیامک‌های بانکی) در نظر گرفته شد؛ اگر تومان است مبلغ را دستی اصلاح کن.");
+    notes.push("واحد پول در پیام نبود — «ریال» در نظر گرفته شد؛ اگر تومان است مبلغ را دستی اصلاح کن.");
   }
 
-  /* ================= تاریخ و ساعت ================= */
+  /* ---------- تاریخ و ساعت ---------- */
   let dateISO: string | undefined;
   let jalali: string | undefined;
+  let time: string | undefined;
 
-  /* الف) تاریخ کامل شمسی: 1403/05/12 */
-  const dm = text.match(/(1[34][0-9]{2})[\/\-.]([0-9]{1,2})[\/\-.]([0-9]{1,2})/);
+  const dm = text.match(/(1[34][0-9]{2})[/\-.]([0-9]{1,2})[/\-.]([0-9]{1,2})/);
   if (dm) {
     const jy = +dm[1], jm = +dm[2], jd = +dm[3];
     if (jm >= 1 && jm <= 12 && jd >= 1 && jd <= 31) {
@@ -142,10 +135,7 @@ export function parseBankSMS(raw: string): SmsParse {
     }
   }
 
-  /* ب) تاریخ کوتاه بدون سال + ساعت — دو فرمت رایج:
-        ملی:    0531-20:40   (MMDD-HH:MM)
-        رسالت:  06/01_15:08  (MM/DD_HH:MM) */
-  let time: string | undefined;
+  /* تاریخ کوتاه بدون سال: 0531-20:40 (ملی) یا 06/01_15:08 (رسالت) */
   const mmdd = text.match(/\b(0[1-9]|1[0-2])\s*[/\-.]?\s*(0[1-9]|[12][0-9]|3[01])\s*[_\-–]\s*([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
   if (mmdd) {
     const jm = +mmdd[1], jd = +mmdd[2];
@@ -153,7 +143,7 @@ export function parseBankSMS(raw: string): SmsParse {
     const today = jalaliToday();
     let jy = today.jy;
     if (jm > today.jm) {
-      jy -= 1; /* پیام نمی‌تواند از ماه آینده باشد؛ پس سال قبل است */
+      jy -= 1;
       notes.push("سالِ تاریخ از امروز حدس زده شد.");
     }
     if (jd <= jalaliMonthLen(jy, jm)) {
@@ -161,12 +151,11 @@ export function parseBankSMS(raw: string): SmsParse {
       try { dateISO = jalaliToISO(jy, jm, jd); } catch { /* نامعتبر */ }
     }
   } else {
-    /* ج) فقط ساعت: 20:40 */
     const tm = text.match(/\b([01]?[0-9]|2[0-3]):([0-5][0-9])\b/);
     if (tm) time = `${tm[1].padStart(2, "0")}:${tm[2]}`;
   }
 
-  /* ================= حساب و کارت ================= */
+  /* ---------- حساب و کارت ---------- */
   const acctM = text.match(/حساب\s*[:\-–]?\s*([0-9]{3,16})/);
   const accountNo = acctM ? acctM[1] : undefined;
 
@@ -177,13 +166,13 @@ export function parseBankSMS(raw: string): SmsParse {
     text.match(/انتهای\s*([0-9]{4})/);
   const cardTail = cardM ? cardM[1] : undefined;
 
-  /* ================= طرف مقابل ================= */
+  /* ---------- طرف مقابل ---------- */
   const merM = text.match(
     /(?:خرید(?:\s+اینترنتی)?\s+از|پرداخت\s+به|برداشت\s+از|واریز\s+از|انتقال\s+به|دریافت\s+از)\s*[:\-–]?\s*([^\n]{2,40}?)(?=\s+(?:مبلغ|کارت|شماره|به|در|زمان|تاریخ|مانده|با|برای)|[,،]|\s*$)/
   );
   const merchant = merM ? merM[1].trim().replace(/[.،,]+$/, "") : undefined;
 
-  /* ================= مانده ================= */
+  /* ---------- مانده ---------- */
   let balanceToman: number | undefined;
   const bm = text.match(/مانده\s*[:\-–]?\s*([0-9][0-9,.]*)\s*(ریال|تومان|تومن)?/);
   if (bm) {
@@ -191,13 +180,12 @@ export function parseBankSMS(raw: string): SmsParse {
     balanceToman = toToman(parseFloat(bm[1].replace(/,/g, "")) || 0, u);
   }
 
-  /* ================= نوع تراکنش =================
-     اولویت: علامت صریح (+/−) > کلیدواژه‌ها > پیش‌فرض هزینه */
+  /* ---------- نوع تراکنش ---------- */
   let type: "income" | "expense";
   if (explicitSign === "-") type = "expense";
   else if (explicitSign === "+") type = "income";
   else if (/(واریز|دریافت|افزایش موجودی|برگشت وجه|بستانکار)/.test(text)) type = "income";
-  else type = "expense"; /* خرید، برداشت، پرداخت، انتقال: …- و پیش‌فرض */
+  else type = "expense";
 
   const confidence: SmsParse["confidence"] = !amountFound
     ? "low"
@@ -211,8 +199,6 @@ export function parseBankSMS(raw: string): SmsParse {
 }
 
 /* ---------- تطبیق حساب ---------- */
-
-/** از روی چهار رقم آخر کارت یا شمارهٔ حسابِ پیام */
 export function matchAccountByCard<T extends { name: string }>(
   accounts: T[],
   cardTail?: string,
@@ -226,7 +212,6 @@ export function matchAccountByCard<T extends { name: string }>(
   return (cardTail && hit(cardTail)) || (accountNo && accountNo.length >= 5 && hit(accountNo)) || undefined;
 }
 
-/** از روی نام بانکِ داخل پیام (مثلاً «ملی» در نام حساب «بانک ملی») */
 const GENERIC_WORDS = ["بانک", "حساب", "کارت", "اصلی", "جاری", "پس‌انداز", "ریال", "تومان", "ایران"];
 export function matchAccountByBankName<T extends { name: string }>(
   accounts: T[],

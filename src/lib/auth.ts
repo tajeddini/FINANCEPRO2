@@ -88,7 +88,7 @@ export async function login(username: string, pass: string): Promise<{ user?: Us
       }
     }
   }
-  if (!user) return { error: "کاربری با این نام کاربری پیدا نشد. اگر از دستگاه دیگری ثبت‌نام کرده‌اید، ابتدا در تنظیمات، اتصال Supabase را فعال کنید." };
+  if (!user) return { error: "کاربری با این نام کاربری پیدا نشد. اگر از دستگاه دیگری ثبت‌نام کرده‌اید، ابتدا اتصال Supabase را فعال کنید." };
   if (user.hash !== hashPass(pass)) return { error: "رمز عبور اشتباه است." };
 
   /* بک‌فیل: حساب‌های قدیمی که قبل از fp_users ساخته شده‌اند، در ابر ثبت شوند */

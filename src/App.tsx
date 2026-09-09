@@ -1,23 +1,46 @@
-/* ---------- پوسته: مسیریابی، ورود/ثبت‌نام، جستجو، یادآوری، نوار بازگشت ---------- */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/* ---------- پوسته: مسیریابی، ورود/ثبت‌نام، جستجو، یادآوری، نوار بازگشت ----------
+   صفحه‌ها با React.lazy بارگذاری می‌شوند تا هر صفحه فقط هنگام بازدید دانلود شود. */
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
-  BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Mic, Moon,
-  PieChart, Plus, RotateCcw, Search, Settings, SlidersHorizontal, StickyNote, Sun, Sunrise, Target, X,
+  BarChart3, CalendarDays, Coins, Download, LayoutDashboard, List, LogOut, Moon,
+  PieChart, Plus, RotateCcw, Settings, SlidersHorizontal, StickyNote, Sun, Sunrise, X,
 } from "lucide-react";
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
 import {
-  pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud,
-  localOnlyTx, mergePulledState, sameLedgerContent,
+  pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, envCloud,
+  mergePulledState, sameLedgerContent,
   readSyncStatus, writeSyncStatus, type SyncStatus,
 } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
-import { faDate, faMoney, faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
-import { ToastProvider, useToast, Modal, TInput, Field, CatGlyph, appendSmart } from "./ui";
-import { DashboardPage, TransactionsPage, CategoriesPage, DebtsPage, TxModal } from "./pages";
-import { AppointmentsPage, DailyPage, NotesPage, ReportsPage, ManagePage, SettingsPage } from "./pages2";
+import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
+import { ToastProvider, useToast, TInput, Field } from "./ui";
+import { GlobalSearch } from "./components/global-search";
+import { rescheduleReminders } from "./lib/reminders";
+import TxModal from "./pages/tx-modal";
+
+/* بارگذاری تنبل صفحه‌ها — هر صفحه فقط وقتی باز شود دانلود می‌شود */
+const DashboardPage = lazy(() => import("./pages/dashboard"));
+const DailyPage = lazy(() => import("./pages/daily"));
+const TransactionsPage = lazy(() => import("./pages/transactions"));
+const CategoriesPage = lazy(() => import("./pages/categories"));
+const DebtsPage = lazy(() => import("./pages/debts"));
+const AppointmentsPage = lazy(() => import("./pages/appointments"));
+const NotesPage = lazy(() => import("./pages/notes"));
+const ReportsPage = lazy(() => import("./pages/reports"));
+const ManagePage = lazy(() => import("./pages/manage"));
+const SettingsPage = lazy(() => import("./pages/settings"));
+
+function PageLoader() {
+  return (
+    <div className="grid place-items-center py-24 rise-in">
+      <span className="w-10 h-10 rounded-full border-[3px] border-t-transparent animate-spin" style={{ borderColor: "var(--fp-border2)", borderTopColor: "transparent" }} />
+      <p className="text-[12px] font-bold mt-3" style={{ color: "var(--fp-text3)" }}>در حال بارگذاری صفحه…</p>
+    </div>
+  );
+}
 
 type PageId = "dashboard" | "daily" | "transactions" | "categories" | "debts" | "appointments" | "notes" | "reports" | "manage" | "settings";
 
@@ -36,8 +59,6 @@ const NAV: { id: PageId; label: string; icon: React.ReactNode }[] = [
 
 export default function App() {
   const [user, setUser] = useState<User | null>(() => getSession());
-  /* نسلِ نشست: با هر ورود عوض می‌شود تا DataProvider دوباره mount شود و
-      نشانهٔ «ثبت‌نام تازه» را دقیقاً همان لحظه بخواند (نه قبل از آن) */
   const [gen, setGen] = useState(0);
   const consumeFresh = () => {
     try {
@@ -67,15 +88,14 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [pass, setPass] = useState("");
-
   const [busy, setBusy] = useState(false);
+
   const submit = async () => {
     setBusy(true);
     const r = mode === "login" ? await login(username, pass) : signup(name, username, pass);
     setBusy(false);
     if (r.error) return toast("err", r.error);
     try {
-      /* فقط «ثبت‌نام تازه» نشانه می‌گیرد — ورودِ کاربر موجود در مرورگر جدید نه */
       if (mode === "signup") sessionStorage.setItem("fp_fresh_signup", "1");
       else sessionStorage.removeItem("fp_fresh_signup");
     } catch { /* ignore */ }
@@ -90,7 +110,6 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
       <div className="absolute inset-0 grid-lines" />
       <div className="noise-layer" />
       <div className="relative z-10 mx-auto max-w-6xl px-5 min-h-screen grid lg:grid-cols-2 items-center gap-10 py-10">
-        {/* برند */}
         <div className="rise-in">
           <div className="flex items-center gap-3">
             <BrandMark />
@@ -124,7 +143,6 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
           </div>
         </div>
 
-        {/* فرم */}
         <div className="card p-6 md:p-8 rise-in" style={{ ["--d" as string]: "120ms" }}>
           <div className="flex rounded-xl p-1 gap-1 mb-6" style={{ background: "var(--fp-bg)" }}>
             {(["login", "signup"] as const).map((m) => (
@@ -160,23 +178,32 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
   );
 }
 
-/* باکس فعال‌سازی اتصال ابری — از همان صفحهٔ ورود */
 function CloudConnectBox() {
   const toast = useToast();
-  const [cfg, setCfg] = useState(() => getCloud());
-  /* پیش‌فرض جمع است — اتصال ابری «اختیاری» است و ورود بدون آن کار می‌کند */
+  /* اتصال مؤثر: اولویت با تنظیم دستیِ ذخیره‌شده در مرورگر، بعد متغیرهای محیطی Vercel */
+  const envCfg = envCloud();
+  const [localCfg, setLocalCfg] = useState(() => getCloud());
+  const cfg = localCfg ?? envCfg;
+  const source: "manual" | "env" | null = localCfg ? "manual" : envCfg ? "env" : null;
   const [open, setOpen] = useState(false);
-  const [url, setUrl] = useState(cfg?.url ?? "");
-  const [key, setKey] = useState(cfg?.key ?? "");
+  const [url, setUrl] = useState("");
+  const [key, setKey] = useState("");
 
   const save = () => {
     const u = url.trim();
     const k = key.trim();
     if (!u || !k) return toast("warn", "آدرس پروژه و کلید anon را کامل وارد کنید.");
     saveCloud({ url: u, key: k });
-    setCfg({ url: u, key: k });
+    setLocalCfg({ url: u, key: k });
     setOpen(false);
     toast("ok", "اتصال Supabase فعال شد — حالا با حساب دستگاه دیگر وارد شوید.");
+  };
+
+  /* بازکردن فرم با مقادیر مؤثر فعلی تا کاربر چیزی را از دست ندهد */
+  const openForm = () => {
+    setUrl(cfg?.url ?? "");
+    setKey(cfg?.key ?? "");
+    setOpen((o) => !o);
   };
 
   return (
@@ -185,24 +212,28 @@ function CloudConnectBox() {
       style={{
         borderColor: cfg ? "color-mix(in srgb, var(--fp-mint) 45%, transparent)" : "color-mix(in srgb, var(--fp-accent) 45%, transparent)",
         background: cfg ? "color-mix(in srgb, var(--fp-mint) 7%, transparent)" : "color-mix(in srgb, var(--fp-accent) 6%, transparent)",
-      }}
-    >
+      }}>
       <div className="flex items-center justify-between gap-2">
-        <span
-          className="text-[11.5px] font-black flex items-center gap-1.5"
-          style={{ color: cfg ? "var(--fp-mint)" : "var(--fp-accent)" }}
-        >
+        <span className="text-[11.5px] font-black flex items-center gap-1.5"
+          style={{ color: cfg ? "var(--fp-mint)" : "var(--fp-accent)" }}>
           <span className={`w-1.5 h-1.5 rounded-full ${cfg ? "pulse-soft" : "blink-dot"}`} style={{ background: "currentColor" }} />
-          {cfg ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها" : "اتصال ابری (اختیاری) — برای سینک بین دستگاه‌ها"}
+          {source === "env"
+            ? "اتصال ابری فعال — از متغیرهای محیطی Vercel ✅"
+            : source === "manual"
+              ? "اتصال ابری فعال — ورود از همهٔ دستگاه‌ها"
+              : "اتصال ابری (اختیاری) — برای سینک بین دستگاه‌ها"}
         </span>
-        <button
-          className="text-[10.5px] font-black underline underline-offset-2 cursor-pointer"
+        <button className="text-[10.5px] font-black underline underline-offset-2 cursor-pointer"
           style={{ color: "var(--fp-text3)" }}
-          onClick={() => setOpen((o) => !o)}
-        >
+          onClick={openForm}>
           {cfg ? "ویرایش" : "فعال‌سازی"}
         </button>
       </div>
+      {source === "env" && !open && (
+        <p className="text-[10.5px] font-bold mt-1.5 leading-5" style={{ color: "var(--fp-text3)" }}>
+          آدرس و کلید Supabase به‌طور خودکار خوانده شدند — نیازی به وارد کردن دستی نیست.
+        </p>
+      )}
       {!cfg && !open && (
         <p className="text-[10.5px] font-bold mt-1.5 leading-5" style={{ color: "var(--fp-text3)" }}>
           بدون اتصال، حساب‌ها فقط در همین مرورگر ذخیره می‌شوند.
@@ -210,24 +241,11 @@ function CloudConnectBox() {
       )}
       {open && (
         <div className="grid gap-2 mt-3">
-          <input
-            dir="ltr"
-            className="input !py-2 !text-[11.5px]"
-            placeholder="https://xxx.supabase.co"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
-          <input
-            dir="ltr"
-            type="password"
-            className="input !py-2 !text-[11.5px]"
-            placeholder="anon public key (eyJ…)"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-          />
-          <button className="btn btn-mint btn-sm" onClick={save}>
-            ذخیرهٔ اتصال
-          </button>
+          <input dir="ltr" className="input !py-2 !text-[11.5px]" placeholder="https://xxx.supabase.co"
+            value={url} onChange={(e) => setUrl(e.target.value)} />
+          <input dir="ltr" type="password" className="input !py-2 !text-[11.5px]" placeholder="anon public key (eyJ…)"
+            value={key} onChange={(e) => setKey(e.target.value)} />
+          <button className="btn btn-mint btn-sm" onClick={save}>ذخیرهٔ اتصال</button>
         </div>
       )}
     </div>
@@ -245,184 +263,9 @@ export function BrandMark() {
   );
 }
 
-/* ---------- جست‌وجوی سراسری (تراکنش + یادداشت + قرار + دسته) ---------- */
-function GlobalSearch({ onNavigate }: {
-  onNavigate: (page: PageId, drill?: { cat?: string; query?: string }) => void;
-}) {
-  const { state } = useStore();
-  const toast = useToast();
-  const [q, setQ] = useState("");
-  const [open, setOpen] = useState(false);
-  const [listening, setListening] = useState(false);
-  const boxRef = useRef<HTMLDivElement>(null);
-  const activeRecRef = useRef(false);
-  /* توکن نشست + آخرین مقدار ارسال‌شده — الگوی idempotent، همان MicButton */
-  const vsSessionRef = useRef(0);
-  const vsLastEmittedRef = useRef("");
-
-  /* جست‌وجوی صوتی: گفتن عبارت به‌جای تایپ —
-     بازنویسی با الگوی دفاعی: بازسازی متن از صفر، حذف تکرار، ارسال فقط هنگام تغییر */
-  const voiceSearch = () => {
-    const W = window as unknown as Record<string, unknown>;
-    const SR = (W.SpeechRecognition || W.webkitSpeechRecognition) as (new () => {
-      lang: string; interimResults: boolean; continuous: boolean;
-      onresult: ((e: unknown) => void) | null; onend: (() => void) | null; onerror: ((e: unknown) => void) | null;
-      start: () => void; abort: () => void;
-    }) | undefined;
-    if (!SR) return toast("warn", "مرورگر شما از جست‌وجوی صوتی پشتیبانی نمی‌کند — Chrome را امتحان کنید.");
-    if (activeRecRef.current) return;
-    const rec = new SR();
-    rec.lang = "fa-IR";
-    rec.interimResults = true;
-    rec.continuous = false;
-    const myId = ++vsSessionRef.current;
-    vsLastEmittedRef.current = "";
-    activeRecRef.current = true;
-    rec.onresult = (e: unknown) => {
-      if (myId !== vsSessionRef.current) return; /* رویداد نشستِ باطل‌شده */
-      const ev = e as { results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> };
-      /* بازسازی کامل متن از صفر: همهٔ نتایج پیمایش و فقط isFinalها به هم می‌چسبند */
-      let finalText = "";
-      for (let i = 0; i < ev.results.length; i++) {
-        if (ev.results[i].isFinal) finalText += (finalText ? " " : "") + ev.results[i][0].transcript;
-      }
-      finalText = finalText.trim();
-      if (!finalText) return;
-      const merged = appendSmart("", finalText);
-      if (merged !== vsLastEmittedRef.current) {
-        vsLastEmittedRef.current = merged;
-        setQ(merged);
-        setOpen(true);
-      }
-    };
-    rec.onend = () => {
-      if (myId !== vsSessionRef.current) return;
-      setListening(false); activeRecRef.current = false;
-    };
-    rec.onerror = (e: unknown) => {
-      if (myId !== vsSessionRef.current) return;
-      setListening(false); activeRecRef.current = false;
-      const err = (e as { error?: string }).error;
-      if (err === "not-allowed") toast("err", "دسترسی به میکروفون رد شد — از نوار آدرس اجازه بده.");
-      else if (err === "no-speech") toast("warn", "صدایی شنیده نشد — دوباره بزن و صحبت کن.");
-    };
-    try { rec.start(); setListening(true); } catch { activeRecRef.current = false; }
-  };
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
-
-  const term = q.trim().toLowerCase();
-  const has = term.length >= 2;
-  const match = (s?: string) => !!s && s.toLowerCase().includes(term);
-
-  const txs = has ? state.transactions.filter((t) =>
-    match(t.note) || match(t.title) ||
-    match(state.categories.find((c) => c.id === t.categoryId)?.name) ||
-    match(state.accounts.find((a) => a.id === t.accountId)?.name)
-  ).slice(0, 5) : [];
-  const notes = has ? state.notes.filter((n) => match(n.title) || match(n.body) || match(n.cat)).slice(0, 4) : [];
-  const appts = has ? state.appointments.filter((a) => match(a.title) || match(a.note)).slice(0, 4) : [];
-  const cats = has ? state.categories.filter((c) => match(c.name)).slice(0, 3) : [];
-  const empty = has && txs.length + notes.length + appts.length + cats.length === 0;
-
-  const go = (page: PageId, drill?: { cat?: string; query?: string }) => {
-    onNavigate(page, drill);
-    setQ(""); setOpen(false);
-  };
-
-  const groupTitle = (icon: React.ReactNode, label: string, count: number) => (
-    <p className="flex items-center gap-1.5 text-[10.5px] font-black px-3 pt-2.5 pb-1" style={{ color: "var(--fp-text3)" }}>
-      <span style={{ color: "var(--fp-accent)" }}>{icon}</span>{label}
-      <span className="tabular">({faNum(count)})</span>
-    </p>
-  );
-
-  return (
-    <div ref={boxRef} className="relative flex-1 max-w-sm mx-auto">
-      <Search className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 pointer-events-none" style={{ color: "var(--fp-text3)" }} />
-      <input
-        className="input !py-2 !ps-9 !pe-10 !text-[12.5px]"
-        placeholder={listening ? "در حال گوش دادن…" : "جست‌وجو — تایپ کن یا بگو 🎙"}
-        value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={(e) => { if (e.key === "Enter" && has) go("transactions", { query: q }); }}
-      />
-      <button onClick={voiceSearch} title="جست‌وجوی صوتی — عبارت را بگو"
-        className="absolute top-1/2 -translate-y-1/2 end-2 w-7 h-7 rounded-lg grid place-items-center cursor-pointer transition-all duration-150 hover:scale-110 active:scale-95"
-        style={{
-          background: listening ? "color-mix(in srgb, var(--fp-coral) 16%, transparent)" : "transparent",
-          color: listening ? "var(--fp-coral)" : "var(--fp-text3)",
-          boxShadow: listening ? "0 0 0 3px color-mix(in srgb, var(--fp-coral) 15%, transparent)" : "none",
-        }}>
-        <span className="relative grid place-items-center">
-          <Mic className="w-4 h-4" />
-          {listening && <i className="absolute -top-0.5 -left-0.5 w-1.5 h-1.5 rounded-full pulse-soft not-italic" style={{ background: "var(--fp-coral)" }} />}
-        </span>
-      </button>
-      {open && has && (
-        <div className="absolute top-full inset-x-0 mt-2 rounded-xl border shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto"
-          style={{ background: "var(--fp-bg)", borderColor: "var(--fp-border2)" }}>
-          {empty && (
-            <p className="text-[12px] font-bold p-4 text-center" style={{ color: "var(--fp-text3)" }}>چیزی با «{q}» پیدا نشد.</p>
-          )}
-          {txs.length > 0 && groupTitle(<List className="w-3.5 h-3.5" />, "تراکنش‌ها", txs.length)}
-          {txs.map((t) => {
-            const c = state.categories.find((x) => x.id === t.categoryId);
-            return (
-              <button key={t.id} onClick={() => go("transactions", { query: t.note || t.title })}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
-                <CatGlyph icon={c?.icon} color={c?.color} className="w-6 h-6 rounded-lg" iconClass="w-3 h-3" />
-                <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{t.note || t.title}</span>
-                <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(t.date)}</span>
-                <span className="text-[11.5px] font-black tabular shrink-0" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                  {t.type === "income" ? "+" : "−"}{faMoney(t.amount)}
-                </span>
-              </button>
-            );
-          })}
-          {notes.length > 0 && groupTitle(<StickyNote className="w-3.5 h-3.5" />, "یادداشت‌ها", notes.length)}
-          {notes.map((n) => (
-            <button key={n.id} onClick={() => go("notes")}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
-              <i className="w-2 h-2 rounded-full not-italic shrink-0" style={{ background: n.color }} />
-              <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{n.title}</span>
-              <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(n.date)}</span>
-            </button>
-          ))}
-          {appts.length > 0 && groupTitle(<CalendarDays className="w-3.5 h-3.5" />, "قرارها", appts.length)}
-          {appts.map((a) => (
-            <button key={a.id} onClick={() => go("appointments")}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
-              <CalendarDays className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-accent)" }} />
-              <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{a.title}</span>
-              <span className="text-[10.5px] font-bold tabular shrink-0" style={{ color: "var(--fp-text3)" }}>{faDate(a.date)} · {faNum(a.time)}</span>
-            </button>
-          ))}
-          {cats.length > 0 && groupTitle(<Target className="w-3.5 h-3.5" />, "دسته‌ها", cats.length)}
-          {cats.map((c) => (
-            <button key={c.id} onClick={() => go("transactions", { cat: c.id })}
-              className="w-full flex items-center gap-2.5 px-3 py-2 text-start cursor-pointer transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
-              <i className="w-2 h-2 rounded-full not-italic shrink-0" style={{ background: c.color }} />
-              <span className="flex-1 min-w-0 text-[12px] font-bold truncate">{c.name}</span>
-              <span className="text-[10.5px] font-bold shrink-0" style={{ color: "var(--fp-text3)" }}>{c.type === "income" ? "درآمد" : "هزینه"}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ================= پوستهٔ اصلی ================= */
 function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => void }) {
-  const { state, mutate, purgeTrash } = useStore();
+  const { state, mutate, restore, purgeTrash } = useStore();
   const toast = useToast();
   const now = useNow();
   const [page, setPage] = useState<PageId>("dashboard");
@@ -431,165 +274,105 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinErr, setPinErr] = useState(false);
-  /* شناسهٔ قرارهایی که «یک‌ساعت‌قبل» یادآوری شده‌اند — هر قرار مستقل یادآوری می‌شود
-     (نه یک boolean سراسری که بعد از اولین مورد، بقیه را برای همیشه خاموش می‌کرد) */
-  const remindedIdsRef = useRef<Set<string>>(new Set());
-
-  /* ---------- نصب PWA ---------- */
   const [installEvt, setInstallEvt] = useState<Event | null>(null);
   const [installed, setInstalled] = useState(false);
-  useEffect(() => {
-    const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvt(e); };
-    const onInstalled = () => { setInstalled(true); setInstallEvt(null); };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
-  const doInstall = async () => {
-    if (!installEvt) return;
-    (installEvt as Event & { prompt: () => void }).prompt();
-    await (installEvt as Event & { userChoice: Promise<{ outcome: string }> }).userChoice;
-    setInstallEvt(null);
-  };
+  const remindedIdsRef = useRef<Set<string>>(new Set());
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const mutateRef = useRef(mutate);
+  mutateRef.current = mutate;
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+  const reconciledRef = useRef(false);
+  const pushedRef = useRef("");
 
-  /* تم */
+  useEffect(() => {
+    applyAccent(state.prefs.accent ?? readAccent());
+  }, [state.prefs.accent]);
+
   useEffect(() => {
     const t = state.prefs.theme ?? "dark";
     document.documentElement.classList.toggle("light", t === "light");
     try { localStorage.setItem("fp_theme", t); } catch { /* ignore */ }
   }, [state.prefs.theme]);
 
-  /* تم رنگی ترکیبی */
+  /* نصب PWA */
   useEffect(() => {
-    applyAccent(state.prefs.accent ?? readAccent());
-  }, [state.prefs.accent]);
-
-  /* ---------- همگام‌سازی ابریِ چنددستگاهه ----------
-     کلید سینک از «نام کاربری» ساخته می‌شود تا همهٔ دستگاه‌های یک کاربر به یک ردیف
-     مشترک در Supabase وصل باشند. شمارندهٔ نسخه (rev) تعیین می‌کند کدام داده جدیدتر
-     است؛ دستگاه تازه‌وارد به‌جای پاک کردن، دادهٔ دستگاه اصلی را از ابر بازیابی می‌کند. */
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const pushedRef = useRef("");
-  const reconciledRef = useRef(false);
-  const mutateRef = useRef(mutate);
-  mutateRef.current = mutate;
-  const toastRef = useRef(toast);
-  toastRef.current = toast;
+    const h = (e: Event) => { e.preventDefault(); setInstallEvt(e); };
+    window.addEventListener("beforeinstallprompt", h);
+    const hi = () => setInstalled(true);
+    window.addEventListener("appinstalled", hi);
+    return () => { window.removeEventListener("beforeinstallprompt", h); window.removeEventListener("appinstalled", hi); };
+  }, []);
+  const doInstall = async () => {
+    if (!installEvt) return;
+    const e = installEvt as Event & { prompt: () => Promise<void> };
+    await e.prompt();
+    setInstallEvt(null);
+  };
 
   const cloudSyncId = "fp-user-" + user.username;
   const syncOn = (() => {
-    const e = effectivePrefs(state.prefs);
-    return !!(e.syncUrl && e.syncKey);
+    const ep = effectivePrefs(state.prefs);
+    return !!(ep.syncUrl && ep.syncKey);
   })();
 
-  /* شناسهٔ نمایشی سینک را هم‌نام کلید ابری نگه می‌داریم */
-  useEffect(() => {
-    if (state.prefs.syncId !== cloudSyncId) {
-      mutate((d) => { d.prefs.syncId = cloudSyncId; });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cloudSyncId]);
-
-  /* گزارش وضعیت سینک + توست فقط هنگام «تغییر وضعیت» (موفق ↔ ناموفق) تا اسپم نشود */
-  const lastSyncOkRef = useRef<boolean | null>(null);
-  const reportSync = useCallback((ok: boolean, message: string) => {
-    writeSyncStatus({ ok, at: Date.now(), message });
-    if (lastSyncOkRef.current === true && !ok)
-      toastRef.current("err", `سینک ابری ناموفق — ${message}`);
-    else if (lastSyncOkRef.current === false && ok)
-      toastRef.current("ok", "سینک ابری دوباره برقرار شد ✅");
-    lastSyncOkRef.current = ok;
-  }, []);
-
-  /* سازش‌گیری: اول از ابر بخوان؛ اگر ابر جدیدتر بود ادغام کن، وگرنه محلی را بفرست.
-     خروجی boolean = موفقیت — تا ارسالِ شکست‌خورده «فرستاده‌شده» علامت نخورد و بعداً دوباره تلاش شود */
-  const reconcilingRef = useRef(false);
-  const reconcile = useCallback(async (): Promise<boolean> => {
-    if (reconcilingRef.current) return false; /* اجرای همزمانِ پولینگ و دیباونس ممنوع */
+  /* سازش‌گیری: اول بخوان، اگر ابر جدیدتر بود ادغام کن، وگرنه بفرست */
+  const reconcile = useCallback(async () => {
     const s = stateRef.current;
     const ep = effectivePrefs(s.prefs);
-    if (!ep.syncUrl || !ep.syncKey) return false;
-    reconcilingRef.current = true;
-    let ok = false;
-    let message = "";
+    if (!ep.syncUrl || !ep.syncKey) return;
     try {
       const pull = await pullFromCloud(ep, cloudSyncId);
-      if (!pull.ok) {
-        /* خطای واقعی (شبکه/کلید/جدول) — چیزی نمی‌فرستیم تا دادهٔ ابر اشتباهی پاک نشود */
-        message = pull.message;
-      } else if (pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
-        if (sameLedgerContent(s, pull.state)) {
-          /* محتوای ابر با محلی یکسان است و فقط شمارهٔ نسخه جلوتر است —
-             کاری لازم نیست. این گارد جلوی چرخهٔ بی‌پایانِ «ادغام + لاگ + ارسال»
-             بین دستگاه‌هایی را می‌گیرد که ساعتشان چند ثانیه اختلاف دارد. */
-        } else {
-          /* ابر جدیدتر است — دادهٔ دستگاه اصلی را بازیابی کن،
-             اما تراکنش‌های محلیِ سینک‌نشده را حفظ کن (جلوگیری از گم شدن تغییرات) */
-          const pulled = pull.state;
-          const keepCount = localOnlyTx(s, pulled).length;
-          mutateRef.current((d) => { mergePulledState(d, pulled); }, "بازیابی داده‌ها از ابر");
-          toastRef.current("ok", keepCount > 0
-            ? `از ابر بازیابی شد و ${faNum(keepCount)} تراکنش محلیِ تازه هم حفظ شد.`
-            : "تراکنش‌های شما از ابر بازیابی شد.");
+      if (pull.ok && pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
+        if (!sameLedgerContent(s, pull.state)) {
+          mutateRef.current((d) => { mergePulledState(d, pull.state!); }, "بازیابی داده‌ها از ابر");
+          toastRef.current("ok", "تراکنش‌های شما از ابر بازیابی شد.");
         }
-        ok = true; message = "دریافت از ابر انجام شد.";
-      } else {
-        /* ابر «خالی» یا «قدیمی‌تر» است — در هر دو حالت فرستادن محلی امن است
-           (ابر خالی = اولین سینک؛ pull با ok:true و state=undefined برمی‌گردد) */
-        const push = await pushToCloud(s, ep, cloudSyncId);
-        ok = push.ok;
-        message = push.ok ? "ارسال به ابر انجام شد." : push.message;
+      } else if (pull.ok) {
+        await pushToCloud(s, ep, cloudSyncId);
       }
+      writeSyncStatus({ ok: true, at: Date.now(), message: pull.message });
     } catch {
-      message = "خطای شبکه — اتصال اینترنت را بررسی کنید.";
-    } finally {
-      reconcilingRef.current = false;
+      writeSyncStatus({ ok: false, at: Date.now(), message: "خطا در سینک" });
     }
     reconciledRef.current = true;
-    reportSync(ok, message);
-    return ok;
-  }, [cloudSyncId, reportSync]);
-  /* هنگام فعال شدن سینک و هر ۹۰ ثانیه، سازش‌گیری کن */
+    pushedRef.current = JSON.stringify(stateRef.current);
+  }, [cloudSyncId]);
+
+  /* هنگام بارگذاری: یک‌بار سازش‌گیری */
   useEffect(() => {
-    if (!syncOn) return;
-    reconciledRef.current = false;
-    reconcile();
-    const id = setInterval(reconcile, 90000);
-    /* کلیک روی نشانگرِ سینک → رویداد fp-sync-now → سینک فوری (بیرون از نوبت ۹۰ ثانیه) */
-    const onNow = () => { void reconcile(); };
-    window.addEventListener("fp-sync-now", onNow);
-    return () => { clearInterval(id); window.removeEventListener("fp-sync-now", onNow); };
+    if (!syncOn || reconciledRef.current) return;
+    void reconcile();
   }, [syncOn, reconcile]);
 
-  /* بعد از سازش‌گیری اولیه، هر تغییر محلی با دیباونس «سازش‌گیری» می‌کند —
-     نه ارسال کورکورانه: ابتدا ابر خوانده می‌شود و اگر ابر جدیدتر باشد ادغام
-     می‌شود، وگرنه محلی فرستاده می‌شود. این‌طوری نسخهٔ قدیمیِ یک دستگاه هرگز
-     جای دادهٔ جدیدترِ دستگاه دیگر را نمی‌گیرد (ریشهٔ باگ عوض‌شدن خودبه‌خود). */
+  /* بعد از سازش‌گیری، هر تغییر محلی با دیباونس سازش‌گیری می‌کند */
   useEffect(() => {
     if (!syncOn || !reconciledRef.current) return;
-    const id = setTimeout(async () => {
+    const id = setTimeout(() => {
       const json = JSON.stringify(stateRef.current);
       if (json === pushedRef.current) return;
-      const ok = await reconcile();
-      /* فقط وقتی ارسال واقعاً موفق بود «فرستاده‌شده» علامت بزن —
-         وگرنه تغییر بعدی (یا پولینگ ۹۰ ثانیه) دوباره تلاش می‌کند و داده پشت شبکهٔ قطع نمی‌ماند */
-      if (ok) pushedRef.current = JSON.stringify(stateRef.current);
+      pushedRef.current = json;
+      void reconcile();
     }, 3500);
     return () => clearTimeout(id);
   }, [state, syncOn, reconcile]);
 
-  /* قفل پین */
+  /* پولینگ هر ۹۰ ثانیه */
   useEffect(() => {
-    if (state.prefs.pinEnabled && state.prefs.pin) setLocked(true);
-  }, []);
+    if (!syncOn) return;
+    const id = setInterval(() => { void reconcile(); }, 90000);
+    return () => clearInterval(id);
+  }, [syncOn, reconcile]);
 
-  /* یادآوری قرارها — اعلان یک‌ساعت‌قبل.
-     هر قرار با شناسهٔ خودش در Set ثبت می‌شود تا «هر قرار جدا و مستقل» یادآوری شود؛
-     اگر در یک روز چند قرار نزدیک‌به‌هم باشد، برای همه‌شان (نه فقط اولی) توست می‌آید. */
+  /* سینک دستی با کلیک روی نشانگر */
+  useEffect(() => {
+    const h = () => { void reconcile(); };
+    window.addEventListener("fp-sync-now", h);
+    return () => window.removeEventListener("fp-sync-now", h);
+  }, [reconcile]);
+
+  /* یادآوری قرارها (یک‌ساعت‌قبل) */
   useEffect(() => {
     const today = localISODate(now);
     const soon = state.appointments.find((a) => {
@@ -604,9 +387,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     }
   }, [state.appointments, now, toast]);
 
-  /* ---------- زنگِ سرِ ساعت ----------
-     هر ۱۵ ثانیه بررسی می‌شود؛ وقتی وقتِ یک قرار برسد، زنگ صوتی + اعلان سیستم
-     پخش می‌شود (از Service Worker تا حتی وقتی برنامه در پس‌زمینه است). */
+  /* زنگِ سرِ ساعت */
   useEffect(() => {
     if (!state.prefs.notifyEnabled) return;
     const today = localISODate(now);
@@ -625,10 +406,35 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     }
   }, [now, state.appointments, state.prefs.notifyEnabled, toast]);
 
-  /* پاکسازی سطل */
+  /* توست «فایل ذخیره شد» — توسط exportFile در اندروید منتشر می‌شود */
   useEffect(() => {
-    purgeTrash();
-  }, [now]);
+    const h = (e: Event) => {
+      const d = (e as CustomEvent<{ where: string; name: string }>).detail;
+      toastRef.current("ok", `«${d.name}» در ${d.where} ذخیره شد — می‌توانید ارسالش هم بکنید.`);
+    };
+    window.addEventListener("fp-file-saved", h);
+    return () => window.removeEventListener("fp-file-saved", h);
+  }, []);
+
+  /* باززمان‌بندی یادآورهای بومی (اندروید) — با دیباونس تا با هر تغییر داده،
+     اعلان‌ها دوباره ساخته شوند. فقط وقتی یادآورهای بومی فعال باشند. */
+  useEffect(() => {
+    /* خودِ rescheduleReminders تصمیم می‌گیرد کدام اعلان‌ها لازم است؛
+       اگر هیچ‌کدام فعال نباشد بی‌صدا برمی‌گردد. */
+    const id = setTimeout(() => {
+      void rescheduleReminders(state);
+    }, 800);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    state.prefs.nativeReminders,
+    state.prefs.notifyEnabled,
+    state.debts,
+    state.installments,
+    state.budgets,
+    state.transactions,
+    state.appointments,
+  ]);
 
   const tryPin = () => {
     const en = pinInput.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
@@ -667,7 +473,6 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       <div className="noise-layer" />
 
       <div className="relative z-10 flex">
-        {/* سایدبار دسکتاپ */}
         <aside className="hidden lg:flex flex-col w-60 shrink-0 sticky top-0 h-screen border-e no-print" style={{ borderColor: "var(--fp-border)", background: "color-mix(in srgb, var(--fp-bg) 82%, transparent)" }}>
           <div className="flex items-center gap-2.5 px-5 pt-6 pb-5">
             <BrandMark />
@@ -703,15 +508,13 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
           </div>
         </aside>
 
-        {/* بدنه */}
         <div className="flex-1 min-w-0 flex flex-col">
-          {/* تاپ‌بار */}
           <header className="sticky top-0 z-40 border-b backdrop-blur-md no-print" style={{ borderColor: "var(--fp-border)", background: "color-mix(in srgb, var(--fp-bg) 78%, transparent)" }}>
             <div className="flex items-center gap-2.5 px-4 lg:px-8 h-16">
               <span className="lg:hidden"><BrandMark /></span>
               <p className="font-display text-xl hidden sm:block">{NAV.find((n) => n.id === page)?.label}</p>
 
-              <GlobalSearch onNavigate={(p, drill) => { setDrill({ ...drill, key: Date.now() }); setPage(p); }} />
+              <GlobalSearch onNavigate={(p, d) => { setDrill({ ...d, key: Date.now() }); setPage(p as PageId); }} />
 
               <SyncBadge />
               {installEvt && !installed && (
@@ -729,6 +532,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
           </header>
 
           <main className="flex-1 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
+            <Suspense fallback={<PageLoader />}>
             <div key={page + drill.key}>
               {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} />}
               {page === "daily" && <DailyPage />}
@@ -740,15 +544,14 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               {page === "reports" && <ReportsPage />}
               {page === "manage" && <ManagePage />}
               {page === "settings" && (
-                <SettingsPage user={user} onLogout={onLogout} onDelete={onDelete}
-                  onLock={() => setLocked(true)} />
+                <SettingsPage user={user} onLogout={onLogout} onDelete={onDelete} onLock={() => setLocked(true)} />
               )}
             </div>
+            </Suspense>
           </main>
         </div>
       </div>
 
-      {/* ناوبری موبایل */}
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t backdrop-blur-md no-print"
         style={{ borderColor: "var(--fp-border)", background: "color-mix(in srgb, var(--fp-bg) 85%, transparent)" }}>
         <div className="flex overflow-x-auto px-2 py-1.5 gap-1">
@@ -768,17 +571,12 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   );
 }
 
-/* تگ سینک */
-/* نشانگر وضعیت واقعی سینک ابری — سه حالت:
-   خاکستریِ چشمک‌زن = سینک غیرفعال (آدرس/کلید تنظیم نیست)
-   سبزِ پالس‌دار = آخرین تلاش سینک موفق — با زمانِ آن
-   قرمز = آخرین تلاش ناموفق — دلیل در title و با کلیک، سینک دستی */
 function SyncBadge() {
   const { state } = useStore();
   const e = effectivePrefs(state.prefs);
   const on = !!e.syncUrl && !!e.syncKey;
   const [status, setStatus] = useState<SyncStatus | null>(() => readSyncStatus());
-  const now = useNow(15000); /* برای تازه‌ماندن «چند دقیقه پیش» */
+  const now = useNow(15000);
   void now;
 
   useEffect(() => {
@@ -798,7 +596,7 @@ function SyncBadge() {
     );
   }
 
-  const ok = status?.ok !== false; /* اگر هنوز گزارشی نیست، خوش‌بینانه سبز */
+  const ok = status?.ok !== false;
   const ago = status ? relTime(status.at) : relTime(state.lastSync);
   return (
     <button
@@ -811,8 +609,7 @@ function SyncBadge() {
       }}
       title={ok
         ? `آخرین سینک موفق: ${ago}${status?.message ? " — " + status.message : ""} · برای سینک دستی کلیک کنید`
-        : `سینک ناموفق (${ago}) — ${status?.message ?? "خطای نامشخص"} · برای تلاش دوباره کلیک کنید`}
-    >
+        : `سینک ناموفق (${ago}) — ${status?.message ?? "خطای نامشخص"} · برای تلاش دوباره کلیک کنید`}>
       <span className={`w-1.5 h-1.5 rounded-full ${ok ? "pulse-soft" : ""}`} style={{ background: "currentColor" }} />
       {ok ? "همگام" : "خطای سینک"}
       {!ok && <RotateCcw className="w-3 h-3" />}
@@ -827,14 +624,12 @@ function ThemeToggle() {
     <button
       className="icon-btn"
       title={dark ? "تم روشن" : "تم تیره"}
-      onClick={() => mutate((d) => { d.prefs.theme = dark ? "light" : "dark"; }, dark ? "تم روشن شد" : "تم تیره شد")}
-    >
+      onClick={() => mutate((d) => { d.prefs.theme = dark ? "light" : "dark"; }, dark ? "تم روشن شد" : "تم تیره شد")}>
       {dark ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
     </button>
   );
 }
 
-/* دکمهٔ چرخش تم‌های رنگی ترکیبی */
 function AccentCycle() {
   const { state, mutate } = useStore();
   const cur = themeById(state.prefs.accent);
@@ -846,20 +641,17 @@ function AccentCycle() {
       onClick={() => {
         applyAccent(next.id);
         mutate((d) => { d.prefs.accent = next.id; }, `تم رنگی «${next.name}» فعال شد`);
-      }}
-    >
+      }}>
       <span className="brand-swatch w-5 h-5 rounded-full block transition-transform duration-200 hover:scale-110"
-        style={{ boxShadow: "inset 0 0 0 1.5px rgba(0,0,0,0.3)" }} />
+        style={{ background: `linear-gradient(135deg, ${next.accent} 0 52%, ${next.mint} 52%)`, boxShadow: "inset 0 0 0 1.5px rgba(0,0,0,0.3)" }} />
     </button>
   );
 }
 
-/* نوار بازگشت ۳۰ ثانیه */
 function UndoBar() {
   const { state, restore, purgeTrash } = useStore();
   const now = useNow(200);
-  useEffect(() => { purgeTrash(); }, [now]);
-  /* همهٔ حذف‌های هنوز-منقضی‌نشده — هرکدام جداگانه قابل بازگشت */
+  useEffect(() => { purgeTrash(); }, [now, purgeTrash]);
   const pending = state.trash
     .map((e) => ({ e, remaining: e.until - now.getTime() }))
     .filter((x) => x.remaining > 0)

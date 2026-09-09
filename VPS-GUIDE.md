@@ -1,116 +1,84 @@
-# 🤖 راهنمای راه‌اندازی ربات تلگرام روی VPS
+# 🤖 راهنمای ربات تلگرام فایننس‌پرو روی VPS
 
-این ربات، **دفترکل مشترک** با سایت است: هر تراکنشی که از تلگرام ثبت کنی، در سایت (و برعکس) دیده می‌شود. چون هر دو به یک جدول `financepro_state` در Supabase وصل‌اند.
-
-ربات **هیچ وابستگی npm ندارد** — فقط Node.js نسخهٔ ۱۸ به بالا لازم است و با `fetch` داخلی کار می‌کند. برای VPS رایگان شما (ARM64 / 2GB RAM / 500MB SSD) کاملاً مناسب است.
+ربات تلگرام بدون هیچ وابستگی npm است (فقط Node.js ۱۸+) و با دفترکل سایت مشترک است — هر تراکنشی که از تلگرام بزنید، همان لحظه در سایت دیده می‌شود.
 
 ---
 
 ## پیش‌نیازها
 
-قبل از شروع، این سه چیز را آماده کن:
-
-| مورد | از کجا |
+| مورد | توضیح |
 |---|---|
-| `BOT_TOKEN` | از [@BotFather](https://t.me/BotFather) — فرمان `/newbot` |
-| `SUPABASE_URL` | داشبورد Supabase → Settings → API → Project URL |
-| `SUPABASE_KEY` | همان‌جا → کلید `anon` |
-
-> ⚠️ کلید `anon` را استفاده کن، **نه** `service_role`.
+| VPS لینوکس با SSH Root | مثل wpswala (ARM64, 2GB RAM کافی است) |
+| Node.js نسخه ۱۸+ | روی VPS نصب می‌شود |
+| توکن ربات | از BotFather در تلگرام |
+| آدرس و کلید anon سوپابیس | از Settings → API پروژه |
 
 ---
 
-## ۱) وصل شدن به VPS با SSH
+## گام ۱ — گرفتن توکن ربات
 
+۱. در تلگرام به **@BotFather** پیام دهید.
+۲. `/newbot` را بفرستید، نام و نام کاربری ربات را انتخاب کنید.
+۳. توکنی شبیه `123456:ABC-DEF...` می‌گیرید — **نگهش دارید**.
+
+## گام ۲ — نصب Node.js روی VPS
+
+با SSH وصل شوید:
 ```bash
-ssh root@<آی‌پی-سرور>
+ssh root@<آدرس-IP-سرور>
 ```
 
-(آی‌پی و رمز را از پنل WPSwala بگیر.)
-
----
-
-## ۲) نصب Node.js (نسخهٔ ARM64)
-
-چون سرور ARM64 است و فقط ۵۰۰ مگابایت جا دارد، نسخهٔ سبک را نصب می‌کنیم:
-
+برای ARM64 (سرورهای جدید):
 ```bash
-# اگر curl نیست:
-apt update && apt install -y curl
-
-# نصب Node 20 از NodeSource (معماری ARM را خودکار تشخیص می‌دهد)
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt install -y nodejs
-
-# بررسی
-node -v    # باید v20.x باشد
+apt-get install -y nodejs
+node -v
 ```
 
----
+## گام ۳ — انتقال کد ربات به VPS
 
-## ۳) انتقال کد ربات به سرور
-
-فقط پوشهٔ `bot` لازم است. دو راه داری:
-
-**راه آسان (اگر git روی سرور هست):**
+پوشهٔ `bot/` را از کامپیوتر به VPS بفرستید:
 ```bash
-apt install -y git
+scp -r bot/ root@<آدرس-سرور>:/root/financepro-bot/
+```
+
+یا اگر کد روی GitHub است:
+```bash
+cd /root
 git clone https://github.com/tajeddini/FINANCEPRO2.git
 cd FINANCEPRO2/bot
 ```
 
-**راه دستی:** فایل `bot.js` و `package.json` را با `scp` از کامپیوتر خودت بفرست:
-```bash
-# روی کامپیوتر خودت:
-scp bot/bot.js bot/package.json root@<آی‌پی-سرور>:/root/bot/
-```
-
----
-
-## ۴) تنظیم متغیرهای محیطی
-
-یک فایل `.env` نساز؛ مستقیم متغیرها را موقع اجرا بده (یا در systemd بگذار — بخش ۶). برای تست سریع:
+## گام ۴ — تنظیم متغیرهای محیطی
 
 ```bash
-cd /root/bot
-export BOT_TOKEN="123456:ABC..."
-export SUPABASE_URL="https://xxxx.supabase.co"
-export SUPABASE_KEY="eyJhbGci..."
+cd /root/financepro-bot
+export BOT_TOKEN="<توکن-ربات>"
+export SUPABASE_URL="https://xxx.supabase.co"
+export SUPABASE_KEY="<کلید-anon>"
+export SUPABASE_SYNC_ID="fp-user-<نام‌کاربری-شما>"
 ```
 
----
+> ⚠️ `SUPABASE_SYNC_ID` باید دقیقاً همان `fp-user-<نام‌کاربری>` باشد که در سایت استفاده می‌کنید تا به همان دفترکل وصل شود.
 
-## ۵) تست اجرا
+## گام ۵ — اجرای آزمایشی
 
 ```bash
 node bot.js
 ```
 
-باید ببینی:
-```
-✅ ربات @YourBotName در حال اجراست…
-```
+باید پیام «ربات شروع شد» را ببینید. در تلگرام به ربات `/start` بفرستید.
 
-حالا در تلگرام برو پیش ربات و `/start` بزن، **نام کاربری سایت** را بفرست، بعد یکی از این‌ها را امتحان کن:
-- `موجودی`
-- فوروارد کردن یک پیامک بانکی
+## گام ۶ — همیشه‌روشن نگه‌داشتن با systemd
 
-اگر درست کار کرد، `Ctrl+C` بزن و برو مرحلهٔ بعد تا همیشه‌روشن شود.
+چون VPS فضای کمی دارد، از systemd (داخل خود لینوکس) استفاده می‌کنیم، نه pm2.
 
----
-
-## ۶) همیشه‌روشن نگه‌داشتن با systemd (بدون pm2)
-
-چون جا کم است، از `pm2` استفاده **نمی‌کنیم**؛ `systemd` داخل خود لینوکس است و رایگان.
-
-یک فایل سرویس بساز:
-
+فایل سرویس را بسازید:
 ```bash
 nano /etc/systemd/system/financepro-bot.service
 ```
 
-این محتوا را داخلش بگذار (مقادیر `Environment` را با مال خودت پر کن):
-
+این محتوا را بنویسید:
 ```ini
 [Unit]
 Description=FinancePro Telegram Bot
@@ -118,30 +86,31 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root/bot
+WorkingDirectory=/root/financepro-bot
+Environment="BOT_TOKEN=<توکن-ربات>"
+Environment="SUPABASE_URL=https://xxx.supabase.co"
+Environment="SUPABASE_KEY=<کلید-anon>"
+Environment="SUPABASE_SYNC_ID=fp-user-<نام‌کاربری>"
 ExecStart=/usr/bin/node bot.js
 Restart=always
 RestartSec=5
-Environment=BOT_TOKEN=123456:ABC...
-Environment=SUPABASE_URL=https://xxxx.supabase.co
-Environment=SUPABASE_KEY=eyJhbGci...
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-ذخیره کن (`Ctrl+X` بعد `Y` بعد `Enter`) و فعالش کن:
-
+فعال و اجرا کنید:
 ```bash
 systemctl daemon-reload
-systemctl enable financepro-bot     # با روشن‌شدن سرور، خودکار اجرا شود
-systemctl start financepro-bot      # همین حالا اجرا کن
-
-systemctl status financepro-bot     # بررسی وضعیت (باید active باشد)
-journalctl -u financepro-bot -f     # دیدن لاگ‌ها به‌صورت زنده
+systemctl enable financepro-bot
+systemctl start financepro-bot
+systemctl status financepro-bot
 ```
 
-حالا حتی اگر سرور ریستارت شود، ربات خودکار بالا می‌آید. ✅
+برای دیدن لاگ‌ها:
+```bash
+journalctl -u financepro-bot -f
+```
 
 ---
 
@@ -149,13 +118,12 @@ journalctl -u financepro-bot -f     # دیدن لاگ‌ها به‌صورت ز�
 
 | فرمان | کار |
 |---|---|
-| `/start` | اتصال — نام کاربری سایت را می‌پرسد |
-| `/help` | راهنما |
-| `موجودی` | مجموع موجودی حساب‌ها |
+| `/start` | اتصال با نام کاربری سایت |
+| `موجودی` | موجودی کل + حساب‌ها |
 | `امروز` | خرج و درآمد امروز |
-| `گزارش` | موجودی کل + ۵ تراکنش آخر |
-| فوروارد پیامک بانک | تشخیص خودکار مبلغ/نوع/تاریخ و ثبت |
-| `ثبت: اسنپ ۵۰۰۰۰` | ثبت دستی سریع |
+| `گزارش` | خلاصهٔ این ماه |
+| `ثبت: اسنپ ۵۰۰۰۰` | ثبت تراکنش با تشخیص هوشمند |
+| **فوروارد پیامک بانک** | ثبت خودکار (ملی/ملت/رسالت) |
 
 ---
 
@@ -163,15 +131,13 @@ journalctl -u financepro-bot -f     # دیدن لاگ‌ها به‌صورت ز�
 
 | مشکل | راه‌حل |
 |---|---|
-| `BOT_TOKEN تنظیم نشده` | متغیرهای محیطی را چک کن |
-| ربات جواب نمی‌دهد | `journalctl -u financepro-bot -f` را ببین |
-| `Supabase 401` | کلید `SUPABASE_KEY` اشتباه است |
-| `داده‌ای در ابر پیدا نشد` | اول در **سایت** یک‌بار سینک کن تا داده‌ات در ابر باشد |
-| پیامک تشخیص داده نشد | پارسر، فرمت ملی/ملت/رسالت را می‌شناسد؛ پیام را کامل فوروارد کن |
+| ربات جواب نمی‌دهد | `journalctl -u financepro-bot -f` را ببینید |
+| خطای 401 از سوپابیس | کلید anon اشتباه است |
+| تراکنش در سایت نیست | `SUPABASE_SYNC_ID` را با سایت چک کنید |
+| Node پیدا نشد | `which node` و مسیر ExecStart را اصلاح کنید |
 
 ---
 
 ## نکتهٔ امنیتی
 
-- ربات، نگاشت «chatId تلگرام → نام کاربری» را در فایل `bot/bot-state.json` روی سرور نگه می‌دارد (داخل git نمی‌رود).
-- چون VPS شما بکاپ ندارد، اگر سرور پاک شود فقط همین فایل اتصال از دست می‌رود و باید دوباره `/start` بزنی — **داده‌های مالی‌ات در Supabase امن‌اند**.
+توکن ربات و کلید سوپابیس را **هرگز** در کد commit نکنید — فقط در Environment Variables سرویس systemd نگه دارید. فایل `bot/bot-state.json` (نگاشت کاربران تلگرام) در `.gitignore` است.
