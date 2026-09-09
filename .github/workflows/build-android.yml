@@ -40,6 +40,9 @@ jobs:
       - name: Sync Capacitor (copies dist/ into the app)
         run: npx cap sync android
 
+      - name: Regenerate Android launcher icons from design
+        run: python3 scripts/gen-icon-pngs.py
+
       # امضای دیباگ ثابت: هر اجرا با همان کلید commit‌شده امضا می‌کند تا
       # آپدیت APK روی نسخهٔ نصب‌شده بدون خطای «package conflicts» انجام شود.
       - name: Apply fixed debug signing
