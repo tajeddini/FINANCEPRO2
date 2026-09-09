@@ -15,39 +15,45 @@ GOLD_3 = (180, 135, 42)
 def make_bg(size: int) -> Image.Image:
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
+
+    inset = int(size * 0.08)
+    rect = (inset, inset, size - inset - 1, size - inset - 1)
+    draw.rounded_rectangle(rect, radius=int(size * 0.22), fill=(11, 17, 28, 255))
+
     for y in range(size):
         t = y / max(1, size - 1)
-        r = int(NAVY_1[0] * (1 - t) + NAVY_3[0] * t)
-        g = int(NAVY_1[1] * (1 - t) + NAVY_3[1] * t)
-        b = int(NAVY_1[2] * (1 - t) + NAVY_3[2] * t)
+        r = int(17 * (1 - t) + 8 * t)
+        g = int(23 * (1 - t) + 11 * t)
+        b = int(35 * (1 - t) + 18 * t)
         draw.line((0, y, size, y), fill=(r, g, b, 255))
 
     glow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
-    glow_draw.ellipse((int(size * 0.58), int(size * 0.02), int(size * 1.08), int(size * 0.72)), fill=(212, 175, 55, 90))
-    glow = glow.filter(ImageFilter.GaussianBlur(radius=max(16, size // 12)))
+    glow_draw.ellipse((int(size * 0.12), int(size * -0.06), int(size * 0.9), int(size * 0.8)), fill=(212, 175, 55, 55))
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=max(18, size // 11)))
     img = Image.alpha_composite(img, glow)
 
     mask = Image.new('L', (size, size), 0)
     mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle((0, 0, size - 1, size - 1), radius=int(size * 0.22), fill=255)
+    mask_draw.rounded_rectangle(rect, radius=int(size * 0.22), fill=255)
     img.putalpha(mask)
     return img
 
 
-def draw_m(img: Image.Image, size: int, stroke_scale: float) -> None:
+def draw_m(img: Image.Image, size: int, line_width: int) -> None:
     draw = ImageDraw.Draw(img)
-    pad = size * 0.17
-    scale = (size - 2 * pad) / 280
-    pts = [(194, 300), (194, 196), (256, 258), (318, 196), (318, 304)]
+    pad = size * 0.23
+    scale = (size - 2 * pad) / 260
+    pts = [(90, 240), (90, 130), (150, 205), (256, 90), (362, 205), (422, 130), (422, 240)]
     mapped = [(pad + x * scale, pad + y * scale) for x, y in pts]
+
     for i, color in enumerate((GOLD_1, GOLD_2, GOLD_3)):
-        draw.line(mapped, fill=color, width=max(8, int(size * stroke_scale)) - i * 2, joint='curve')
+        draw.line(mapped, fill=color, width=max(8, line_width - i * 2), joint='curve')
 
 
 def make_icon(size: int) -> Image.Image:
     img = make_bg(size)
-    draw_m(img, size, 0.058)
+    draw_m(img, size, max(22, int(size * 0.13)))
     return img
 
 
@@ -55,15 +61,14 @@ def make_foreground(size: int) -> Image.Image:
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     bg = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     bg_draw = ImageDraw.Draw(bg)
-    bg_draw.rounded_rectangle((int(size * 0.1), int(size * 0.1), int(size * 0.9), int(size * 0.9)), radius=int(size * 0.2), fill=(20, 27, 43, 255))
+    inset = int(size * 0.1)
+    bg_draw.rounded_rectangle(
+        (inset, inset, size - inset - 1, size - inset - 1),
+        radius=int(size * 0.2),
+        fill=(20, 27, 43, 255)
+    )
     img = Image.alpha_composite(img, bg)
-    draw = ImageDraw.Draw(img)
-    pad = size * 0.18
-    scale = (size - 2 * pad) / 280
-    pts = [(194, 300), (194, 196), (256, 258), (318, 196), (318, 304)]
-    mapped = [(pad + x * scale, pad + y * scale) for x, y in pts]
-    for i, color in enumerate((GOLD_1, GOLD_2, GOLD_3)):
-        draw.line(mapped, fill=color, width=max(8, int(size * 0.13)) - i * 2, joint='curve')
+    draw_m(img, size, max(16, int(size * 0.11)))
     return img
 
 
