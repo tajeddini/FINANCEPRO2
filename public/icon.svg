@@ -1,25 +1,24 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#111C2A"/>
-      <stop offset="48%" stop-color="#0E1622"/>
-      <stop offset="100%" stop-color="#060B12"/>
+      <stop offset="0%" stop-color="#101923"/>
+      <stop offset="45%" stop-color="#0A1220"/>
+      <stop offset="100%" stop-color="#070B12"/>
     </linearGradient>
-    <radialGradient id="goldGlow" cx="76%" cy="24%" r="56%">
-      <stop offset="0%" stop-color="#F2D57C" stop-opacity="0.95"/>
-      <stop offset="38%" stop-color="#D9B34D" stop-opacity="0.38"/>
-      <stop offset="100%" stop-color="#D9B34D" stop-opacity="0"/>
+    <radialGradient id="glow" cx="74%" cy="26%" r="52%">
+      <stop offset="0%" stop-color="#E7C86B" stop-opacity="0.96"/>
+      <stop offset="30%" stop-color="#D6AE4D" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#D6AE4D" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="mGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#F5DF96"/>
-      <stop offset="50%" stop-color="#D7B24A"/>
-      <stop offset="100%" stop-color="#BA8628"/>
+      <stop offset="0%" stop-color="#F7E29D"/>
+      <stop offset="52%" stop-color="#D9B451"/>
+      <stop offset="100%" stop-color="#B77E29"/>
     </linearGradient>
   </defs>
 
-  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
-  <rect width="512" height="512" rx="110" fill="url(#goldGlow)"/>
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="104" fill="url(#glow)"/>
 
-  <path d="M 140 326 L 140 184 L 203 252 L 256 172 L 309 252 L 372 184 L 372 326" fill="none" stroke="url(#mGrad)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 212 326 L 212 248 L 256 300 L 300 248 L 300 326" fill="none" stroke="url(#mGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M 140 328 L 140 178 L 208 258 L 256 177 L 304 258 L 372 178 L 372 328" fill="none" stroke="url(#mGrad)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
