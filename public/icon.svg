@@ -1,26 +1,25 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0F1728"/>
-      <stop offset="50%" stop-color="#0C1220"/>
-      <stop offset="100%" stop-color="#080C14"/>
+      <stop offset="0%" stop-color="#111C2A"/>
+      <stop offset="48%" stop-color="#0E1622"/>
+      <stop offset="100%" stop-color="#060B12"/>
     </linearGradient>
-    <linearGradient id="mgrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#F4DE9A"/>
-      <stop offset="48%" stop-color="#D7B34B"/>
-      <stop offset="100%" stop-color="#B9822F"/>
-    </linearGradient>
-    <radialGradient id="shine" cx="28%" cy="20%" r="80%">
-      <stop offset="0%" stop-color="#F1D37C" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#F1D37C" stop-opacity="0"/>
+    <radialGradient id="goldGlow" cx="76%" cy="24%" r="56%">
+      <stop offset="0%" stop-color="#F2D57C" stop-opacity="0.95"/>
+      <stop offset="38%" stop-color="#D9B34D" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#D9B34D" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="mGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F5DF96"/>
+      <stop offset="50%" stop-color="#D7B24A"/>
+      <stop offset="100%" stop-color="#BA8628"/>
+    </linearGradient>
   </defs>
 
-  <rect x="18" y="18" width="476" height="476" rx="104" fill="url(#bg)"/>
-  <rect x="18" y="18" width="476" height="476" rx="104" fill="url(#shine)"/>
+  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="110" fill="url(#goldGlow)"/>
 
-  <rect x="42" y="42" width="428" height="428" rx="94" fill="none" stroke="#1A2333" stroke-width="2" opacity="0.9"/>
-
-  <path d="M 138 318 L 138 170 L 201 243 L 256 171 L 311 243 L 374 170 L 374 318" fill="none" stroke="url(#mgrad)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 206 318 L 206 250 L 256 306 L 306 250 L 306 318" fill="none" stroke="url(#mgrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+  <path d="M 140 326 L 140 184 L 203 252 L 256 172 L 309 252 L 372 184 L 372 326" fill="none" stroke="url(#mGrad)" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 212 326 L 212 248 L 256 300 L 300 248 L 300 326" fill="none" stroke="url(#mGrad)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
 </svg>

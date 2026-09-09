@@ -16,21 +16,24 @@ def make_bg(size: int) -> Image.Image:
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    inset = int(size * 0.08)
+    # dark rounded-square background
+    inset = int(size * 0.03)
     rect = (inset, inset, size - inset - 1, size - inset - 1)
-    draw.rounded_rectangle(rect, radius=int(size * 0.22), fill=(11, 17, 28, 255))
+    draw.rounded_rectangle(rect, radius=int(size * 0.22), fill=(13, 19, 29, 255))
 
+    # subtle dark-blue to black vertical gradient for the background
     for y in range(size):
         t = y / max(1, size - 1)
         r = int(17 * (1 - t) + 8 * t)
-        g = int(23 * (1 - t) + 11 * t)
-        b = int(35 * (1 - t) + 18 * t)
+        g = int(25 * (1 - t) + 11 * t)
+        b = int(39 * (1 - t) + 18 * t)
         draw.line((0, y, size, y), fill=(r, g, b, 255))
 
+    # warm gold glow on the upper-right
     glow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     glow_draw = ImageDraw.Draw(glow)
-    glow_draw.ellipse((int(size * 0.12), int(size * -0.06), int(size * 0.9), int(size * 0.8)), fill=(212, 175, 55, 55))
-    glow = glow.filter(ImageFilter.GaussianBlur(radius=max(18, size // 11)))
+    glow_draw.ellipse((int(size * 0.40), int(size * 0.04), int(size * 1.06), int(size * 0.76)), fill=(212, 175, 55, 115))
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=max(20, size // 8)))
     img = Image.alpha_composite(img, glow)
 
     mask = Image.new('L', (size, size), 0)
@@ -42,9 +45,9 @@ def make_bg(size: int) -> Image.Image:
 
 def draw_m(img: Image.Image, size: int, line_width: int) -> None:
     draw = ImageDraw.Draw(img)
-    pad = size * 0.23
-    scale = (size - 2 * pad) / 260
-    pts = [(90, 240), (90, 130), (150, 205), (256, 90), (362, 205), (422, 130), (422, 240)]
+    pad = size * 0.17
+    scale = (size - 2 * pad) / 300
+    pts = [(114, 300), (114, 186), (180, 252), (256, 168), (332, 252), (398, 186), (398, 300)]
     mapped = [(pad + x * scale, pad + y * scale) for x, y in pts]
 
     for i, color in enumerate((GOLD_1, GOLD_2, GOLD_3)):
@@ -53,7 +56,7 @@ def draw_m(img: Image.Image, size: int, line_width: int) -> None:
 
 def make_icon(size: int) -> Image.Image:
     img = make_bg(size)
-    draw_m(img, size, max(22, int(size * 0.13)))
+    draw_m(img, size, max(20, int(size * 0.12)))
     return img
 
 
@@ -61,14 +64,10 @@ def make_foreground(size: int) -> Image.Image:
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     bg = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     bg_draw = ImageDraw.Draw(bg)
-    inset = int(size * 0.1)
-    bg_draw.rounded_rectangle(
-        (inset, inset, size - inset - 1, size - inset - 1),
-        radius=int(size * 0.2),
-        fill=(20, 27, 43, 255)
-    )
+    inset = int(size * 0.04)
+    bg_draw.rounded_rectangle((inset, inset, size - inset - 1, size - inset - 1), radius=int(size * 0.2), fill=(20, 27, 43, 255))
     img = Image.alpha_composite(img, bg)
-    draw_m(img, size, max(16, int(size * 0.11)))
+    draw_m(img, size, max(16, int(size * 0.1)))
     return img
 
 
