@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../lib/data";
 import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO } from "../lib/utils";
-import { parseBankSMS, matchAccountByCard, matchAccountByBankName, SMS_SAMPLES, type SmsParse } from "../lib/sms";
+import { parseBankSMS, matchAccountByCard, matchAccountByBankName, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
 import { AmountInput, Field, JalaliPicker, MicButton, Modal, TSelect, useToast } from "../ui";
 
 /* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
@@ -14,9 +14,9 @@ const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
 ];
 
 export default function TxModal({
-  open, onClose, editing,
+  open, onClose, editing, initialSms,
 }: {
-  open: boolean; onClose: () => void; editing?: Tx | null;
+  open: boolean; onClose: () => void; editing?: Tx | null; initialSms?: PendingSmsTransaction;
 }) {
   const { state, mutate } = useStore();
   const toast = useToast();
@@ -42,6 +42,20 @@ export default function TxModal({
     if (!open) return;
     setDetected([]);
     setSmsOpen(false); setSmsText(""); setSmsResult(null);
+    if (initialSms) {
+      setSmsText(initialSms.raw);
+      const parseResult = parseBankSMS(initialSms.raw);
+      setSmsResult(parseResult);
+      if (parseResult) {
+        setType(parseResult.type);
+        setAmount(String(parseResult.amount));
+        if (parseResult.dateISO) setDate(parseResult.dateISO);
+        if (parseResult.accountIdentifier) {
+          const accountMatch = state.accounts.find((a) => a.name.includes(parseResult.bankLabel));
+          if (accountMatch) setAccountId(accountMatch.id);
+        }
+      }
+    }
     if (editing) {
       setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
       setAmount(String(editing.amount));
@@ -167,23 +181,19 @@ export default function TxModal({
   const analyzeSms = (source = smsText) => {
     if (!source.trim()) return toast("warn", "ابتدا متن پیام بانکی را بچسبان.");
     const r = parseBankSMS(source);
-    setSmsResult(r);
-    if (r.confidence === "low") {
-      toast("err", "مبلغی در پیام پیدا نشد — متن پیام را کامل کپی کن.");
+    if (!r) {
+      setSmsResult(null);
+      toast("err", "این پیام با حساب‌های فعلی سازگار نیست یا شناسهٔ بانکی آن پیدا نشد.");
       return;
     }
+    setSmsResult(r);
     setType(r.type);
     setAmount(String(r.amountToman));
     if (r.dateISO) setDate(r.dateISO);
     const matched =
-      matchAccountByCard(state.accounts, r.cardTail, r.accountNo) ??
+      matchAccountByCard(state.accounts, undefined, r.accountIdentifier) ??
       matchAccountByBankName(state.accounts, source);
     if (matched) setAccountId(matched.id);
-    if (r.merchant) {
-      setNote(r.merchant);
-      const d = detectSmart(r.merchant, state.categories, state.accounts);
-      if (d.categoryId) { setCategoryId(d.categoryId); setTouchedCat(true); }
-    }
     toast("ok", r.type === "income"
       ? `واریز ${faMoney(r.amountToman)} تومانی شناسایی شد — فرم پر شد.`
       : `خرج ${faMoney(r.amountToman)} تومانی شناسایی شد — فرم پر شد.`);

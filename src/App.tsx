@@ -19,6 +19,7 @@ import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime
 import { ToastProvider, useToast, TInput, Field } from "./ui";
 import { GlobalSearch } from "./components/global-search";
 import { rescheduleReminders } from "./lib/reminders";
+import type { PendingSmsTransaction } from "./lib/sms";
 import TxModal from "./pages/tx-modal";
 
 /* بارگذاری تنبل صفحه‌ها — هر صفحه فقط وقتی باز شود دانلود می‌شود */
@@ -271,6 +272,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const [page, setPage] = useState<PageId>("dashboard");
   const [drill, setDrill] = useState<{ cat?: string; query?: string; key: number }>({ key: 0 });
   const [quickAdd, setQuickAdd] = useState(false);
+  const [smsReview, setSmsReview] = useState<PendingSmsTransaction | null>(null);
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinErr, setPinErr] = useState(false);
@@ -566,7 +568,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       </nav>
 
       <UndoBar />
-      <TxModal open={quickAdd} onClose={() => setQuickAdd(false)} />
+      <TxModal open={quickAdd || !!smsReview} onClose={() => setSmsReview(null) || setQuickAdd(false)} initialSms={smsReview ?? undefined} />
     </div>
   );
 }

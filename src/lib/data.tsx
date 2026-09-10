@@ -94,6 +94,8 @@ export interface Prefs {
   notifyEnabled?: boolean;
   /** یادآورهای بومی (اندروید) — سررسید بدهی/قسط و هشدار بودجه */
   nativeReminders?: boolean;
+  smsAutoImport?: boolean;
+  smsPermissionGranted?: boolean;
   botToken?: string;
   syncId?: string;
   syncUrl?: string;
