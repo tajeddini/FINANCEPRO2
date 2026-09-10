@@ -24,7 +24,9 @@ jobs:
           java-version: '21'
 
       - name: Install dependencies
-        run: npm install
+        # cap-read-sms@0.0.1 declares a Capacitor 3 peer dependency,
+        # so CI needs legacy peer resolution until the upstream package is upgraded.
+        run: npm install --legacy-peer-deps
 
       - name: Build web assets
         run: npm run build
