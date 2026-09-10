@@ -1,5 +1,21 @@
 import { Capacitor } from "@capacitor/core";
-import { ReadSMS } from "cap-read-sms";
+
+interface NativeSmsPluginLike {
+  getSMS?: (options?: { timestamp?: string; pageSize?: number }) => Promise<{ value?: Array<{ body?: string; date?: string }> }>;
+  requestPermission?: () => Promise<{ value?: string }>;
+  checkPermission?: () => Promise<{ value?: string }>;
+}
+
+const nativeSmsPlugin = (): NativeSmsPluginLike | null => {
+  const plugin = (Capacitor as unknown as { plugins?: Record<string, unknown> }).plugins;
+  if (!plugin) return null;
+  const candidates = ["ReadSMS", "SmsReader", "CapacitorSmsReader"];
+  for (const name of candidates) {
+    const value = plugin[name];
+    if (value && typeof value === "object") return value as NativeSmsPluginLike;
+  }
+  return null;
+};
 
 export type SmsTransactionType = "income" | "expense";
 
@@ -222,9 +238,12 @@ export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
 export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[]> {
   if (!Capacitor.isNativePlatform()) return [];
 
-  const inbox = await ReadSMS.getSMS({ timestamp: "0", pageSize: 200 });
-  const items = Array.isArray((inbox as { value?: unknown }).value)
-    ? ((inbox as { value?: Array<{ body?: string; date?: string }> }).value ?? [])
+  const plugin = nativeSmsPlugin();
+  if (!plugin?.getSMS) return [];
+
+  const inbox = await plugin.getSMS({ timestamp: "0", pageSize: 200 });
+  const items = Array.isArray(inbox?.value)
+    ? (inbox.value ?? [])
     : [];
 
   const list: PendingSmsTransaction[] = [];
@@ -258,7 +277,9 @@ export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[
 export async function requestSmsPermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    const result = await ReadSMS.requestPermission();
+    const plugin = nativeSmsPlugin();
+    if (!plugin?.requestPermission) return false;
+    const result = await plugin.requestPermission();
     return (result?.value ?? "denied") === "granted";
   } catch {
     return false;
@@ -268,7 +289,9 @@ export async function requestSmsPermissions(): Promise<boolean> {
 export async function checkSmsPermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    const result = await ReadSMS.checkPermission();
+    const plugin = nativeSmsPlugin();
+    if (!plugin?.checkPermission) return false;
+    const result = await plugin.checkPermission();
     return (result?.value ?? "denied") === "granted";
   } catch {
     return false;

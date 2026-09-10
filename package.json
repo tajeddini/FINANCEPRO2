@@ -24,7 +24,6 @@
     "@supabase/supabase-js": "^2.115.0",
     "@types/jalaali-js": "^1.2.0",
     "canvas-confetti": "^1.9.3",
-    "cap-read-sms": "^0.0.1",
     "date-fns": "^2.30.0",
     "exceljs": "^4.4.0",
     "framer-motion": "^11.16.1",
