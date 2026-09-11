@@ -1,21 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-
-interface NativeSmsPluginLike {
-  getSMS?: (options?: { timestamp?: string; pageSize?: number }) => Promise<{ value?: Array<{ body?: string; date?: string }> }>;
-  requestPermission?: () => Promise<{ value?: string }>;
-  checkPermission?: () => Promise<{ value?: string }>;
-}
-
-const nativeSmsPlugin = (): NativeSmsPluginLike | null => {
-  const plugin = (Capacitor as unknown as { plugins?: Record<string, unknown> }).plugins;
-  if (!plugin) return null;
-  const candidates = ["ReadSMS", "SmsReader", "CapacitorSmsReader"];
-  for (const name of candidates) {
-    const value = plugin[name];
-    if (value && typeof value === "object") return value as NativeSmsPluginLike;
-  }
-  return null;
-};
+import { ReadSMS } from "capacitor-sms-reader";
 
 export type SmsTransactionType = "income" | "expense";
 
@@ -238,10 +222,7 @@ export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
 export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[]> {
   if (!Capacitor.isNativePlatform()) return [];
 
-  const plugin = nativeSmsPlugin();
-  if (!plugin?.getSMS) return [];
-
-  const inbox = await plugin.getSMS({ timestamp: "0", pageSize: 200 });
+  const inbox = await ReadSMS.getSMS({ timestamp: "0", pageSize: 200 });
   const items = Array.isArray(inbox?.value)
     ? (inbox.value ?? [])
     : [];
@@ -277,9 +258,7 @@ export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[
 export async function requestSmsPermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    const plugin = nativeSmsPlugin();
-    if (!plugin?.requestPermission) return false;
-    const result = await plugin.requestPermission();
+    const result = await ReadSMS.requestPermission();
     return (result?.value ?? "denied") === "granted";
   } catch {
     return false;
@@ -289,25 +268,36 @@ export async function requestSmsPermissions(): Promise<boolean> {
 export async function checkSmsPermissions(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false;
   try {
-    const plugin = nativeSmsPlugin();
-    if (!plugin?.checkPermission) return false;
-    const result = await plugin.checkPermission();
+    const result = await ReadSMS.checkPermission();
     return (result?.value ?? "denied") === "granted";
   } catch {
     return false;
   }
 }
 
+export async function openSmsAppSettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await ReadSMS.openAppSettings();
+  } catch {
+    // ignore
+  }
+}
+
 export function startNativeSmsListener(): () => void {
   if (!Capacitor.isNativePlatform()) return () => {};
-  const onReceived = (event: Event) => {
-    const detail = (event as CustomEvent<{ body?: string }>).detail;
-    const raw = detail?.body ?? "";
-    if (!raw) return;
-    enqueuePendingSms(raw);
-  };
-  window.addEventListener("fp-sms-received", onReceived as EventListener);
-  return () => window.removeEventListener("fp-sms-received", onReceived as EventListener);
+
+  let remove: (() => void) | null = null;
+  ReadSMS.addListener("smsReceived", ({ value }) => {
+    if (!value?.body) return;
+    enqueuePendingSms(value.body);
+  }).then((handler) => {
+    remove = () => handler.remove();
+  }).catch(() => {
+    remove = null;
+  });
+
+  return () => remove?.();
 }
 
 const GENERIC_WORDS = ["بانک", "حساب", "کارت", "اصلی", "جاری", "پس‌انداز", "ریال", "تومان", "ایران"];

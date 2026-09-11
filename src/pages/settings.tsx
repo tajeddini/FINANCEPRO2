@@ -12,7 +12,7 @@ import { applyAccent, THEMES } from "../lib/themes";
 import { Field, TInput, useToast } from "../ui";
 import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import { requestNotificationPermission, rescheduleReminders } from "../lib/reminders";
-import { checkSmsPermissions, requestSmsPermissions, scanInboxForBankMessages } from "../lib/sms";
+import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions, scanInboxForBankMessages } from "../lib/sms";
 import { dl } from "./shared";
 
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
@@ -127,6 +127,13 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   };
 
   const isNative = isNativePlat();
+  const [smsPermissionState, setSmsPermissionState] = useState<"granted" | "denied" | "permanently_denied" | "unknown">("unknown");
+
+  const refreshSmsPermissionState = async () => {
+    if (!isNative) return setSmsPermissionState("unknown");
+    const granted = await checkSmsPermissions();
+    setSmsPermissionState(granted ? "granted" : "denied");
+  };
 
   const toggleNativeReminders = async () => {
     const turningOn = !p.nativeReminders;
@@ -147,6 +154,13 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
     if (turningOn) {
       const granted = await requestSmsPermissions();
       if (!granted) {
+        const status = await checkSmsPermissions();
+        if (status) {
+          toast("warn", "دسترسی پیامک‌ها به‌صورت دائمی رد شده است — از تنظیمات اندروید اجازه بدهید.");
+          await openSmsAppSettings();
+          await refreshSmsPermissionState();
+          return;
+        }
         toast("warn", "اجازهٔ دسترسی به پیامک‌ها داده نشد — برای ثبت خودکار تراکنش‌ها باید اجازه بدهید.");
         return;
       }
@@ -155,6 +169,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
       d.prefs.smsAutoImport = turningOn;
       d.prefs.smsPermissionGranted = turningOn;
     }, turningOn ? "خواندن پیامک‌های بانکی فعال شد" : "خواندن پیامک‌های بانکی غیرفعال شد");
+    await refreshSmsPermissionState();
     toast("ok", turningOn
       ? "برای ثبت خودکار تراکنش‌ها از پیامک بانک، دسترسی فعال شد."
       : "دسترسی پیامک‌های بانکی خاموش شد.");
@@ -163,7 +178,13 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const scanSmsHistory = async () => {
     const granted = await checkSmsPermissions();
     if (!granted) {
-      toast("warn", "ابتدا مجوز پیامک‌ها را از تنظیمات فعال کنید.");
+      const status = await checkSmsPermissions();
+      if (!status) {
+        toast("warn", "ابتدا مجوز پیامک‌ها را از تنظیمات فعال کنید.");
+        await openSmsAppSettings();
+        return;
+      }
+      toast("warn", "اجازهٔ پیامک‌ها غیرفعال است — از تنظیمات اندروید فعال کنید.");
       return;
     }
     const items = await scanInboxForBankMessages();

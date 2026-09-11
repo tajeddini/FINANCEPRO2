@@ -568,7 +568,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       </nav>
 
       <UndoBar />
-      <TxModal open={quickAdd || !!smsReview} onClose={() => setSmsReview(null) || setQuickAdd(false)} initialSms={smsReview ?? undefined} />
+      <TxModal open={quickAdd || !!smsReview} onClose={() => { setSmsReview(null); setQuickAdd(false); }} initialSms={smsReview ?? undefined} />
     </div>
   );
 }

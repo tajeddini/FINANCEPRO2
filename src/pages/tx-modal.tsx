@@ -303,7 +303,7 @@ export default function TxModal({
                 <p>مبلغ: <b className="tabular">{faMoney(smsResult.amountToman)} تومان</b></p>
                 {smsResult.jalali && <p>تاریخ: <b>{smsResult.jalali}</b>{smsResult.time ? ` — ساعت ${faNum(smsResult.time)}` : ""}</p>}
                 {smsResult.balanceToman !== undefined && <p>مانده: <b className="tabular">{faMoney(smsResult.balanceToman)} تومان</b></p>}
-                {smsResult.notes.map((n, i) => <p key={i} style={{ color: "var(--fp-accent)" }}>⚠ {n}</p>)}
+                {(smsResult.notes ?? []).map((n, i) => <p key={i} style={{ color: "var(--fp-accent)" }}>⚠ {n}</p>)}
               </div>
             )}
           </div>
