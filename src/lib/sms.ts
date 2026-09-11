@@ -195,9 +195,15 @@ export function loadPendingSms(): PendingSmsTransaction[] {
 export function savePendingSms(items: PendingSmsTransaction[]) {
   try {
     localStorage.setItem(PENDING_SMS_KEY, JSON.stringify(items));
+    window.dispatchEvent(new CustomEvent("fp-pending-sms-changed"));
   } catch {
     // ignore
   }
+}
+
+export function removePendingSms(id: string) {
+  const items = loadPendingSms().filter((item) => item.id !== id);
+  savePendingSms(items);
 }
 
 export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {

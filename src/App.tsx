@@ -418,6 +418,15 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     return () => window.removeEventListener("fp-file-saved", h);
   }, []);
 
+  useEffect(() => {
+    const h = (e: Event) => {
+      const pending = (e as CustomEvent<{ pending?: PendingSmsTransaction }>).detail?.pending;
+      if (pending) setSmsReview(pending);
+    };
+    window.addEventListener("fp-open-sms-review", h);
+    return () => window.removeEventListener("fp-open-sms-review", h);
+  }, []);
+
   /* باززمان‌بندی یادآورهای بومی (اندروید) — با دیباونس تا با هر تغییر داده،
      اعلان‌ها دوباره ساخته شوند. فقط وقتی یادآورهای بومی فعال باشند. */
   useEffect(() => {
@@ -536,7 +545,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
           <main className="flex-1 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
             <Suspense fallback={<PageLoader />}>
             <div key={page + drill.key}>
-              {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} />}
+              {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} onOpenSmsReview={(pending) => setSmsReview(pending)} />}
               {page === "daily" && <DailyPage />}
               {page === "transactions" && <TransactionsPage initQuery={drill.query} initCat={drill.cat} />}
               {page === "categories" && <CategoriesPage />}

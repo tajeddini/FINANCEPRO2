@@ -1,7 +1,7 @@
 /* ---------- صفحهٔ داشبورد ---------- */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownRight, ArrowUpLeft, Bot, Coins, Landmark, Lightbulb, Plus, Receipt, Sparkles, Wallet,
+  ArrowDownRight, ArrowUpLeft, Bot, Coins, Landmark, Lightbulb, MessageSquare, Plus, Receipt, Sparkles, Wallet,
 } from "lucide-react";
 import { catById, getTags, sumTx, useStore } from "../lib/data";
 import {
@@ -12,8 +12,9 @@ import { readAccent } from "../lib/themes";
 import { Bar, CatGlyph, hiddenMoney } from "../ui";
 import { Sparkline } from "../widgets";
 import { EyeOff, EyeOn, Head } from "./shared";
+import { loadPendingSms, type PendingSmsTransaction } from "../lib/sms";
 
-export default function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }) {
+export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuickAdd: () => void; onOpenSmsReview: (pending: PendingSmsTransaction) => void }) {
   const { state } = useStore();
   const t = jalaliToday();
   const mr = jalaliMonthRange(t.jy, t.jm);
@@ -26,6 +27,14 @@ export default function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }
   const [hideInc, setHideInc] = useState(false);
   const [hideExp, setHideExp] = useState(false);
   const [hideAcc, setHideAcc] = useState(false);
+  const [pendingSms, setPendingSms] = useState<PendingSmsTransaction[]>(() => loadPendingSms());
+
+  useEffect(() => {
+    const sync = () => setPendingSms(loadPendingSms());
+    sync();
+    window.addEventListener("fp-pending-sms-changed", sync);
+    return () => window.removeEventListener("fp-pending-sms-changed", sync);
+  }, []);
 
   const bal = useCountUp(total);
   const inc = useCountUp(income);
@@ -80,6 +89,31 @@ export default function DashboardPage({ onQuickAdd }: { onQuickAdd: () => void }
           <Plus className="w-4 h-4" strokeWidth={3} /> ثبت سریع تراکنش
         </button>
       </div>
+
+      {pendingSms.length > 0 && (
+        <div className="card p-5 rise-in" style={{ ["--d" as string]: "30ms" }}>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} />
+              <h2 className="text-[14px] font-black">پیامک‌های بانکی منتظر بررسی</h2>
+            </div>
+            <span className="chip !py-1 !px-2 text-[10px]">{pendingSms.length}</span>
+          </div>
+          <div className="grid gap-2">
+            {pendingSms.slice(0, 4).map((item) => (
+              <button key={item.id} onClick={() => onOpenSmsReview(item)}
+                className="w-full text-start rounded-xl border px-3 py-2.5 transition-all cursor-pointer hover:-translate-y-0.5"
+                style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] font-black truncate">{item.parsed.bankLabel}</span>
+                  <span className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>{faMoney(item.parsed.amountToman)} تومان</span>
+                </div>
+                <p className="mt-1 text-[10.5px] font-bold line-clamp-2" style={{ color: "var(--fp-text3)" }}>{item.parsed.raw.slice(0, 90)}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-4">
         <StatCard
