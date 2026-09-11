@@ -40,7 +40,9 @@ export interface PendingSmsTransaction {
   raw: string;
   parsed: SmsParse;
   createdAt: number;
-  status: "pending";
+  status: "pending" | "used";
+  transactionId?: string;
+  usedAt?: number;
 }
 
 export const SMS_ACCOUNT_MAP: SmsAccountConfig[] = [
@@ -104,11 +106,11 @@ const parseResalat = (text: string): SmsParse | null => {
     accountIdentifier: "10.10070145.1",
     type: sign === "+" ? "income" : "expense",
     amount,
-    amountToman: amount,
+      amountToman: Math.round(amount / 10),
     date,
-    dateISO: date.toISOString(),
+      dateISO: localDateISO(date),
     balance,
-    balanceToman: balance,
+      balanceToman: balance == null ? undefined : Math.round(balance / 10),
     source: "resalat",
     confidence: "high",
     rawAmount: amount,
@@ -142,11 +144,11 @@ const parseBankMelli = (text: string): SmsParse | null => {
     accountIdentifier: "83008",
     type: sign === "+" ? "income" : "expense",
     amount,
-    amountToman: amount,
+      amountToman: Math.round(amount / 10),
     date,
-    dateISO: date.toISOString(),
+      dateISO: localDateISO(date),
     balance,
-    balanceToman: balance,
+      balanceToman: balance == null ? undefined : Math.round(balance / 10),
     source: "melli",
     confidence: "high",
     rawAmount: amount,
@@ -181,12 +183,41 @@ export function getBankAccountLabelFromMessage(raw: string): string | undefined 
 
 const PENDING_SMS_KEY = "fp_pending_sms_v1";
 
+const localDateISO = (date: Date): string => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const stableSmsId = (raw: string, timestamp?: number): string => {
+  let hash = 2166136261;
+  const source = `${timestamp ?? ""}:${raw}`;
+  for (let i = 0; i < source.length; i++) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `sms-${Math.abs(hash)}`;
+};
+
+const normalizeStoredSms = (item: PendingSmsTransaction): PendingSmsTransaction => {
+  const amount = item.parsed.amount ?? 0;
+  const balance = item.parsed.balance;
+  return {
+    ...item,
+    status: item.status === "used" ? "used" : "pending",
+    parsed: {
+      ...item.parsed,
+      amountToman: Math.round(amount / 10),
+      balanceToman: balance == null ? undefined : Math.round(balance / 10),
+    },
+  };
+};
+
 export function loadPendingSms(): PendingSmsTransaction[] {
   try {
     const raw = localStorage.getItem(PENDING_SMS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as PendingSmsTransaction[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.map(normalizeStoredSms) : [];
   } catch {
     return [];
   }
@@ -194,16 +225,29 @@ export function loadPendingSms(): PendingSmsTransaction[] {
 
 export function savePendingSms(items: PendingSmsTransaction[]) {
   try {
-    localStorage.setItem(PENDING_SMS_KEY, JSON.stringify(items));
+    localStorage.setItem(PENDING_SMS_KEY, JSON.stringify(items.map(normalizeStoredSms)));
     window.dispatchEvent(new CustomEvent("fp-pending-sms-changed"));
   } catch {
     // ignore
   }
 }
 
-export function removePendingSms(id: string) {
-  const items = loadPendingSms().filter((item) => item.id !== id);
+export function markSmsUsed(id: string, transactionId: string) {
+  const items = loadPendingSms();
+  const item = items.find((entry) => entry.id === id);
+  if (!item) return;
+  item.status = "used";
+  item.transactionId = transactionId;
+  item.usedAt = Date.now();
   savePendingSms(items);
+}
+
+export function removeUsedSms(id: string): boolean {
+  const items = loadPendingSms();
+  const next = items.filter((item) => item.id !== id || item.status !== "used");
+  if (next.length === items.length) return false;
+  savePendingSms(next);
+  return true;
 }
 
 export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
@@ -219,8 +263,10 @@ export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
   };
 
   const list = loadPendingSms();
-  list.unshift(pending);
-  savePendingSms(list.slice(0, 20));
+  if (!list.some((item) => item.raw === raw)) {
+    list.unshift(pending);
+    savePendingSms(list);
+  }
   window.dispatchEvent(new CustomEvent("fp-open-sms-review", { detail: { pending } }));
   return pending;
 }
@@ -233,14 +279,18 @@ export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[
     ? (inbox.value ?? [])
     : [];
 
+  const current = loadPendingSms();
   const list: PendingSmsTransaction[] = [];
   for (const message of items) {
     const body = typeof message?.body === "string" ? message.body : "";
     if (!body) continue;
     const parsed = parseBankSMS(body);
     if (!parsed) continue;
+    const id = stableSmsId(body, Number(message?.date ?? 0));
+    if (current.some((entry) => entry.id === id || entry.raw === body)) continue;
+    parsed.id = id;
     const item: PendingSmsTransaction = {
-      id: parsed.id,
+      id,
       raw: body,
       parsed,
       createdAt: Number(message?.date ?? Date.now()),
@@ -250,8 +300,7 @@ export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[
   }
 
   if (list.length) {
-    const current = loadPendingSms();
-    const merged = [...list, ...current].slice(0, 50);
+    const merged = [...list, ...current].sort((a, b) => b.createdAt - a.createdAt);
     savePendingSms(merged);
     for (const entry of list) {
       window.dispatchEvent(new CustomEvent("fp-open-sms-review", { detail: { pending: entry } }));

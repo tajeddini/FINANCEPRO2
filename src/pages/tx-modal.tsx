@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../lib/data";
 import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO } from "../lib/utils";
-import { parseBankSMS, matchAccountByCard, matchAccountByBankName, removePendingSms, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
+import { markSmsUsed, matchAccountByCard, matchAccountByBankName, parseBankSMS, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
 import { AmountInput, Field, JalaliPicker, MicButton, Modal, TSelect, useToast } from "../ui";
 
 /* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
@@ -48,12 +48,12 @@ export default function TxModal({
       setSmsResult(parseResult);
       if (parseResult) {
         setType(parseResult.type);
-        setAmount(String(parseResult.amount));
+        setAmount(String(parseResult.amountToman));
         if (parseResult.dateISO) setDate(parseResult.dateISO);
-        if (parseResult.accountIdentifier) {
-          const accountMatch = state.accounts.find((a) => a.name.includes(parseResult.bankLabel));
-          if (accountMatch) setAccountId(accountMatch.id);
-        }
+        const accountMatch =
+          matchAccountByCard(state.accounts, undefined, parseResult.accountIdentifier) ??
+          matchAccountByBankName(state.accounts, initialSms.raw);
+        if (accountMatch) setAccountId(accountMatch.id);
       }
     }
     if (editing) {
@@ -147,7 +147,7 @@ export default function TxModal({
         createdAt: Date.now(), source: "app",
       });
     }, `تراکنش «${label}» ثبت شد`);
-    if (initialSms) removePendingSms(initialSms.id);
+    if (initialSms) markSmsUsed(initialSms.id, newId);
     toast("ok", `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
     if (type === "expense") {
       budgetCheck(amt, categoryId);

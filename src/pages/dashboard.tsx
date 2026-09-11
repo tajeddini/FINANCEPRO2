@@ -1,7 +1,7 @@
 /* ---------- صفحهٔ داشبورد ---------- */
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownRight, ArrowUpLeft, Bot, Coins, Landmark, Lightbulb, MessageSquare, Plus, Receipt, Sparkles, Wallet,
+  ArrowDownRight, ArrowUpLeft, Bot, CheckCircle2, Coins, Landmark, Lightbulb, MessageSquare, Plus, Receipt, Sparkles, Wallet,
 } from "lucide-react";
 import { catById, getTags, sumTx, useStore } from "../lib/data";
 import {
@@ -28,6 +28,7 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
   const [hideExp, setHideExp] = useState(false);
   const [hideAcc, setHideAcc] = useState(false);
   const [pendingSms, setPendingSms] = useState<PendingSmsTransaction[]>(() => loadPendingSms());
+  const recentSms = [...pendingSms].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
 
   useEffect(() => {
     const sync = () => setPendingSms(loadPendingSms());
@@ -90,23 +91,28 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
         </button>
       </div>
 
-      {pendingSms.length > 0 && (
+      {recentSms.length > 0 && (
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "30ms" }}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               <MessageSquare className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} />
-              <h2 className="text-[14px] font-black">پیامک‌های بانکی منتظر بررسی</h2>
+              <h2 className="text-[14px] font-black">پیامک‌های بانکی اخیر</h2>
             </div>
-            <span className="chip !py-1 !px-2 text-[10px]">{pendingSms.length}</span>
+            <span className="chip !py-1 !px-2 text-[10px]">{recentSms.length}</span>
           </div>
           <div className="grid gap-2">
-            {pendingSms.slice(0, 4).map((item) => (
-              <button key={item.id} onClick={() => onOpenSmsReview(item)}
-                className="w-full text-start rounded-xl border px-3 py-2.5 transition-all cursor-pointer hover:-translate-y-0.5"
-                style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+            {recentSms.map((item) => (
+              <button key={item.id} disabled={item.status === "used"} onClick={() => onOpenSmsReview(item)}
+                className={`w-full text-start rounded-xl border px-3 py-2.5 transition-all ${item.status === "used" ? "opacity-60 cursor-default" : "cursor-pointer hover:-translate-y-0.5"}`}
+                style={{ borderColor: item.status === "used" ? "var(--fp-border)" : "var(--fp-accent)", background: "var(--fp-bg)" }}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[12px] font-black truncate">{item.parsed.bankLabel}</span>
-                  <span className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }}>{faMoney(item.parsed.amountToman)} تومان</span>
+                  <span className="text-[12px] font-black truncate flex items-center gap-1.5">
+                    {item.status === "used" && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--fp-mint)" }} />}
+                    {item.parsed.bankLabel}
+                  </span>
+                  <span className="text-[10px] font-bold whitespace-nowrap" style={{ color: item.status === "used" ? "var(--fp-mint)" : "var(--fp-text3)" }}>
+                    {item.status === "used" ? "ثبت شد · " : ""}{faMoney(item.parsed.amountToman)} تومان
+                  </span>
                 </div>
                 <p className="mt-1 text-[10.5px] font-bold line-clamp-2" style={{ color: "var(--fp-text3)" }}>{item.parsed.raw.slice(0, 90)}</p>
               </button>
