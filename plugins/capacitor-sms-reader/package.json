@@ -8,7 +8,15 @@
     "src",
     "android"
   ],
+  "dependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
   "peerDependencies": {
     "@capacitor/core": "^8.0.0"
+  },
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
   }
 }
