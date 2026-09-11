@@ -18,6 +18,7 @@ import android.telephony.SmsMessage;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSArray;
@@ -213,14 +214,15 @@ public class ReadSMSPlugin extends Plugin {
     }
 
     private boolean shouldShowSmsPermissionRationale() {
-        return getActivity() != null && shouldShowRequestPermissionRationale(Manifest.permission.READ_SMS);
+        Activity activity = getActivity();
+        return activity != null && ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_SMS);
     }
 
     private boolean isPermissionPermanentlyDenied() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false;
         Activity activity = getActivity();
         if (activity == null) return false;
-        return !shouldShowSmsPermissionRationale()
+        return !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.READ_SMS)
             && !hasReadSmsPermission();
     }
 
