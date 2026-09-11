@@ -11,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.provider.Settings;
 import android.provider.Telephony;
 import android.telephony.SmsMessage;
@@ -113,7 +114,7 @@ public class ReadSMSPlugin extends Plugin {
 
         saveCall(call);
 
-        if (shouldShowRequestPermissionRationale()) {
+        if (shouldShowSmsPermissionRationale()) {
             requestPermissionForAliases(new String[] { "sms" }, call, "onSmsPermissionResult");
             return;
         }
@@ -211,7 +212,7 @@ public class ReadSMSPlugin extends Plugin {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private boolean shouldShowRequestPermissionRationale() {
+    private boolean shouldShowSmsPermissionRationale() {
         return getActivity() != null && shouldShowRequestPermissionRationale(Manifest.permission.READ_SMS);
     }
 
@@ -219,7 +220,7 @@ public class ReadSMSPlugin extends Plugin {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false;
         Activity activity = getActivity();
         if (activity == null) return false;
-        return !shouldShowRequestPermissionRationale(Manifest.permission.READ_SMS)
+        return !shouldShowSmsPermissionRationale()
             && !hasReadSmsPermission();
     }
 
