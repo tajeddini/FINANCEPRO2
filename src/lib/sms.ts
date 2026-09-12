@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { toGregorian, toJalaali } from "jalaali-js";
 import { ReadSMS } from "capacitor-sms-reader";
 import { todayISO } from "./utils";
 
@@ -77,8 +78,10 @@ const buildDate = (value: string, format: "resalat" | "melli"): Date | null => {
   const day = Number(b);
   const hour = Number(c);
   const minute = Number(d);
-  const year = new Date().getFullYear();
-  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  const currentJalali = toJalaali(new Date());
+  const gregorian = toGregorian(currentJalali.jy, month, day);
+  const date = new Date(gregorian.gy, gregorian.gm - 1, gregorian.gd, hour, minute, 0, 0);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
