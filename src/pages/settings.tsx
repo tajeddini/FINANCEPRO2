@@ -9,10 +9,10 @@ import {
   pushToCloud, sameLedgerContent, saveCloud, testConnection,
 } from "../lib/cloud";
 import { applyAccent, THEMES } from "../lib/themes";
-import { Field, TInput, useToast } from "../ui";
+import { Field, JalaliPicker, TInput, useToast } from "../ui";
 import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import { requestNotificationPermission, rescheduleReminders } from "../lib/reminders";
-import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions } from "../lib/sms";
+import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions, scanInboxForBankMessages } from "../lib/sms";
 import { dl } from "./shared";
 
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
@@ -175,6 +175,22 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
       : "دسترسی پیامک‌های بانکی خاموش شد.");
   };
 
+  const scanSmsHistory = async () => {
+    const granted = await checkSmsPermissions();
+    if (!granted) {
+      const status = await checkSmsPermissions();
+      if (!status) {
+        toast("warn", "ابتدا مجوز پیامک‌ها را از تنظیمات فعال کنید.");
+        await openSmsAppSettings();
+        return;
+      }
+      toast("warn", "اجازهٔ پیامک‌ها غیرفعال است — از تنظیمات اندروید فعال کنید.");
+      return;
+    }
+    const items = await scanInboxForBankMessages(p.smsScanFromDate ?? todayISO());
+    toast("ok", items.length ? `${items.length} پیام بانکی برای بررسی پیدا شد.` : "پیام بانکی مرتبطی در صندوق ورودی پیدا نشد.");
+  };
+
   const users = listUsers();
 
   return (
@@ -241,6 +257,19 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
               <button className={`chip ${p.smsAutoImport ? "chip-on" : ""}`} onClick={toggleSmsImport}>
                 <Bell className="w-3.5 h-3.5" /> {p.smsAutoImport ? "خاموش کردن" : "فعال‌سازی"}
               </button>
+            </div>
+            <div className="mt-4">
+              <Field label="از تاریخ اسکن پیامک‌ها (شمسی)">
+                <JalaliPicker value={p.smsScanFromDate ?? todayISO()} onChange={(date) => {
+                  mutate((d) => { d.prefs.smsScanFromDate = date; }, "تاریخ شروع اسکن پیامک‌ها ذخیره شد");
+                }} />
+              </Field>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="btn btn-ghost btn-sm" onClick={scanSmsHistory}>اسکن پیام‌های قبلی</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => {
+                  mutate((d) => { d.prefs.smsScanFromDate = undefined; }, "فیلتر تاریخ اسکن پیامک‌ها حذف شد");
+                }}>همهٔ پیام‌ها</button>
+              </div>
             </div>
           </div>
 

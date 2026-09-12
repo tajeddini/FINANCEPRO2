@@ -213,6 +213,18 @@ const normalizeStoredSms = (item: PendingSmsTransaction): PendingSmsTransaction 
   };
 };
 
+export function getSmsScanFromTimestamp(fromDate?: string): number {
+  if (!fromDate) return 0;
+  const trimmed = fromDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return 0;
+
+  const [year, month, day] = trimmed.split("-").map(Number);
+  if (!year || !month || !day) return 0;
+
+  const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+  return Number.isNaN(start.getTime()) ? 0 : start.getTime();
+}
+
 export function loadPendingSms(): PendingSmsTransaction[] {
   try {
     const raw = localStorage.getItem(PENDING_SMS_KEY);
@@ -276,8 +288,11 @@ export function enqueuePendingSms(raw: string, timestamp = Date.now(), scanFromD
 export async function scanInboxForBankMessages(scanFromDate = todayISO()): Promise<PendingSmsTransaction[]> {
   if (!Capacitor.isNativePlatform()) return [];
 
-  const timestamp = new Date(`${scanFromDate}T00:00:00`).getTime();
-  const inbox = await ReadSMS.getSMS({ timestamp: String(timestamp), pageSize: 200 });
+  const fromTimestamp = getSmsScanFromTimestamp(scanFromDate) || new Date(`${scanFromDate}T00:00:00`).getTime();
+  const inbox = await ReadSMS.getSMS({
+    timestamp: String(fromTimestamp),
+    pageSize: 200,
+  });
   const items = Array.isArray(inbox?.value)
     ? (inbox.value ?? [])
     : [];
@@ -285,19 +300,25 @@ export async function scanInboxForBankMessages(scanFromDate = todayISO()): Promi
   const current = loadPendingSms();
   const list: PendingSmsTransaction[] = [];
   for (const message of items) {
+    const messageDate = Number(message?.date ?? 0);
+    if (!messageDate || messageDate < fromTimestamp) continue;
+
     const body = typeof message?.body === "string" ? message.body : "";
     if (!body) continue;
-    if (localDateISO(new Date(Number(message?.date ?? 0))) < scanFromDate) continue;
+    if (localDateISO(new Date(messageDate)) < scanFromDate) continue;
+
     const parsed = parseBankSMS(body);
     if (!parsed) continue;
-    const id = stableSmsId(body, Number(message?.date ?? 0));
+
+    const id = stableSmsId(body, messageDate);
     if (current.some((entry) => entry.id === id || entry.raw === body)) continue;
+
     parsed.id = id;
     const item: PendingSmsTransaction = {
       id,
       raw: body,
       parsed,
-      createdAt: Number(message?.date ?? Date.now()),
+      createdAt: messageDate || Date.now(),
       status: "pending",
     };
     list.push(item);
