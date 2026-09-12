@@ -96,6 +96,7 @@ export interface Prefs {
   nativeReminders?: boolean;
   smsAutoImport?: boolean;
   smsPermissionGranted?: boolean;
+  smsScanFromDate?: string;
   botToken?: string;
   syncId?: string;
   syncUrl?: string;

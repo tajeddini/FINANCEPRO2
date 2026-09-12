@@ -155,7 +155,7 @@ body {
  overflow-x: hidden;
  text-rendering: optimizeLegibility;
 }
-.font-display { font-family: var(--font-display); }
+.font-display { font-family: var(--font-display); font-weight: 800; }
 .tabular { font-variant-numeric: tabular-nums; }
 ::selection { background: var(--fp-accent); color: #071b16; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }

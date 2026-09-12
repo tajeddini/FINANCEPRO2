@@ -15,10 +15,11 @@ import { DataProvider, useStore } from "./lib/data";
 import {
   deleteAccount, getSession, guestLogin, login, logout, signup, type User,
 } from "./lib/auth";
-import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, useNow } from "./lib/utils";
+import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, todayISO, useNow } from "./lib/utils";
 import { ToastProvider, useToast, TInput, Field } from "./ui";
 import { GlobalSearch } from "./components/global-search";
 import { rescheduleReminders } from "./lib/reminders";
+import { startNativeSmsListener } from "./lib/sms";
 import type { PendingSmsTransaction } from "./lib/sms";
 import TxModal from "./pages/tx-modal";
 
@@ -417,6 +418,11 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     window.addEventListener("fp-file-saved", h);
     return () => window.removeEventListener("fp-file-saved", h);
   }, []);
+
+  useEffect(() => {
+    if (!state.prefs.smsAutoImport) return;
+    return startNativeSmsListener(state.prefs.smsScanFromDate ?? todayISO());
+  }, [state.prefs.smsAutoImport, state.prefs.smsScanFromDate]);
 
   useEffect(() => {
     const h = (e: Event) => {

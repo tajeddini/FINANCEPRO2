@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { ReadSMS } from "capacitor-sms-reader";
+import { todayISO } from "./utils";
 
 export type SmsTransactionType = "income" | "expense";
 
@@ -250,7 +251,8 @@ export function removeUsedSms(id: string): boolean {
   return true;
 }
 
-export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
+export function enqueuePendingSms(raw: string, timestamp = Date.now(), scanFromDate = todayISO()): PendingSmsTransaction | null {
+  if (localDateISO(new Date(timestamp)) < scanFromDate) return null;
   const parsed = parseBankSMS(raw);
   if (!parsed) return null;
 
@@ -258,7 +260,7 @@ export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
     id: parsed.id,
     raw,
     parsed,
-    createdAt: Date.now(),
+    createdAt: timestamp,
     status: "pending",
   };
 
@@ -271,10 +273,11 @@ export function enqueuePendingSms(raw: string): PendingSmsTransaction | null {
   return pending;
 }
 
-export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[]> {
+export async function scanInboxForBankMessages(scanFromDate = todayISO()): Promise<PendingSmsTransaction[]> {
   if (!Capacitor.isNativePlatform()) return [];
 
-  const inbox = await ReadSMS.getSMS({ timestamp: "0", pageSize: 200 });
+  const timestamp = new Date(`${scanFromDate}T00:00:00`).getTime();
+  const inbox = await ReadSMS.getSMS({ timestamp: String(timestamp), pageSize: 200 });
   const items = Array.isArray(inbox?.value)
     ? (inbox.value ?? [])
     : [];
@@ -284,6 +287,7 @@ export async function scanInboxForBankMessages(): Promise<PendingSmsTransaction[
   for (const message of items) {
     const body = typeof message?.body === "string" ? message.body : "";
     if (!body) continue;
+    if (localDateISO(new Date(Number(message?.date ?? 0))) < scanFromDate) continue;
     const parsed = parseBankSMS(body);
     if (!parsed) continue;
     const id = stableSmsId(body, Number(message?.date ?? 0));
@@ -339,13 +343,13 @@ export async function openSmsAppSettings(): Promise<void> {
   }
 }
 
-export function startNativeSmsListener(): () => void {
+export function startNativeSmsListener(scanFromDate = todayISO()): () => void {
   if (!Capacitor.isNativePlatform()) return () => {};
 
   let remove: (() => void) | null = null;
   ReadSMS.addListener("smsReceived", ({ value }) => {
     if (!value?.body) return;
-    enqueuePendingSms(value.body);
+    enqueuePendingSms(value.body, Number(value.date ?? Date.now()), scanFromDate);
   }).then((handler) => {
     remove = () => handler.remove();
   }).catch(() => {

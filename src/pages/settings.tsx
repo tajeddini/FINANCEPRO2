@@ -1,20 +1,19 @@
 /* ---------- صفحهٔ تنظیمات ---------- */
-import { useEffect, useRef, useState } from "react";
-import { Bell, Bot, CheckCircle2, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { Bell, Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
 import { migrateLoadedState, useStore, type AppState } from "../lib/data";
-import { copyText, faDate, faMoney, faNum, inRange, todayISO } from "../lib/utils";
+import { copyText, faNum, todayISO } from "../lib/utils";
 import { listUsers, type User } from "../lib/auth";
 import {
   decodeState, effectivePrefs, encodeState, mergePulledState, pullFromCloud,
   pushToCloud, sameLedgerContent, saveCloud, testConnection,
 } from "../lib/cloud";
 import { applyAccent, THEMES } from "../lib/themes";
-import { Field, PeriodFilter, TInput, usePeriod, useToast } from "../ui";
+import { Field, TInput, useToast } from "../ui";
 import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import { requestNotificationPermission, rescheduleReminders } from "../lib/reminders";
-import { checkSmsPermissions, loadPendingSms, openSmsAppSettings, removeUsedSms, requestSmsPermissions, scanInboxForBankMessages, type PendingSmsTransaction } from "../lib/sms";
+import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions } from "../lib/sms";
 import { dl } from "./shared";
-import TxModal from "./tx-modal";
 
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   user: User; onLogout: () => void; onDelete: () => void; onLock: () => void;
@@ -33,16 +32,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const [botToken, setBotToken] = useState(p.botToken ?? "");
   const [transferCode, setTransferCode] = useState("");
   const [importCode, setImportCode] = useState("");
-  const smsPeriod = usePeriod("all");
-  const [smsItems, setSmsItems] = useState<PendingSmsTransaction[]>(() => loadPendingSms());
-  const [smsToReview, setSmsToReview] = useState<PendingSmsTransaction | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const syncSms = () => setSmsItems(loadPendingSms());
-    window.addEventListener("fp-pending-sms-changed", syncSms);
-    return () => window.removeEventListener("fp-pending-sms-changed", syncSms);
-  }, []);
 
   const cloudSyncId = "fp-user-" + user.username;
 
@@ -185,32 +175,6 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
       : "دسترسی پیامک‌های بانکی خاموش شد.");
   };
 
-  const scanSmsHistory = async () => {
-    const granted = await checkSmsPermissions();
-    if (!granted) {
-      const status = await checkSmsPermissions();
-      if (!status) {
-        toast("warn", "ابتدا مجوز پیامک‌ها را از تنظیمات فعال کنید.");
-        await openSmsAppSettings();
-        return;
-      }
-      toast("warn", "اجازهٔ پیامک‌ها غیرفعال است — از تنظیمات اندروید فعال کنید.");
-      return;
-    }
-    const items = await scanInboxForBankMessages();
-    toast("ok", items.length ? `${items.length} پیام بانکی برای بررسی پیدا شد.` : "پیام بانکی مرتبطی در صندوق ورودی پیدا نشد.");
-  };
-
-  const filteredSms = smsItems
-    .filter((item) => inRange(item.parsed.dateISO ?? todayISO(), smsPeriod.range))
-    .sort((a, b) => b.createdAt - a.createdAt);
-
-  const deleteUsedSms = (id: string) => {
-    if (!removeUsedSms(id)) return;
-    setSmsItems(loadPendingSms());
-    toast("ok", "پیامک ثبت‌شده حذف شد.");
-  };
-
   const users = listUsers();
 
   return (
@@ -278,9 +242,6 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
                 <Bell className="w-3.5 h-3.5" /> {p.smsAutoImport ? "خاموش کردن" : "فعال‌سازی"}
               </button>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button className="btn btn-ghost btn-sm" onClick={scanSmsHistory}>اسکن پیام‌های قبلی</button>
-            </div>
           </div>
 
           <div className="card p-5 rise-in" style={{ ["--d" as string]: "110ms" }}>
@@ -297,55 +258,6 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
           </div>
         </>
       )}
-
-      <div className="card p-5 rise-in" style={{ ["--d" as string]: "115ms" }}>
-        <h3 className="text-[14px] font-black flex items-center gap-2">
-          <Bell className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> پیامک‌ها
-        </h3>
-        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
-          همهٔ پیامک‌های بانکی اسکن‌شده اینجا نگه‌داری می‌شوند. پیامک‌های ثبت‌نشده را برای ساخت تراکنش لمس کنید.
-        </p>
-        <PeriodFilter pf={smsPeriod} count={<>{faNum(filteredSms.length)} پیامک</>} className="mt-4 !p-0 !border-0 !bg-transparent" />
-        <div className="grid gap-2 mt-3">
-          {filteredSms.length === 0 && (
-            <p className="text-[12px] font-bold text-center py-5" style={{ color: "var(--fp-text3)" }}>پیامکی در این بازه پیدا نشد.</p>
-          )}
-          {filteredSms.map((item) => {
-            const used = item.status === "used";
-            return (
-              <div
-                key={item.id}
-                role={used ? undefined : "button"}
-                tabIndex={used ? undefined : 0}
-                onClick={() => { if (!used) setSmsToReview(item); }}
-                onKeyDown={(event) => { if (!used && (event.key === "Enter" || event.key === " ")) setSmsToReview(item); }}
-                className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 text-start transition-all ${used ? "opacity-60" : "cursor-pointer hover:-translate-y-0.5"}`}
-                style={{ borderColor: used ? "var(--fp-border)" : "var(--fp-accent)", background: "var(--fp-bg)" }}
-              >
-                <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: used ? "color-mix(in srgb, var(--fp-mint) 14%, transparent)" : "var(--fp-bg3)", color: used ? "var(--fp-mint)" : "var(--fp-accent)" }}>
-                  {used ? <CheckCircle2 className="w-4.5 h-4.5" /> : <Bell className="w-4.5 h-4.5" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[12.5px] font-black truncate">{item.parsed.bankLabel} · {item.parsed.accountIdentifier}</p>
-                    <p className="text-[12px] font-black tabular whitespace-nowrap" style={{ color: item.parsed.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
-                      {item.parsed.type === "income" ? "+" : "−"}{faMoney(item.parsed.amountToman)} تومان
-                    </p>
-                  </div>
-                  <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>
-                    {item.parsed.dateISO ? faDate(item.parsed.dateISO) : "بدون تاریخ"} · {used ? "ثبت شد" : "ثبت نشده"}
-                  </p>
-                </div>
-                {used && (
-                  <button className="icon-btn !w-8 !h-8" title="حذف پیامک ثبت‌شده" onClick={(event) => { event.stopPropagation(); deleteUsedSms(item.id); }}>
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "120ms" }}>
         <h3 className="text-[14px] font-black flex items-center gap-2"><Cloud className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> همگام‌سازی ابری (Supabase)</h3>
@@ -365,8 +277,6 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
           </p>
         </div>
       </div>
-
-      <TxModal open={!!smsToReview} onClose={() => setSmsToReview(null)} initialSms={smsToReview ?? undefined} />
 
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "140ms" }}>
         <h3 className="text-[14px] font-black flex items-center gap-2"><Sparkles className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> هوش مصنوعی</h3>

@@ -1,9 +1,11 @@
 /* ---------- صفحهٔ مدیریت (حساب‌ها، دسته‌ها، برچسب‌ها، بودجه‌ها، اهداف، دوره‌ای، روش پرداخت) ---------- */
-import { useState } from "react";
-import { Plus, Repeat, Target, Trash2, Upload, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, CheckCircle2, Plus, Repeat, Target, Trash2, Upload, Wallet } from "lucide-react";
 import { clearData, getTags, sampleFill, useStore } from "../lib/data";
-import { faMoney, faNum, inRange, jalaliMonthRange, jalaliToday } from "../lib/utils";
-import { AmountInput, Bar, CatGlyph, CATEGORY_ICONS, CATEGORY_ICON_LABELS, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, Modal, TInput, TSelect, useToast } from "../ui";
+import { faDate, faMoney, faNum, inRange, jalaliMonthRange, jalaliToday, todayISO } from "../lib/utils";
+import { checkSmsPermissions, loadPendingSms, openSmsAppSettings, removeUsedSms, scanInboxForBankMessages, type PendingSmsTransaction } from "../lib/sms";
+import { AmountInput, Bar, CatGlyph, CATEGORY_ICONS, CATEGORY_ICON_LABELS, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, Modal, PeriodFilter, TInput, TSelect, usePeriod, useToast } from "../ui";
+import TxModal from "./tx-modal";
 
 export default function ManagePage() {
   const { mutate } = useStore();
@@ -15,6 +17,7 @@ export default function ManagePage() {
   const tabs = [
     ["accounts", "حساب‌ها"], ["categories", "دسته‌ها"], ["tags", "برچسب‌ها"], ["budgets", "بودجه‌ها"],
     ["goals", "اهداف"], ["recurring", "دوره‌ای"], ["methods", "روش پرداخت"],
+    ["sms", "پیامک‌ها"],
   ] as const;
 
   return (
@@ -44,6 +47,7 @@ export default function ManagePage() {
       {tab === "goals" && <GoalsTab />}
       {tab === "recurring" && <RecurringTab />}
       {tab === "methods" && <MethodsTab />}
+      {tab === "sms" && <SmsTab />}
 
       <Confirm
         open={confirmClear}
@@ -67,6 +71,82 @@ export default function ManagePage() {
         desc="چند ماه تراکنش، بدهی، بودجه، هدف، قرار و یادداشت نمونه اضافه می‌شود تا برنامه را پر ببینید. مطمئن هستید؟"
         yesLabel="بله، اضافه شود"
       />
+    </div>
+  );
+}
+
+function SmsTab() {
+  const { state, mutate } = useStore();
+  const toast = useToast();
+  const smsPeriod = usePeriod("all");
+  const [smsItems, setSmsItems] = useState<PendingSmsTransaction[]>(() => loadPendingSms());
+  const [smsToReview, setSmsToReview] = useState<PendingSmsTransaction | null>(null);
+  const scanFromDate = state.prefs.smsScanFromDate ?? todayISO();
+
+  useEffect(() => {
+    const syncSms = () => setSmsItems(loadPendingSms());
+    window.addEventListener("fp-pending-sms-changed", syncSms);
+    return () => window.removeEventListener("fp-pending-sms-changed", syncSms);
+  }, []);
+
+  const scanSmsHistory = async () => {
+    const granted = await checkSmsPermissions();
+    if (!granted) {
+      toast("warn", "ابتدا مجوز پیامک‌ها را از تنظیمات فعال کنید.");
+      await openSmsAppSettings();
+      return;
+    }
+    const items = await scanInboxForBankMessages(scanFromDate);
+    toast("ok", items.length ? `${items.length} پیام بانکی برای بررسی پیدا شد.` : "پیام بانکی مرتبطی در صندوق ورودی پیدا نشد.");
+  };
+
+  const filteredSms = smsItems
+    .filter((item) => inRange(item.parsed.dateISO ?? todayISO(), smsPeriod.range))
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  const deleteUsedSms = (id: string) => {
+    if (!removeUsedSms(id)) return;
+    setSmsItems(loadPendingSms());
+    toast("ok", "پیامک ثبت‌شده حذف شد.");
+  };
+
+  return (
+    <div className="card p-5 rise-in">
+      <h3 className="text-[14px] font-black flex items-center gap-2"><Bell className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> پیامک‌ها</h3>
+      <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+        پیامک‌های بانکی از این تاریخ به بعد اسکن می‌شوند. پیامک‌های ثبت‌نشده را برای ساخت تراکنش لمس کنید.
+      </p>
+      <Field label="اسکن از تاریخ (شمسی)">
+        <JalaliPicker value={scanFromDate} onChange={(value) => mutate((d) => { d.prefs.smsScanFromDate = value; }, "تاریخ شروع اسکن ذخیره شد")} />
+      </Field>
+      <button className="btn btn-ghost btn-sm mt-3" onClick={scanSmsHistory}>اسکن پیامک‌های قدیمی</button>
+      <PeriodFilter pf={smsPeriod} count={<>{faNum(filteredSms.length)} پیامک</>} className="mt-4 !p-0 !border-0 !bg-transparent" />
+      <div className="grid gap-2 mt-3">
+        {filteredSms.length === 0 && <p className="text-[12px] font-bold text-center py-5" style={{ color: "var(--fp-text3)" }}>پیامکی در این بازه پیدا نشد.</p>}
+        {filteredSms.map((item) => {
+          const used = item.status === "used";
+          return (
+            <div key={item.id} role={used ? undefined : "button"} tabIndex={used ? undefined : 0}
+              onClick={() => { if (!used) setSmsToReview(item); }}
+              onKeyDown={(event) => { if (!used && (event.key === "Enter" || event.key === " ")) setSmsToReview(item); }}
+              className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 text-start transition-all ${used ? "opacity-60" : "cursor-pointer hover:-translate-y-0.5"}`}
+              style={{ borderColor: used ? "var(--fp-border)" : "var(--fp-accent)", background: "var(--fp-bg)" }}>
+              <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0" style={{ background: used ? "color-mix(in srgb, var(--fp-mint) 14%, transparent)" : "var(--fp-bg3)", color: used ? "var(--fp-mint)" : "var(--fp-accent)" }}>
+                {used ? <CheckCircle2 className="w-4.5 h-4.5" /> : <Bell className="w-4.5 h-4.5" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[12.5px] font-black truncate">{item.parsed.bankLabel} · {item.parsed.accountIdentifier}</p>
+                  <p className="text-[12px] font-black tabular whitespace-nowrap" style={{ color: item.parsed.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>{item.parsed.type === "income" ? "+" : "−"}{faMoney(item.parsed.amountToman)} تومان</p>
+                </div>
+                <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{item.parsed.dateISO ? faDate(item.parsed.dateISO) : "بدون تاریخ"} · {used ? "ثبت شد" : "ثبت نشده"}</p>
+              </div>
+              {used && <button className="icon-btn !w-8 !h-8" title="حذف پیامک ثبت‌شده" onClick={(event) => { event.stopPropagation(); deleteUsedSms(item.id); }}><Trash2 className="w-3.5 h-3.5" /></button>}
+            </div>
+          );
+        })}
+      </div>
+      <TxModal open={!!smsToReview} onClose={() => setSmsToReview(null)} initialSms={smsToReview ?? undefined} />
     </div>
   );
 }
