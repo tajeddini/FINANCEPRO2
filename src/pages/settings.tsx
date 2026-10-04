@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Bell, Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
 import { migrateLoadedState, useStore, type AppState } from "../lib/data";
 import { copyText, faNum, todayISO } from "../lib/utils";
-import { listUsers, type User } from "../lib/auth";
+import type { User } from "../lib/auth";
 import {
   decodeState, effectivePrefs, encodeState, mergePulledState, pullFromCloud,
   pushToCloud, sameLedgerContent, saveCloud, testConnection,
@@ -33,8 +33,6 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const [transferCode, setTransferCode] = useState("");
   const [importCode, setImportCode] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const cloudSyncId = "fp-user-" + user.username;
 
   const saveAi = () => {
     mutate((d) => { d.prefs.aiApiUrl = aiApiUrl.trim(); d.prefs.aiApiKey = aiApiKey.trim(); d.prefs.aiModel = aiModel.trim(); }, "تنظیمات هوش مصنوعی ذخیره شد");
@@ -67,17 +65,19 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   };
 
   const doTest = async () => {
+    if (user.guest) return toast("warn", "همگام‌سازی ابری برای حساب مهمان فعال نیست.");
     setTesting(true);
-    const r = await testConnection({ ...p, syncUrl: syncUrl.trim(), syncKey: syncKey.trim() }, cloudSyncId);
+    const r = await testConnection({ ...p, syncUrl: syncUrl.trim(), syncKey: syncKey.trim() });
     setTesting(false);
     toast(r.ok ? "ok" : "err", r.message);
   };
 
   const doSync = async () => {
+    if (user.guest) return toast("warn", "همگام‌سازی ابری برای حساب مهمان فعال نیست.");
     const ep = effectivePrefs({ ...p, syncUrl: syncUrl.trim(), syncKey: syncKey.trim() });
     if (!ep.syncUrl || !ep.syncKey) return toast("warn", "ابتدا آدرس و کلید را پر و ذخیره کنید.");
     setSyncing(true);
-    const pull = await pullFromCloud(ep, cloudSyncId);
+    const pull = await pullFromCloud(ep);
     if (pull.ok && pull.state && (pull.state.rev ?? 0) > (state.rev ?? 0)) {
       if (!sameLedgerContent(state, pull.state)) {
         mutate((d) => { mergePulledState(d, pull.state!); }, "دریافت داده از ابر");
@@ -86,7 +86,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
         toast("ok", "داده‌ها از قبل همگام بودند.");
       }
     } else if (pull.ok) {
-      const push = await pushToCloud(state, ep, cloudSyncId);
+      const push = await pushToCloud(state, ep);
       toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد." : push.message);
     } else {
       toast("err", pull.message);
@@ -174,8 +174,6 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
       ? "برای ثبت خودکار تراکنش‌ها از پیامک بانک، دسترسی فعال شد."
       : "دسترسی پیامک‌های بانکی خاموش شد.");
   };
-
-  const users = listUsers();
 
   return (
     <div className="grid gap-5 max-w-3xl">
@@ -273,7 +271,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
             <button className="btn btn-mint btn-sm" onClick={doSync} disabled={syncing}><Cloud className="w-4 h-4" /> {syncing ? "در حال سینک…" : "سینک اکنون"}</button>
           </div>
           <p className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>
-            شناسهٔ سینک شما: <span dir="ltr" className="tabular">{cloudSyncId}</span> — با همین شناسه در هر دستگاهی داده‌هایتان را می‌بینید.
+            شناسهٔ حساب Supabase شما: <span dir="ltr" className="tabular">{user.id}</span> — داده‌ها براساس حساب احراز هویت‌شده همگام می‌شوند.
           </p>
         </div>
       </div>
@@ -338,23 +336,9 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
           <span className="w-12 h-12 rounded-xl grid place-items-center font-display text-xl" style={{ background: "color-mix(in srgb, var(--fp-mint) 15%, transparent)", color: "var(--fp-mint)" }}>{user.name.slice(0, 1)}</span>
           <div className="min-w-0 flex-1">
             <p className="text-[14px] font-black">{user.name} {user.guest && <span className="chip !cursor-default" style={{ color: "var(--fp-accent)" }}>مهمان</span>}</p>
-            <p className="text-[11px] font-bold" style={{ color: "var(--fp-text3)" }} dir="ltr">@{user.username}</p>
+            <p className="text-[11px] font-bold" style={{ color: "var(--fp-text3)" }} dir="ltr">{user.email || "حساب مهمان"}</p>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onLogout}>خروج</button>
-        </div>
-        <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--fp-border)" }}>
-          <p className="text-[11px] font-black mb-2" style={{ color: "var(--fp-text3)" }}>کاربران این دستگاه — {faNum(users.length)} کاربر</p>
-          <div className="grid gap-1.5">
-            {users.map((u) => (
-              <div key={u.id} className="flex items-center gap-2.5 rounded-lg px-3 py-2"
-                style={{ background: u.id === user.id ? "color-mix(in srgb, var(--fp-mint) 8%, transparent)" : "var(--fp-bg)", border: `1px solid ${u.id === user.id ? "var(--fp-mint)" : "var(--fp-border)"}` }}>
-                <span className="w-7 h-7 rounded-lg grid place-items-center font-display text-[13px] shrink-0" style={{ background: "color-mix(in srgb, var(--fp-mint) 15%, transparent)", color: "var(--fp-mint)" }}>{u.name.slice(0, 1)}</span>
-                <span className="text-[12px] font-black flex-1 truncate">{u.name}</span>
-                <span className="text-[10px] font-bold" style={{ color: "var(--fp-text3)" }} dir="ltr">@{u.username}</span>
-                {u.id === user.id && <span className="chip !cursor-default" style={{ color: "var(--fp-mint)", borderColor: "var(--fp-mint)" }}>فعال</span>}
-              </div>
-            ))}
-          </div>
         </div>
         {!user.guest && (
           <button className="btn btn-danger btn-sm mt-4" onClick={() => { if (confirm("حساب و همهٔ داده‌های این دستگاه حذف شود؟")) onDelete(); }}>

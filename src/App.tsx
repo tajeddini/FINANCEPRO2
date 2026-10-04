@@ -13,7 +13,7 @@ import {
 } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
 import {
-  deleteAccount, getSession, guestLogin, login, logout, signup, type User,
+  deleteAccount, getSession, guestLogin, login, logout, onAuthStateChange, signup, type User,
 } from "./lib/auth";
 import { faNum, faTime, fireNotification, jalaliDateStr, localISODate, playChime, relTime, todayISO, useNow } from "./lib/utils";
 import { ToastProvider, useToast, TInput, Field } from "./ui";
@@ -60,8 +60,45 @@ const NAV: { id: PageId; label: string; icon: React.ReactNode }[] = [
 ];
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(() => getSession());
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [gen, setGen] = useState(0);
+  useEffect(() => {
+    let active = true;
+    let unsubscribe: () => void = () => {};
+    const subscribe = () => {
+      unsubscribe();
+      try {
+        unsubscribe = onAuthStateChange((nextUser) => {
+          if (!active) return;
+          setUser(nextUser);
+          setAuthReady(true);
+        });
+      } catch (error) {
+        setAuthError(error instanceof Error ? error.message : "Supabase نشست listener راه‌اندازی نشد.");
+        setAuthReady(true);
+      }
+    };
+    subscribe();
+    window.addEventListener("fp-cloud-config", subscribe);
+    window.addEventListener("fp-auth-configured", subscribe);
+    void getSession().then((currentUser) => {
+      if (!active) return;
+      setUser(currentUser);
+      setAuthReady(true);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setAuthError(error instanceof Error ? error.message : "بازیابی نشست سوپابیس ناموفق بود.");
+      setAuthReady(true);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+      window.removeEventListener("fp-cloud-config", subscribe);
+      window.removeEventListener("fp-auth-configured", subscribe);
+    };
+  }, []);
   const consumeFresh = () => {
     try {
       const f = sessionStorage.getItem("fp_fresh_signup") === "1";
@@ -69,32 +106,35 @@ export default function App() {
       return f;
     } catch { return false; }
   };
+  if (!authReady) {
+    return <div className="min-h-screen grid place-items-center">در حال بررسی نشست…</div>;
+  }
   return (
     <ToastProvider>
       {user ? (
         <DataProvider key={`${user.id}:${gen}`} userId={user.id} fresh={consumeFresh()}>
-          <Shell user={user} onLogout={() => { logout(); setUser(null); }} onDelete={() => { deleteAccount(user.id); setUser(null); }} />
+          <Shell user={user} onLogout={() => { void logout(!!user.guest).then(() => setUser(null)).catch((error: unknown) => console.error("Supabase sign-out failed:", error)); }} onDelete={() => { void deleteAccount(user.id, !!user.guest).then(() => setUser(null)).catch((error: unknown) => console.error("Sign-out after account cleanup failed:", error)); }} />
         </DataProvider>
       ) : (
-        <AuthScreen onAuthed={(u) => { setUser(u); setGen((g) => g + 1); }} />
+        <AuthScreen initialError={authError} onAuthed={(u) => { setUser(u); setGen((g) => g + 1); }} />
       )}
     </ToastProvider>
   );
 }
 
 /* ================= صفحهٔ ورود ================= */
-function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
+function AuthScreen({ initialError, onAuthed }: { initialError: string; onAuthed: (u: User) => void }) {
   const toast = useToast();
   useEffect(() => { applyAccent(readAccent()); }, []);
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true);
-    const r = mode === "login" ? await login(username, pass) : signup(name, username, pass);
+    const r = mode === "login" ? await login(email, pass) : await signup(name, email, pass);
     setBusy(false);
     if (r.error) return toast("err", r.error);
     try {
@@ -159,7 +199,7 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
             {mode === "signup" && (
               <Field label="نام و نام خانوادگی"><TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="مثلاً: سارا رضایی" /></Field>
             )}
-            <Field label="نام کاربری"><TInput dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="sara" /></Field>
+            <Field label="ایمیل"><TInput dir="ltr" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></Field>
             <Field label="رمز عبور"><TInput dir="ltr" type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="••••••" onKeyDown={(e) => e.key === "Enter" && submit()} /></Field>
             <button className="btn btn-gold !py-3 !text-[14px]" onClick={submit} disabled={busy}>
               {busy ? "در حال بررسی…" : mode === "login" ? "ورود به دفترکل" : "ساخت حساب و شروع"}
@@ -170,8 +210,9 @@ function AuthScreen({ onAuthed }: { onAuthed: (u: User) => void }) {
             <button className="btn btn-ghost" onClick={() => onAuthed(guestLogin())}>
               ادامه به‌صورت مهمان — بدون ثبت‌نام
             </button>
+            {initialError && <p className="text-[11px] font-bold text-center" style={{ color: "var(--fp-danger)" }}>{initialError}</p>}
             <p className="text-[10.5px] font-bold text-center leading-5" style={{ color: "var(--fp-text3)" }}>
-              هر کاربر دادهٔ کاملاً جداگانه دارد؛ رمز به‌صورت هش ذخیره می‌شود.
+              کاربران با ایمیل وارد می‌شوند؛ رمز عبور به‌صورت امن توسط Supabase مدیریت می‌شود.
             </p>
           </div>
         </div>
@@ -314,7 +355,6 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     setInstallEvt(null);
   };
 
-  const cloudSyncId = "fp-user-" + user.username;
   const syncOn = (() => {
     const ep = effectivePrefs(state.prefs);
     return !!(ep.syncUrl && ep.syncKey);
@@ -322,18 +362,19 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
 
   /* سازش‌گیری: اول بخوان، اگر ابر جدیدتر بود ادغام کن، وگرنه بفرست */
   const reconcile = useCallback(async () => {
+    if (user.guest) return;
     const s = stateRef.current;
     const ep = effectivePrefs(s.prefs);
     if (!ep.syncUrl || !ep.syncKey) return;
     try {
-      const pull = await pullFromCloud(ep, cloudSyncId);
+      const pull = await pullFromCloud(ep);
       if (pull.ok && pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
         if (!sameLedgerContent(s, pull.state)) {
           mutateRef.current((d) => { mergePulledState(d, pull.state!); }, "بازیابی داده‌ها از ابر");
           toastRef.current("ok", "تراکنش‌های شما از ابر بازیابی شد.");
         }
       } else if (pull.ok) {
-        await pushToCloud(s, ep, cloudSyncId);
+        await pushToCloud(s, ep);
       }
       writeSyncStatus({ ok: true, at: Date.now(), message: pull.message });
     } catch {
@@ -341,7 +382,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     }
     reconciledRef.current = true;
     pushedRef.current = JSON.stringify(stateRef.current);
-  }, [cloudSyncId]);
+  }, [user.id, user.guest]);
 
   /* هنگام بارگذاری: یک‌بار سازش‌گیری */
   useEffect(() => {
@@ -518,7 +559,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-[12.5px] font-black truncate">{user.name}</p>
-                <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }} dir="ltr">@{user.username}</p>
+                <p className="text-[10px] font-bold truncate" style={{ color: "var(--fp-text3)" }} dir="ltr">{user.email || "حساب مهمان"}</p>
               </div>
               <button className="icon-btn !w-8 !h-8" title="خروج" onClick={onLogout}><LogOut className="w-4 h-4" /></button>
             </div>

@@ -1,124 +1,122 @@
-/* ---------- احراز هویت چندکاربره (ثبت‌نام، ورود، هش رمز، مهمان) ----------
-   حساب‌ها علاوه بر مرورگر، در جدول fp_users سوپابیس هم ثبت می‌شوند تا
-   ورود با همان نام کاربری/رمز از هر دستگاهی ممکن باشد. */
-import { uid } from "./utils";
-import { getCloud, pushUser, pullUser } from "./cloud";
+import type { AuthChangeEvent, Session, User as SupabaseUser } from "@supabase/supabase-js";
+import { envCloud, getCloud, getSupabaseClient } from "./cloud";
 
 export interface User {
   id: string;
   name: string;
-  username: string;
-  hash: string;
+  email: string;
   guest?: boolean;
   created: number;
 }
 
-const USERS_KEY = "fp_users";
-const SESSION_KEY = "fp_session";
+const GUEST_SESSION_KEY = "fp_guest_session";
 
-function loadUsers(): User[] {
+function notifyAuthConfigurationChanged() {
+  window.dispatchEvent(new CustomEvent("fp-auth-configured"));
+}
+
+function fromSupabaseUser(user: SupabaseUser): User {
+  return {
+    id: user.id,
+    name: user.user_metadata?.full_name || user.user_metadata?.name || user.email || "کاربر",
+    email: user.email ?? "",
+    created: Date.parse(user.created_at) || Date.now(),
+  };
+}
+
+function getGuestSession(): User | null {
   try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) || "[]") as User[];
-  } catch {
-    return [];
-  }
-}
-
-function saveUsers(users: User[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-/** هش سبک djb2 — برای محصول دمو کافی است؛ در تولید از bcrypt سمت سرور استفاده شود */
-export function hashPass(s: string): string {
-  let h = 5381;
-  const salted = `fp::${s}::salt`;
-  for (let i = 0; i < salted.length; i++) h = ((h << 5) + h + salted.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
-
-export function getSession(): User | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(GUEST_SESSION_KEY);
     return raw ? (JSON.parse(raw) as User) : null;
   } catch {
     return null;
   }
 }
 
-function setSession(u: User | null) {
-  if (u) localStorage.setItem(SESSION_KEY, JSON.stringify(u));
-  else localStorage.removeItem(SESSION_KEY);
+export async function getSession(): Promise<User | null> {
+  const guest = getGuestSession();
+  if (guest) return guest;
+  const cfg = getCloud() ?? envCloud();
+  if (!cfg) return null;
+  const { data, error } = await getSupabaseClient(cfg).auth.getSession();
+  if (error) throw error;
+  return data.session ? fromSupabaseUser(data.session.user) : null;
 }
 
-/** ثبت حساب در ابر (بدون انتظار — خطا مانع ثبت‌نام محلی نمی‌شود) */
-function cloudRegister(user: User) {
-  const cfg = getCloud();
-  if (cfg) void pushUser({ username: user.username, name: user.name, hash: user.hash, created: user.created }, cfg);
+export function onAuthStateChange(callback: (user: User | null, event: AuthChangeEvent) => void): () => void {
+  if (getGuestSession()) return () => undefined;
+  const cfg = getCloud() ?? envCloud();
+  if (!cfg) return () => undefined;
+  const { data } = getSupabaseClient(cfg).auth.onAuthStateChange((event, session: Session | null) => {
+    callback(session ? fromSupabaseUser(session.user) : getGuestSession(), event);
+  });
+  return () => data.subscription.unsubscribe();
 }
 
-export function signup(name: string, username: string, pass: string): { user?: User; error?: string } {
-  const un = username.trim().toLowerCase();
+export async function signup(name: string, email: string, password: string): Promise<{ user?: User; error?: string }> {
+  const normalizedEmail = email.trim().toLowerCase();
   if (!name.trim()) return { error: "نام را وارد کنید." };
-  if (un.length < 3) return { error: "نام کاربری باید حداقل ۳ حرف باشد." };
-  if (pass.length < 4) return { error: "رمز عبور باید حداقل ۴ کاراکتر باشد." };
-  const users = loadUsers();
-  if (users.some((u) => u.username === un)) return { error: "این نام کاربری قبلاً ثبت شده است." };
-  const user: User = { id: uid(), name: name.trim(), username: un, hash: hashPass(pass), created: Date.now() };
-  users.push(user);
-  saveUsers(users);
-  setSession(user);
-  cloudRegister(user);
-  return { user };
-}
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail))
+    return { error: "ایمیل معتبر وارد کنید." };
+  if (password.length < 6) return { error: "رمز عبور باید حداقل ۶ کاراکتر باشد." };
 
-export async function login(username: string, pass: string): Promise<{ user?: User; error?: string }> {
-  const un = username.trim().toLowerCase();
-  let user = loadUsers().find((u) => u.username === un);
-
-  /* اگر این دستگاه حساب را نمی‌شناسد، از ابر (Supabase) پیدایش کن */
-  if (!user) {
-    const cfg = getCloud();
-    if (cfg) {
-      const cu = await pullUser(un, cfg);
-      if (cu) {
-        user = { id: uid(), name: cu.name, username: cu.username, hash: cu.hash, created: cu.created };
-        const users = loadUsers();
-        users.push(user);
-        saveUsers(users);
-      }
-    }
+  try {
+    const { data, error } = await getSupabaseClient().auth.signUp({
+      email: normalizedEmail,
+      password,
+      options: { data: { full_name: name.trim() } },
+    });
+    if (error) return { error: error.message };
+    if (!data.session || !data.user)
+      return { error: "حساب ساخته شد؛ برای ادامه ایمیل تأیید را باز کنید، سپس وارد شوید." };
+    localStorage.removeItem(GUEST_SESSION_KEY);
+    notifyAuthConfigurationChanged();
+    return { user: fromSupabaseUser(data.user) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "ثبت‌نام در Supabase ناموفق بود." };
   }
-  if (!user) return { error: "کاربری با این نام کاربری پیدا نشد. اگر از دستگاه دیگری ثبت‌نام کرده‌اید، ابتدا اتصال Supabase را فعال کنید." };
-  if (user.hash !== hashPass(pass)) return { error: "رمز عبور اشتباه است." };
-
-  /* بک‌فیل: حساب‌های قدیمی که قبل از fp_users ساخته شده‌اند، در ابر ثبت شوند */
-  cloudRegister(user);
-
-  setSession(user);
-  return { user };
 }
 
-export function logout() {
-  setSession(null);
+export async function login(email: string, password: string): Promise<{ user?: User; error?: string }> {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return { error: "ایمیل را وارد کنید." };
+  if (!password) return { error: "رمز عبور را وارد کنید." };
+
+  try {
+    const { data, error } = await getSupabaseClient().auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+    if (error) return { error: error.message };
+    if (!data.user) return { error: "حساب کاربری پیدا نشد." };
+    localStorage.removeItem(GUEST_SESSION_KEY);
+    notifyAuthConfigurationChanged();
+    return { user: fromSupabaseUser(data.user) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "ورود به Supabase ناموفق بود." };
+  }
+}
+
+export async function logout(guestOnly = false): Promise<void> {
+  localStorage.removeItem(GUEST_SESSION_KEY);
+  if (guestOnly) {
+    notifyAuthConfigurationChanged();
+    return;
+  }
+  const cfg = getCloud() ?? envCloud();
+  if (!cfg) return;
+  const { error } = await getSupabaseClient(cfg).auth.signOut();
+  if (error) throw error;
 }
 
 export function guestLogin(): User {
-  const users = loadUsers();
-  let guest = users.find((u) => u.guest);
-  if (!guest) {
-    guest = { id: "guest", name: "مهمان", username: "guest", hash: "-", guest: true, created: Date.now() };
-    users.push(guest);
-    saveUsers(users);
-  }
-  setSession(guest);
+  const guest: User = { id: "guest", name: "مهمان", email: "", guest: true, created: Date.now() };
+  localStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(guest));
+  notifyAuthConfigurationChanged();
   return guest;
 }
 
-export function deleteAccount(userId: string) {
-  saveUsers(loadUsers().filter((u) => u.id !== userId));
+export async function deleteAccount(userId: string, guestOnly = false): Promise<void> {
   localStorage.removeItem(`fp_data_${userId}`);
-  setSession(null);
+  await logout(guestOnly);
 }
-
-/** فهرست کاربران ثبت‌شدهٔ این دستگاه — برای نمایش چندکاربره */
-export const listUsers = (): User[] => loadUsers();

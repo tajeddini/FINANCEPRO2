@@ -13,10 +13,10 @@
 - **کاملاً راست‌به‌چپ (RTL)** و فارسی — فونت Lalezar (تیتر) + Vazirmatn (متن)
 - **تقویم شمسی (جلالی)** در همه‌جا — ذخیره به میلادی، نمایش به شمسی (با jalaali-js)
 - **اعداد فارسی** با جداکنندهٔ هزارگان — از `faNum()` و `faMoney()` استفاده شود، نه `toLocaleString` خالی
-- **چندکاربره** — هر کاربر دادهٔ کاملاً جدا دارد + حالت مهمان
+- **چندکاربره** — احراز هویت با Supabase Auth و ایمیل؛ دادهٔ هر کاربر با RLS جداست + حالت مهمان محلی
 - **PWA** — نصب روی موبایل و دسکتاپ، کارکرد آفلاین
 - **اپ بومی اندروید** (Capacitor) — با قابلیت‌های بومی: دیکتهٔ صوتی، انتخاب/ذخیره/اشتراک فایل، خواندن و بررسی پیامک‌های بانکی از inbox، یادآورهای سررسید؛ همه با شاخه‌بندی `isNativePlatform()` و بدون تغییر نسخهٔ وب/PWA
-- **سینک ابری Supabase** — REST بین دستگاه‌ها، با کلید مشترک `fp-user-<نام‌کاربری>` و سازش‌گیری خودکار/دستی
+- **سینک ابری Supabase** — REST احراز هویت‌شده با JWT، جداسازی ردیف‌ها با `user_id` و RLS، و سازش‌گیری خودکار/دستی
 - **حذف امن** — سطل زبالهٔ ۳۰ ثانیه‌ای با قابلیت بازگشت
 
 ---
@@ -81,7 +81,7 @@ financepro/
 │   │   └── settings.tsx        ← تنظیمات: تم، پین، سینک، مجوز پیامک، هوش مصنوعی، ربات، یادآور بومی
 │   └── lib/
 │       ├── data.tsx            ← مدل داده + Store مرکزی + تگ‌ها + سنگ‌قبر + اقساط
-│       ├── auth.ts             ← احراز هویت چندکاربره (+ ورود از ابر)
+│       ├── auth.ts             ← Supabase Auth (ایمیل/رمز) + حالت مهمان محلی
 │       ├── cloud.ts            ← سینک Supabase + ادغام چنددستگاهه
 │       ├── utils.ts            ← تقویم شمسی + اعداد فارسی + بازه‌ها + اعلان
 │       ├── sms.ts              ← پارسر پیام‌های بانکی (ملی/رسالت) + ذخیره، وضعیت used و صف بررسی پیامک
@@ -127,31 +127,37 @@ financepro/
 
 ## ۵. معماری سینک ابری (مهم)
 
-- **کلید مشترک:** هر کاربر یک ردیف در جدول `financepro_state` با id = `fp-user-<نام‌کاربری>` دارد.
+- **شناسهٔ ردیف:** سینک ابتدا ردیف موجود با `user_id` احراز‌شده را پیدا می‌کند تا شناسهٔ قدیمی حفظ شود؛ برای کاربر جدید شناسهٔ ردیف بر پایهٔ UUID احراز هویت ساخته می‌شود.
+- **احراز هویت:** ثبت‌نام و ورود با ایمیل و رمز از طریق Supabase Auth انجام می‌شود؛ نشست با `persistSession` و `autoRefreshToken` در مرورگر نگه‌داری می‌شود. حالت مهمان فقط از ذخیره‌سازی محلی استفاده می‌کند و به Supabase دسترسی ندارد.
+- **RLS:** همهٔ خواندن‌ها و نوشتن‌های کلاینت در `financepro_state` و `fp_users` با JWT کاربر و شرط `user_id = auth.uid()` انجام می‌شوند. payload نوشتن شامل `user_id` احراز‌شده است؛ عملیات بدون نشست واقعی مسدود است.
 - **نسخه‌بندی:** فیلد `rev` مهر زمانی جهانی است (`Date.now()`) — نه شمارندهٔ محلی. این ریشهٔ باگ «عوض‌شدن خودبه‌خود تراکنش‌ها» را خشکاند.
 - **ادغام تراکنش‌محور:** هنگام pull، برای هر تراکنشِ مشترک، نسخهٔ جدیدتر (بر اساس `updatedAt`) برنده است.
 - **سنگ‌قبر (Tombstone):** حذف تراکنش یک رکورد `{id, at}` در `tombstones` می‌سازد که سینک می‌شود تا حذف در همهٔ دستگاه‌ها ماندگار بماند.
 - **امنیت:** `prefs` حساس (پین، کلیدها، توکن‌ها) **هرگز** به ابر فرستاده نمی‌شود — فقط `syncId`.
-- **تست اتصال:** دکمهٔ «آزمایش اتصال» در تنظیمات، جدول را ping می‌کند و خطاها را با راهنمای عملی نشان می‌دهد.
+- **تست اتصال:** دکمهٔ «آزمایش اتصال» در تنظیمات، دسترسی همان کاربر احراز‌شده به جدول را بررسی می‌کند و خطاها را با راهنمای عملی نشان می‌دهد.
 
 ### جدول‌های Supabase
 
 ```sql
 create table if not exists public.financepro_state (
   id         text primary key,
+  user_id    uuid not null references auth.users(id),
   data       text,
   updated_at timestamptz default now()
 );
 alter table public.financepro_state enable row level security;
-create policy "open_anon" on public.financepro_state for all using (true) with check (true);
+create policy "user owns financepro_state" on public.financepro_state
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create table if not exists public.fp_users (
   username   text primary key,
+  user_id    uuid not null references auth.users(id),
   data       text,
   updated_at timestamptz default now()
 );
 alter table public.fp_users enable row level security;
-create policy "open_anon" on public.fp_users for all using (true) with check (true);
+create policy "user owns fp_users" on public.fp_users
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 ```
 
 ---
@@ -207,7 +213,7 @@ create policy "open_anon" on public.fp_users for all using (true) with check (tr
 - [x] **اعلان قرارها حتی با اپِ بسته** (allowWhileIdle + fallback زنگ غیردقیق) + **خروجی PDF از گزارش‌ها** (jsPDF + html2canvas-pro) + **ذخیرهٔ مستقیم فایل‌ها** (Download/FinancePro) (v1.36)
 
 ### ایده‌های آینده
-- [ ] محدود کردن RLS سوپابیس برای تولید
+- [x] محدود کردن RLS سوپابیس برای تولید — فقط ردیف‌های متعلق به `auth.uid()` در دسترس هستند.
 - [ ] ادغام کامل همهٔ موجودیت‌ها در سینک؛ تراکنش‌ها همین حالا ادغام تراکنش‌محور و سنگ‌قبر دارند، اما سایر آرایه‌ها در pull با نسخهٔ ابر جایگزین می‌شوند
 - [ ] انتشار اپ اندروید در گوگل‌پلی
 - [ ] قفل اثر انگشت در اپ (Capacitor Biometric)
@@ -220,6 +226,7 @@ create policy "open_anon" on public.fp_users for all using (true) with check (tr
 
 | نسخه | تغییر |
 |---|---|
+| v1.39 | **مهاجرت Auth به Supabase:** حذف هش DJB2 و نشست/فهرست کاربران محلی برای حساب‌های واقعی؛ ورود و ثبت‌نام با ایمیل، بازیابی و شنیدن تغییر نشست، و ماندگاری نشست Supabase؛ حالت مهمان فقط محلی باقی ماند. همهٔ خواندن/نوشتن‌های سینک با JWT و `user_id` احرازشده انجام می‌شوند؛ RLS داده‌ها را با `auth.uid()` محدود می‌کند و ردیف قدیمی با شناسهٔ موجود حفظ می‌شود. |
 | v1.0 | نسخهٔ اولیه — ۸ صفحه، تقویم شمسی، اعداد فارسی، PWA |
 | v1.2 | رفع تکرار کلمات در دستیار صوتی (معماری idempotent) |
 | v1.3 | اصلاح منطقهٔ زمانی (تاریخ محلی به‌جای UTC) |

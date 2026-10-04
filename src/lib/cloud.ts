@@ -1,4 +1,5 @@
 /* ---------- ماندگاری بین مرورگرها: کد انتقال + سینک واقعی Supabase ---------- */
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { migrateLoadedState, type AppState, type ID, type Prefs, type Tx } from "./data";
 
 /* ===== تنظیمات اتصال مشترک (برای صفحهٔ ورود هم در دسترس باشد) ===== */
@@ -17,6 +18,7 @@ export const getCloud = (): CloudCfg | null => {
 export const saveCloud = (cfg: CloudCfg) => {
   try {
     localStorage.setItem(CLOUD_KEY, JSON.stringify(cfg));
+    window.dispatchEvent(new CustomEvent("fp-cloud-config"));
   } catch { /* ignore */ }
 };
 
@@ -27,6 +29,24 @@ export function envCloud(): CloudCfg | null {
   const url = env.VITE_SUPABASE_URL ?? "";
   const key = env.VITE_SUPABASE_ANON_KEY ?? "";
   return url && key ? { url, key } : null;
+}
+
+let supabaseClient: SupabaseClient | null = null;
+let supabaseClientKey = "";
+
+export function getSupabaseClient(cfg: CloudCfg | null = getCloud() ?? envCloud()): SupabaseClient {
+  if (!cfg) throw new Error("ابتدا آدرس پروژه و کلید anon سوپابیس را تنظیم کنید.");
+  const clientKey = `${cfg.url}\n${cfg.key}`;
+  if (supabaseClient && supabaseClientKey === clientKey) return supabaseClient;
+  supabaseClient = createClient(cfg.url, cfg.key, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+  supabaseClientKey = clientKey;
+  return supabaseClient;
 }
 
 /** تنظیمات مؤثر: ترجیح با prefs کاربر؛ اگر نبود، تنظیمات مشترک؛ بعد متغیرهای محیطی Vercel */
@@ -66,29 +86,50 @@ const restBase = (url: string) => {
   return u.endsWith("/rest/v1") ? u : u + "/rest/v1";
 };
 
-const authHeaders = (key: string, extra: Record<string, string> = {}) => ({
+const authHeaders = (key: string, accessToken: string, extra: Record<string, string> = {}) => ({
   apikey: key,
-  Authorization: `Bearer ${key}`,
+  Authorization: `Bearer ${accessToken}`,
   "Content-Type": "application/json",
   ...extra,
 });
 
+async function authenticatedUser(cfg: CloudCfg): Promise<{ id: string; accessToken: string } | null> {
+  const client = getSupabaseClient(cfg);
+  const [{ data: userData, error: userError }, { data: sessionData, error: sessionError }] = await Promise.all([
+    client.auth.getUser(),
+    client.auth.getSession(),
+  ]);
+  if (userError) throw userError;
+  if (sessionError) throw sessionError;
+  if (!userData.user || !sessionData.session) return null;
+  return { id: userData.user.id, accessToken: sessionData.session.access_token };
+}
+
 /** فرستادن دفترکل — داده‌های حساس prefs هرگز فرستاده نمی‌شوند */
 export async function pushToCloud(
   s: AppState,
-  p: Prefs,
-  syncId?: string
+  p: Prefs
 ): Promise<{ ok: boolean; message: string }> {
-  const id = syncId ?? p.syncId;
-  if (!p.syncUrl || !p.syncKey || !id)
-    return { ok: false, message: "آدرس، کلید و شناسهٔ سینک کامل نیست." };
+  if (!p.syncUrl || !p.syncKey)
+    return { ok: false, message: "آدرس و کلید سینک کامل نیست." };
   try {
+    const cfg = { url: p.syncUrl, key: p.syncKey };
+    const auth = await authenticatedUser(cfg);
+    if (!auth) return { ok: false, message: "برای همگام‌سازی ابری ابتدا با حساب سوپابیس وارد شوید." };
+    const lookup = await fetch(
+      `${restBase(cfg.url)}/financepro_state?user_id=eq.${encodeURIComponent(auth.id)}&select=id&limit=1`,
+      { headers: authHeaders(cfg.key, auth.accessToken) }
+    );
+    if (!lookup.ok) return { ok: false, message: httpDiagnosis(lookup.status, "یافتن دفترکل کاربر") };
+    const rows = (await lookup.json()) as { id: string }[];
+    const id = rows[0]?.id ?? `fp-user-${auth.id}`;
     const safeState: AppState = { ...s, prefs: { syncId: id } as Prefs };
     const res = await fetch(`${restBase(p.syncUrl)}/financepro_state`, {
       method: "POST",
-      headers: authHeaders(p.syncKey, { Prefer: "resolution=merge-duplicates" }),
+      headers: authHeaders(p.syncKey, auth.accessToken, { Prefer: "resolution=merge-duplicates" }),
       body: JSON.stringify({
         id,
+        user_id: auth.id,
         data: encodeState(safeState),
         updated_at: new Date().toISOString(),
       }),
@@ -96,26 +137,30 @@ export async function pushToCloud(
     if (!res.ok)
       return {
         ok: false,
-        message: `خطای ${res.status} از Supabase — کلید یا جدول financepro_state را بررسی کنید.`,
+        message: httpDiagnosis(res.status, "نوشتن در ابر"),
       };
     return { ok: true, message: "دفترکل به ابر فرستاده شد." };
-  } catch {
-    return { ok: false, message: "اتصال برقرار نشد — اینترنت یا آدرس پروژه را بررسی کنید." };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "اتصال برقرار نشد — اینترنت یا آدرس پروژه را بررسی کنید.",
+    };
   }
 }
 
 /** خواندن دفترکل از ابر */
 export async function pullFromCloud(
-  p: Prefs,
-  syncId?: string
+  p: Prefs
 ): Promise<{ ok: boolean; message: string; state?: AppState; updatedAt?: string }> {
-  const id = syncId ?? p.syncId;
-  if (!p.syncUrl || !p.syncKey || !id)
-    return { ok: false, message: "آدرس، کلید و شناسهٔ سینک کامل نیست." };
+  if (!p.syncUrl || !p.syncKey)
+    return { ok: false, message: "آدرس و کلید سینک کامل نیست." };
   try {
+    const cfg = { url: p.syncUrl, key: p.syncKey };
+    const auth = await authenticatedUser(cfg);
+    if (!auth) return { ok: false, message: "برای همگام‌سازی ابری ابتدا با حساب سوپابیس وارد شوید." };
     const res = await fetch(
-      `${restBase(p.syncUrl)}/financepro_state?id=eq.${encodeURIComponent(id)}&select=data,updated_at`,
-      { headers: authHeaders(p.syncKey) }
+      `${restBase(cfg.url)}/financepro_state?user_id=eq.${encodeURIComponent(auth.id)}&select=data,updated_at`,
+      { headers: authHeaders(cfg.key, auth.accessToken) }
     );
     if (!res.ok)
       return { ok: false, message: httpDiagnosis(res.status, "خواندن از ابر") };
@@ -125,14 +170,19 @@ export async function pullFromCloud(
     const st = decodeState(rows[0].data);
     if (!st) return { ok: false, message: "دادهٔ ابر قابل‌خواندن نیست." };
     return { ok: true, message: "داده از ابر خوانده شد.", state: st, updatedAt: rows[0].updated_at };
-  } catch {
-    return { ok: false, message: "اتصال برقرار نشد — اینترنت را بررسی کنید." };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "اتصال برقرار نشد — اینترنت را بررسی کنید.",
+    };
   }
 }
 
 export function httpDiagnosis(status: number, action: string): string {
-  if (status === 401 || status === 403)
-    return `کلید anon اشتباه یا منقضی است (${status}).`;
+  if (status === 401)
+    return "نشست احراز هویت معتبر نیست یا کلید anon اشتباه است (401)؛ دوباره وارد شوید.";
+  if (status === 403)
+    return "دسترسی به ردیف رد شد (403)؛ نشست کاربر و سیاست RLS را بررسی کنید.";
   if (status === 404)
     return `جدول یا آدرس پیدا نشد (${status}) — جدول financepro_state را بررسی کنید.`;
   if (status === 400)
@@ -143,22 +193,26 @@ export function httpDiagnosis(status: number, action: string): string {
 }
 
 export async function testConnection(
-  p: Prefs,
-  syncId?: string
+  p: Prefs
 ): Promise<{ ok: boolean; message: string }> {
-  const id = syncId ?? p.syncId ?? "fp-connection-test";
   if (!p.syncUrl || !p.syncKey)
     return { ok: false, message: "آدرس پروژه و کلید anon را کامل وارد کنید." };
   try {
+    const cfg = { url: p.syncUrl, key: p.syncKey };
+    const auth = await authenticatedUser(cfg);
+    if (!auth) return { ok: false, message: "برای آزمایش اتصال ابتدا با حساب سوپابیس وارد شوید." };
     const res = await fetch(
-      `${restBase(p.syncUrl)}/financepro_state?select=id&limit=1`,
-      { headers: authHeaders(p.syncKey) }
+      `${restBase(cfg.url)}/financepro_state?user_id=eq.${encodeURIComponent(auth.id)}&select=id&limit=1`,
+      { headers: authHeaders(cfg.key, auth.accessToken) }
     );
     if (res.ok)
-      return { ok: true, message: `اتصال برقرار است ✅ (شناسهٔ سینک: ${id}).` };
+      return { ok: true, message: "اتصال برقرار است ✅ — دسترسی کاربر به جدول تأیید شد." };
     return { ok: false, message: httpDiagnosis(res.status, "آزمایش اتصال") };
-  } catch {
-    return { ok: false, message: "اتصال برقرار نشد — اینترنت را بررسی کنید." };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "اتصال برقرار نشد — اینترنت را بررسی کنید.",
+    };
   }
 }
 
@@ -232,41 +286,5 @@ const ledgerFingerprint = (s: AppState): string =>
 
 export const sameLedgerContent = (a: AppState, b: AppState): boolean =>
   ledgerFingerprint(a) === ledgerFingerprint(b);
-
-/* ===== کاربران ابری — جدول fp_users ===== */
-export interface CloudUser { username: string; name: string; hash: string; created: number; }
-
-export async function pushUser(u: CloudUser, cfg: CloudCfg): Promise<boolean> {
-  try {
-    const res = await fetch(`${restBase(cfg.url)}/fp_users`, {
-      method: "POST",
-      headers: authHeaders(cfg.key, { Prefer: "resolution=merge-duplicates" }),
-      body: JSON.stringify({
-        username: u.username,
-        data: JSON.stringify({ name: u.name, hash: u.hash, created: u.created }),
-        updated_at: new Date().toISOString(),
-      }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-export async function pullUser(username: string, cfg: CloudCfg): Promise<CloudUser | null> {
-  try {
-    const res = await fetch(
-      `${restBase(cfg.url)}/fp_users?username=eq.${encodeURIComponent(username)}&select=data`,
-      { headers: authHeaders(cfg.key) }
-    );
-    if (!res.ok) return null;
-    const rows = (await res.json()) as { data: string }[];
-    if (!rows.length) return null;
-    const d = JSON.parse(rows[0].data) as { name: string; hash: string; created: number };
-    return { username, name: d.name, hash: d.hash, created: d.created };
-  } catch {
-    return null;
-  }
-}
 
 export type { ID };
