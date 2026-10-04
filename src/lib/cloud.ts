@@ -1,6 +1,6 @@
 /* ---------- ماندگاری بین مرورگرها: کد انتقال + سینک واقعی Supabase ---------- */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { DEFAULT_TAGS, migrateLoadedState, type AppState, type ID, type Prefs, type Tx } from "./data";
+import { DEFAULT_TAGS, migrateLoadedState, type AppState, type ID, type Prefs, type TableName, type Tombstone, type Tx } from "./data";
 
 /* ===== تنظیمات اتصال مشترک (برای صفحهٔ ورود هم در دسترس باشد) ===== */
 const CLOUD_KEY = "fp_cloud";
@@ -327,15 +327,24 @@ export function localOnlyTx(local: AppState, remote: AppState): Tx[] {
   return local.transactions.filter((t) => !remoteIds.has(t.id));
 }
 
-/** ادغام دادهٔ ابری با محلی — تراکنش‌محور، با سنگ‌قبر */
+/** ادغام دادهٔ ابری با محلی — tombstoneها حذف همهٔ موجودیت‌ها را حفظ می‌کنند */
 export function mergePulledState(d: AppState, pulled: AppState, keep?: Tx[]) {
   const merged = migrateLoadedState({ ...pulled });
 
-  const tombById = new Map<string, number>();
+  const tombByKey = new Map<string, Tombstone>();
   for (const tb of [...(d.tombstones ?? []), ...merged.tombstones]) {
-    tombById.set(tb.id, Math.max(tombById.get(tb.id) ?? 0, tb.at));
+    const key = `${tb.table}\0${tb.id}`;
+    const previous = tombByKey.get(key);
+    if (!previous || tb.at > previous.at) tombByKey.set(key, tb);
   }
-  merged.tombstones = [...tombById.entries()].map(([id, at]) => ({ table: "transactions" as const, id, at }));
+  merged.tombstones = [...tombByKey.values()];
+
+  const tombstonedIds = new Map<TableName, Set<ID>>();
+  for (const tb of tombByKey.values()) {
+    const ids = tombstonedIds.get(tb.table) ?? new Set<ID>();
+    ids.add(tb.id);
+    tombstonedIds.set(tb.table, ids);
+  }
 
   const localTxById = new Map(d.transactions.map((t) => [t.id, t]));
   merged.transactions = merged.transactions.map((pt) => {
@@ -351,10 +360,15 @@ export function mergePulledState(d: AppState, pulled: AppState, keep?: Tx[]) {
   merged.transactions = [...toKeep.filter((t) => !mergedIds.has(t.id)), ...merged.transactions];
 
   merged.transactions = merged.transactions.filter((t) => {
-    const deletedAt = tombById.get(t.id);
-    if (deletedAt === undefined) return true;
-    return (t.updatedAt ?? t.createdAt ?? 0) > deletedAt;
+    const deletedAt = tombByKey.get(`transactions\0${t.id}`)?.at;
+    return deletedAt === undefined || (t.updatedAt ?? t.createdAt ?? 0) > deletedAt;
   });
+
+  for (const [table, ids] of tombstonedIds) {
+    if (table === "transactions") continue;
+    const items = merged[table] as { id: ID }[] | undefined;
+    if (Array.isArray(items)) merged[table] = items.filter((item) => !ids.has(item.id)) as never;
+  }
 
   const prefs = d.prefs;
   const trash = d.trash;

@@ -84,7 +84,7 @@ export interface Subscription { id: ID; name: string; amount: number; cycle: "mo
 export interface ActivityLog { id: ID; at: number; text: string; }
 export interface TelegramUser { id: ID; name: string; username: string; joined: number; }
 export interface TrashEntry { key: string; table: string; item: unknown; until: number; label: string; }
-export interface Tombstone { table: "transactions"; id: ID; at: number; }
+export interface Tombstone { table: TableName; id: ID; at: number; }
 
 export interface Prefs {
   theme: "dark" | "light";
@@ -403,8 +403,17 @@ export type TableName = keyof Pick<
   AppState,
   "accounts" | "categories" | "tags" | "transactions" | "transfers" | "debts" | "installments" |
   "budgets" | "payment_methods" | "recurring" | "savings_goals" | "appointments" | "notes" |
-  "cheques" | "challenges" | "currencies" | "assets" | "subscriptions"
+  "cheques" | "splits" | "challenges" | "currencies" | "assets" | "subscriptions" |
+  "activity_logs" | "telegram_users"
 >;
+
+function recordTombstones(d: AppState, items: { table: TableName; id: ID }[], at = Date.now()) {
+  const tombstones = new Map((d.tombstones ?? []).map((tb) => [`${tb.table}\0${tb.id}`, tb]));
+  for (const item of items) {
+    tombstones.set(`${item.table}\0${item.id}`, { ...item, at });
+  }
+  d.tombstones = [...tombstones.values()];
+}
 
 interface Store {
   state: AppState;
@@ -513,9 +522,7 @@ export function DataProvider({ userId, fresh = false, children }: {
       d.trash = [...d.trash.filter((e) => e.table !== table || (e.item as { id: ID }).id !== id), {
         key: uid(), table, item, until: Date.now() + 30000, label,
       }].slice(-5);
-      if (table === "transactions") {
-        d.tombstones = [...d.tombstones.filter((tb) => tb.id !== id), { table: "transactions", id, at: Date.now() }];
-      }
+      recordTombstones(d, [{ table, id }]);
     });
   };
 
@@ -525,10 +532,11 @@ export function DataProvider({ userId, fresh = false, children }: {
       if (!entry) return;
       (d[entry.table as TableName] as unknown[]).push(entry.item);
       d.trash = d.trash.filter((e) => e.key !== key);
+      const restoredItem = entry.item as { id: ID };
+      d.tombstones = d.tombstones.filter((tb) => tb.table !== entry.table || tb.id !== restoredItem.id);
       if (entry.table === "transactions") {
         const tx = entry.item as Tx;
         tx.updatedAt = Date.now();
-        d.tombstones = d.tombstones.filter((tb) => tb.id !== tx.id);
       }
       d.activity_logs.unshift({ id: uid(), at: Date.now(), text: `«${entry.label}» بازگردانی شد` });
     });
@@ -634,21 +642,16 @@ export function sampleFill(d: AppState) {
 
 /** پاک‌سازی همهٔ داده‌ها — ساختار حفظ می‌شود */
 export function clearData(d: AppState) {
-  d.transactions = [];
-  d.transfers = [];
-  d.debts = [];
-  d.installments = [];
-  d.budgets = [];
-  d.recurring = [];
-  d.savings_goals = [];
-  d.appointments = [];
-  d.notes = [];
-  d.cheques = [];
-  d.splits = [];
-  d.challenges = [];
-  d.currencies = [];
-  d.assets = [];
-  d.subscriptions = [];
+  const clearedTables: TableName[] = [
+    "transactions", "transfers", "debts", "installments", "budgets", "recurring",
+    "savings_goals", "appointments", "notes", "cheques", "splits", "challenges",
+    "currencies", "assets", "subscriptions",
+  ];
+  const clearedAt = Date.now();
+  recordTombstones(d, clearedTables.flatMap((table) =>
+    (d[table] as { id: ID }[]).map(({ id }) => ({ table, id }))
+  ), clearedAt);
+  for (const table of clearedTables) d[table] = [] as never;
   d.trash = [];
   for (const a of d.accounts) a.balance = a.initial;
   recomputeBalances(d);
