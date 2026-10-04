@@ -5,7 +5,7 @@ import { migrateLoadedState, useStore, type AppState } from "../lib/data";
 import { copyText, faNum, todayISO } from "../lib/utils";
 import type { User } from "../lib/auth";
 import {
-  decodeState, effectivePrefs, encodeState, mergePulledState, pullFromCloud,
+  decodeState, effectivePrefs, encodeState, isEmptyLedgerState, mergePulledState, pullFromCloud,
   pushToCloud, sameLedgerContent, saveCloud, testConnection,
 } from "../lib/cloud";
 import { applyAccent, THEMES } from "../lib/themes";
@@ -18,7 +18,7 @@ import { dl } from "./shared";
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   user: User; onLogout: () => void; onDelete: () => void; onLock: () => void;
 }) {
-  const { state, mutate } = useStore();
+  const { state, mutate, getSyncSnapshot, markSyncClean } = useStore();
   const toast = useToast();
   const p = state.prefs;
   const [syncUrl, setSyncUrl] = useState(p.syncUrl ?? "");
@@ -78,15 +78,29 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
     if (!ep.syncUrl || !ep.syncKey) return toast("warn", "ابتدا آدرس و کلید را پر و ذخیره کنید.");
     setSyncing(true);
     const pull = await pullFromCloud(ep);
-    if (pull.ok && pull.state && (pull.state.rev ?? 0) > (state.rev ?? 0)) {
-      if (!sameLedgerContent(state, pull.state)) {
+    if (pull.ok && pull.state && (isEmptyLedgerState(state) || (pull.state.rev ?? 0) > (state.rev ?? 0))) {
+      const localSync = getSyncSnapshot();
+      const sameContent = sameLedgerContent(state, pull.state);
+      if (!sameContent) {
         mutate((d) => { mergePulledState(d, pull.state!); }, "دریافت داده از ابر");
         toast("ok", "نسخهٔ جدیدتر از Supabase دریافت شد.");
       } else {
         toast("ok", "داده‌ها از قبل همگام بودند.");
       }
+      if (isEmptyLedgerState(state) || !localSync.dirty || sameContent) {
+        markSyncClean(getSyncSnapshot().generation);
+      }
     } else if (pull.ok) {
-      const push = await pushToCloud(state, ep);
+      const syncSnapshot = getSyncSnapshot();
+      let push = await pushToCloud(state, ep);
+      if (
+        !push.ok &&
+        push.requiresConfirmation &&
+        window.confirm("دادهٔ محلی خالی است اما ابر داده دارد. ارسال را تأیید می‌کنید؟ این کار دادهٔ ابری را جایگزین می‌کند.")
+      ) {
+        push = await pushToCloud(state, ep, true);
+      }
+      if (push.ok) markSyncClean(syncSnapshot.generation);
       toast(push.ok ? "ok" : "err", push.ok ? "دفترکل با Supabase همگام شد." : push.message);
     } else {
       toast("err", pull.message);

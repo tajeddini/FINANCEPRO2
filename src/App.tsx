@@ -8,7 +8,7 @@ import {
 import { THEMES, applyAccent, readAccent, themeById } from "./lib/themes";
 import {
   pushToCloud, pullFromCloud, effectivePrefs, getCloud, saveCloud, envCloud,
-  mergePulledState, sameLedgerContent,
+  isEmptyLedgerState, mergePulledState, sameLedgerContent,
   readSyncStatus, writeSyncStatus, type SyncStatus,
 } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
@@ -308,7 +308,7 @@ export function BrandMark() {
 
 /* ================= پوستهٔ اصلی ================= */
 function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => void }) {
-  const { state, mutate, restore, purgeTrash } = useStore();
+  const { state, mutate, getSyncSnapshot, markSyncClean, restore, purgeTrash } = useStore();
   const toast = useToast();
   const now = useNow();
   const [page, setPage] = useState<PageId>("dashboard");
@@ -360,7 +360,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     return !!(ep.syncUrl && ep.syncKey);
   })();
 
-  /* سازش‌گیری: اول بخوان، اگر ابر جدیدتر بود ادغام کن، وگرنه بفرست */
+  /* سازش‌گیری: ابتدا بخوان؛ دفترکل خالی هرگز جایگزین دادهٔ موجود ابر نمی‌شود. */
   const reconcile = useCallback(async () => {
     if (user.guest) return;
     const s = stateRef.current;
@@ -368,21 +368,40 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     if (!ep.syncUrl || !ep.syncKey) return;
     try {
       const pull = await pullFromCloud(ep);
-      if (pull.ok && pull.state && (pull.state.rev ?? 0) > (s.rev ?? 0)) {
-        if (!sameLedgerContent(s, pull.state)) {
-          mutateRef.current((d) => { mergePulledState(d, pull.state!); }, "بازیابی داده‌ها از ابر");
-          toastRef.current("ok", "تراکنش‌های شما از ابر بازیابی شد.");
+      let statusMessage = pull.message;
+      let syncOk = pull.ok;
+      if (pull.ok && pull.state) {
+        const current = stateRef.current;
+        const localSync = getSyncSnapshot();
+        if (isEmptyLedgerState(current) || (pull.state.rev ?? 0) > (current.rev ?? 0)) {
+          const sameContent = sameLedgerContent(current, pull.state);
+          if (!sameContent) {
+            mutateRef.current((d) => { mergePulledState(d, pull.state!); }, "بازیابی داده‌ها از ابر");
+            toastRef.current("ok", "تراکنش‌های شما از ابر بازیابی شد.");
+          }
+          if (isEmptyLedgerState(current) || !localSync.dirty || sameContent) {
+            markSyncClean(getSyncSnapshot().generation);
+          }
+        } else if (localSync.dirty) {
+          const push = await pushToCloud(current, ep);
+          statusMessage = push.message;
+          syncOk = push.ok;
+          if (push.ok) markSyncClean(localSync.generation);
         }
       } else if (pull.ok) {
-        await pushToCloud(s, ep);
+        const localSync = getSyncSnapshot();
+        const push = await pushToCloud(stateRef.current, ep);
+        statusMessage = push.message;
+        syncOk = push.ok;
+        if (push.ok) markSyncClean(localSync.generation);
       }
-      writeSyncStatus({ ok: true, at: Date.now(), message: pull.message });
+      writeSyncStatus({ ok: syncOk, at: Date.now(), message: statusMessage });
     } catch {
       writeSyncStatus({ ok: false, at: Date.now(), message: "خطا در سینک" });
     }
     reconciledRef.current = true;
     pushedRef.current = JSON.stringify(stateRef.current);
-  }, [user.id, user.guest]);
+  }, [user.id, user.guest, getSyncSnapshot, markSyncClean]);
 
   /* هنگام بارگذاری: یک‌بار سازش‌گیری */
   useEffect(() => {

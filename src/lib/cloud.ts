@@ -1,6 +1,6 @@
 /* ---------- ماندگاری بین مرورگرها: کد انتقال + سینک واقعی Supabase ---------- */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { migrateLoadedState, type AppState, type ID, type Prefs, type Tx } from "./data";
+import { DEFAULT_TAGS, migrateLoadedState, type AppState, type ID, type Prefs, type Tx } from "./data";
 
 /* ===== تنظیمات اتصال مشترک (برای صفحهٔ ورود هم در دسترس باشد) ===== */
 const CLOUD_KEY = "fp_cloud";
@@ -80,6 +80,78 @@ export const decodeState = (code: string): AppState | null => {
   }
 };
 
+/** A newly created local store contains only the app's built-in account/category templates. */
+export function isEmptyLedgerState(s: AppState): boolean {
+  const meaningfulCollections = [
+    s.transactions, s.transfers, s.debts, s.installments, s.budgets, s.recurring,
+    s.savings_goals, s.appointments, s.notes, s.cheques, s.splits, s.challenges,
+    s.currencies, s.assets, s.subscriptions, s.activity_logs, s.telegram_users,
+    s.trash, s.tombstones,
+  ];
+  if (meaningfulCollections.some((items) => Array.isArray(items) && items.length > 0)) return false;
+
+  const defaultCategories = [
+    ["خوراک", "expense", "#e8b04b", "food"],
+    ["رفت‌وآمد", "expense", "#5ec8de", "car"],
+    ["خانه و اجاره", "expense", "#8f7ae8", "home"],
+    ["سلامت", "expense", "#ff7a6b", "health"],
+    ["تفریح", "expense", "#57d9a3", "game"],
+    ["پوشاک", "expense", "#f28fc0", "shirt"],
+    ["آموزش", "expense", "#7ab8f2", "graduation"],
+    ["اشتراک", "expense", "#c0e85e", "film"],
+    ["متفرقه", "expense", "#a3b8ac", "wallet"],
+    ["حقوق", "income", "#57d9a3", "coins"],
+    ["پروژه", "income", "#e8b04b", "briefcase"],
+    ["هدیه", "income", "#f28fc0", "gift"],
+  ];
+  const defaultAccounts = [
+    { name: "بانک ملت", type: "کارت بانکی", initial: 5200000 },
+    { name: "بانک سامان", type: "کارت بانکی", initial: 1800000 },
+    { name: "صندوق طلا", type: "سرمایه‌گذاری", initial: 2500000 },
+  ];
+  const defaultAccountsOnly = s.accounts.length === 0 || (
+    s.accounts.length === defaultAccounts.length &&
+    s.accounts.every((account) =>
+      defaultAccounts.some((template) =>
+        account.name === template.name &&
+        account.type === template.type &&
+        account.initial === template.initial
+      )
+    )
+  );
+  const categories = Array.isArray(s.categories) ? s.categories : [];
+  const tags = Array.isArray(s.tags) ? s.tags : [];
+  const paymentMethods = Array.isArray(s.payment_methods) ? s.payment_methods : [];
+  const defaultCategoriesOnly = categories.length === 0 || (
+    categories.length === defaultCategories.length &&
+    categories.every((category) =>
+      defaultCategories.some(([name, type, color, icon]) =>
+        category.name === name &&
+        category.type === type &&
+        category.color === color &&
+        category.icon === icon
+      )
+    )
+  );
+  const defaultTagsOnly = tags.length === 0 || (
+    tags.length === DEFAULT_TAGS.length &&
+    tags.every((tag) =>
+      DEFAULT_TAGS.some((template) =>
+        tag.id === template.id &&
+        tag.label === template.label &&
+        tag.color === template.color &&
+        tag.desc === template.desc
+      )
+    )
+  );
+  const defaultPaymentMethods = ["کارت", "نقد", "شبا", "ارز دیجیتال"];
+  const defaultPaymentMethodsOnly = paymentMethods.length === 0 || (
+    paymentMethods.length === defaultPaymentMethods.length &&
+    paymentMethods.every((method) => defaultPaymentMethods.includes(method.name))
+  );
+  return defaultAccountsOnly && defaultCategoriesOnly && defaultTagsOnly && defaultPaymentMethodsOnly;
+}
+
 /* ===== سینک Supabase (REST) ===== */
 const restBase = (url: string) => {
   const u = url.replace(/\/+$/, "");
@@ -108,8 +180,9 @@ async function authenticatedUser(cfg: CloudCfg): Promise<{ id: string; accessTok
 /** فرستادن دفترکل — داده‌های حساس prefs هرگز فرستاده نمی‌شوند */
 export async function pushToCloud(
   s: AppState,
-  p: Prefs
-): Promise<{ ok: boolean; message: string }> {
+  p: Prefs,
+  allowEmptyOverwrite = false
+): Promise<{ ok: boolean; message: string; requiresConfirmation?: boolean }> {
   if (!p.syncUrl || !p.syncKey)
     return { ok: false, message: "آدرس و کلید سینک کامل نیست." };
   try {
@@ -117,11 +190,23 @@ export async function pushToCloud(
     const auth = await authenticatedUser(cfg);
     if (!auth) return { ok: false, message: "برای همگام‌سازی ابری ابتدا با حساب سوپابیس وارد شوید." };
     const lookup = await fetch(
-      `${restBase(cfg.url)}/financepro_state?user_id=eq.${encodeURIComponent(auth.id)}&select=id&limit=1`,
+      `${restBase(cfg.url)}/financepro_state?user_id=eq.${encodeURIComponent(auth.id)}&select=id,data&limit=1`,
       { headers: authHeaders(cfg.key, auth.accessToken) }
     );
     if (!lookup.ok) return { ok: false, message: httpDiagnosis(lookup.status, "یافتن دفترکل کاربر") };
-    const rows = (await lookup.json()) as { id: string }[];
+    const rows = (await lookup.json()) as { id: string; data?: string | null }[];
+    const cloudData = rows[0]?.data;
+    const cloudState = typeof cloudData === "string" ? decodeState(cloudData) : null;
+    const cloudHasContent = cloudState
+      ? !isEmptyLedgerState(cloudState)
+      : typeof cloudData === "string" && cloudData.length > 0;
+    if (isEmptyLedgerState(s) && cloudHasContent && !allowEmptyOverwrite) {
+      return {
+        ok: false,
+        requiresConfirmation: true,
+        message: "دفترکل محلی خالی است اما دادهٔ واقعی در ابر وجود دارد؛ برای جلوگیری از حذف داده‌ها، ارسال متوقف شد.",
+      };
+    }
     const id = rows[0]?.id ?? `fp-user-${auth.id}`;
     const safeState: AppState = { ...s, prefs: { syncId: id } as Prefs };
     const res = await fetch(`${restBase(p.syncUrl)}/financepro_state`, {

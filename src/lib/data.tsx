@@ -1,5 +1,5 @@
 /* ---------- مدل داده + Store مرکزی + تشخیص هوشمند + تگ‌ها و یادداشت‌ها ---------- */
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import {
   addDaysISO, addJalaliMonths, isoToJalali, jalaliMonthLen, jalaliToISO, jalaliToday,
   toEnDigits, todayISO, uid,
@@ -409,6 +409,8 @@ export type TableName = keyof Pick<
 interface Store {
   state: AppState;
   mutate: (fn: (draft: AppState) => void, log?: string) => void;
+  getSyncSnapshot: () => { dirty: boolean; generation: number };
+  markSyncClean: (generation: number) => void;
   trashItem: (table: TableName, id: string, label: string) => void;
   restore: (key: string) => void;
   purgeTrash: () => void;
@@ -423,6 +425,16 @@ export function DataProvider({ userId, fresh = false, children }: {
   children: ReactNode;
 }) {
   const storageKey = `fp_data_${userId}`;
+  const syncDirtyKey = `fp_sync_dirty_${userId}`;
+  const syncGenerationRef = useRef(0);
+  const syncDirtyRef = useRef<boolean | null>(null);
+  if (syncDirtyRef.current === null) {
+    try {
+      syncDirtyRef.current = localStorage.getItem(syncDirtyKey) === "1";
+    } catch {
+      syncDirtyRef.current = false;
+    }
+  }
   const [state, setState] = useState<AppState>(() => {
     try {
       const raw = localStorage.getItem(storageKey);
@@ -446,7 +458,29 @@ export function DataProvider({ userId, fresh = false, children }: {
     } catch { /* حافظه پر */ }
   };
 
+  const markDirty = () => {
+    syncDirtyRef.current = true;
+    syncGenerationRef.current += 1;
+    try {
+      localStorage.setItem(syncDirtyKey, "1");
+    } catch { /* سینک بعدی دوباره وضعیت را بررسی می‌کند */ }
+  };
+
+  const getSyncSnapshot = () => ({
+    dirty: syncDirtyRef.current === true,
+    generation: syncGenerationRef.current,
+  });
+
+  const markSyncClean = (generation: number) => {
+    if (generation !== syncGenerationRef.current) return;
+    syncDirtyRef.current = false;
+    try {
+      localStorage.removeItem(syncDirtyKey);
+    } catch { /* وضعیت در حافظه پاک شد؛ ذخیره‌سازی محلی ممکن نیست */ }
+  };
+
   const mutate = (fn: (draft: AppState) => void, log?: string) => {
+    markDirty();
     setState((prev) => {
       const draft: AppState = JSON.parse(JSON.stringify(prev));
       fn(draft);
@@ -511,7 +545,7 @@ export function DataProvider({ userId, fresh = false, children }: {
   };
 
   return (
-    <Ctx.Provider value={{ state, mutate, trashItem, restore, purgeTrash }}>
+    <Ctx.Provider value={{ state, mutate, getSyncSnapshot, markSyncClean, trashItem, restore, purgeTrash }}>
       {children}
     </Ctx.Provider>
   );
