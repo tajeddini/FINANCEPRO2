@@ -68,7 +68,7 @@ const parseAmount = (value: string): number => {
   return Number(digits || "0");
 };
 
-const buildDate = (value: string, format: "resalat" | "melli"): Date | null => {
+const buildDate = (value: string, format: "resalat" | "melli", receivedAt?: number): Date | null => {
   const patterns = format === "resalat"
     ? /^(\d{2})\/(\d{2})_(\d{2}):(\d{2})$/
     : /^(\d{2})(\d{2})-(\d{2}):(\d{2})$/;
@@ -82,13 +82,22 @@ const buildDate = (value: string, format: "resalat" | "melli"): Date | null => {
   const hour = Number(c);
   const minute = Number(d);
 
-  const currentJalali = toJalaali(new Date());
-  const gregorian = toGregorian(currentJalali.jy, month, day);
+  const hasReceivedAt = Number.isFinite(receivedAt) && (receivedAt ?? 0) > 0;
+  const referenceDate = hasReceivedAt ? new Date(receivedAt!) : new Date();
+  const currentJalali = toJalaali(referenceDate);
+  let jalaliYear = currentJalali.jy;
+  if (!hasReceivedAt) {
+    const currentYearDate = toGregorian(jalaliYear, month, day);
+    const candidateDate = new Date(currentYearDate.gy, currentYearDate.gm - 1, currentYearDate.gd);
+    const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+    if (candidateDate > today) jalaliYear -= 1;
+  }
+  const gregorian = toGregorian(jalaliYear, month, day);
   const date = new Date(gregorian.gy, gregorian.gm - 1, gregorian.gd, hour, minute, 0, 0);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const parseResalat = (text: string): SmsParse | null => {
+const parseResalat = (text: string, receivedAt?: number): SmsParse | null => {
   const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   if (!lines[0] || !lines[0].includes("10.10070145.1")) return null;
 
@@ -100,7 +109,7 @@ const parseResalat = (text: string): SmsParse | null => {
   const sign = amountLine.startsWith("-") ? "-" : amountLine.startsWith("+") ? "+" : "";
   if (!sign) return null;
 
-  const date = buildDate(dateLine, "resalat");
+  const date = buildDate(dateLine, "resalat", receivedAt);
   if (!date) return null;
 
   const balance = balanceLine.startsWith("مانده:") ? parseAmount(balanceLine.replace(/^مانده:/, "")) : undefined;
@@ -127,7 +136,7 @@ const parseResalat = (text: string): SmsParse | null => {
   };
 };
 
-const parseBankMelli = (text: string): SmsParse | null => {
+const parseBankMelli = (text: string, receivedAt?: number): SmsParse | null => {
   const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length || !text.includes("حساب:83008")) return null;
 
@@ -145,7 +154,7 @@ const parseBankMelli = (text: string): SmsParse | null => {
   const balanceLine = lines.find((line) => line.startsWith("مانده:") || /مانده[:\s]*[+-]?\d/.test(line));
   const balance = balanceLine ? parseAmount(balanceLine.replace(/^مانده[:\s]*/, "")) : undefined;
   const dateLine = lines.find((line) => /^\d{4}-\d{2}:\d{2}$/.test(line) || /^\d{4}\/\d{2}\s+\d{2}:\d{2}$/.test(line));
-  const date = dateLine ? buildDate(dateLine, "melli") : new Date();
+  const date = dateLine ? buildDate(dateLine, "melli", receivedAt) : new Date();
   if (!date) return null;
 
   return {
@@ -169,7 +178,7 @@ const parseBankMelli = (text: string): SmsParse | null => {
   };
 };
 
-export function parseBankSMS(raw: string): SmsParse | null {
+export function parseBankSMS(raw: string, receivedAt?: number): SmsParse | null {
   if (!raw || !raw.trim()) return null;
   const text = normalizeSmsText(raw);
   if (!text) return null;
@@ -182,8 +191,8 @@ export function parseBankSMS(raw: string): SmsParse | null {
     return null;
   }
 
-  if (text.includes("10.10070145.1")) return parseResalat(text);
-  if (text.includes("حساب:83008")) return parseBankMelli(text);
+  if (text.includes("10.10070145.1")) return parseResalat(text, receivedAt);
+  if (text.includes("حساب:83008")) return parseBankMelli(text, receivedAt);
   return null;
 }
 
@@ -275,7 +284,7 @@ export function removeUsedSms(id: string): boolean {
 
 export function enqueuePendingSms(raw: string, timestamp = Date.now(), scanFromDate = todayISO()): PendingSmsTransaction | null {
   if (localDateISO(new Date(timestamp)) < scanFromDate) return null;
-  const parsed = parseBankSMS(raw);
+  const parsed = parseBankSMS(raw, timestamp);
   if (!parsed) return null;
 
   const pending: PendingSmsTransaction = {
@@ -317,7 +326,7 @@ export async function scanInboxForBankMessages(scanFromDate = todayISO()): Promi
     if (!body) continue;
     if (localDateISO(new Date(messageDate)) < scanFromDate) continue;
 
-    const parsed = parseBankSMS(body);
+    const parsed = parseBankSMS(body, messageDate);
     if (!parsed) continue;
 
     const id = stableSmsId(body, messageDate);

@@ -44,7 +44,7 @@ export default function TxModal({
     setSmsOpen(false); setSmsText(""); setSmsResult(null);
     if (initialSms) {
       setSmsText(initialSms.raw);
-      const parseResult = parseBankSMS(initialSms.raw);
+      const parseResult = parseBankSMS(initialSms.raw, initialSms.createdAt);
       setSmsResult(parseResult);
       if (parseResult) {
         setType(parseResult.type);
