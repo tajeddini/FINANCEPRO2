@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { toGregorian, toJalaali } from "jalaali-js";
 import { ReadSMS } from "capacitor-sms-reader";
 import { todayISO } from "./utils";
 
@@ -49,7 +50,10 @@ export interface PendingSmsTransaction {
 export const SMS_ACCOUNT_MAP: SmsAccountConfig[] = [
   { accountMatch: "10.10070145.1", bankLabel: "رسالت" },
   { accountMatch: "83008", bankLabel: "بانک ملی" },
+  { accountMatch: "10.10091455.1", bankLabel: "رسالت" },
 ];
+
+const BANK_PATTERNS: { pattern: RegExp; label: string; parser: (text: string) => SmsParse | null }[] = [];
 
 const normalizeSmsText = (input: string): string =>
   input
@@ -77,8 +81,10 @@ const buildDate = (value: string, format: "resalat" | "melli"): Date | null => {
   const day = Number(b);
   const hour = Number(c);
   const minute = Number(d);
-  const year = new Date().getFullYear();
-  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  const currentJalali = toJalaali(new Date());
+  const gregorian = toGregorian(currentJalali.jy, month, day);
+  const date = new Date(gregorian.gy, gregorian.gm - 1, gregorian.gd, hour, minute, 0, 0);
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
@@ -125,16 +131,20 @@ const parseBankMelli = (text: string): SmsParse | null => {
   const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length || !text.includes("حساب:83008")) return null;
 
-  const amountLine = lines.find((line) => /^(?:انتقال|برداشت):[+-]/.test(line));
+  let amountLine = lines.find((line) => (/^(?:انتقال|برداشت):[+-]/.test(line) ||
+    /^(?:انتقال|برداشت)[\s:]+[+-]?/.test(line) ||
+    /مبلغ[\s:]*[+-]?/.test(line) ||
+    /[+-]?\d[\d,٬ٔ٠-۹]{3,}/.test(line)));
   if (!amountLine) return null;
 
-  const sign = amountLine.includes("-") ? "-" : amountLine.includes("+") ? "+" : "";
-  if (!sign) return null;
+  const signMatch = amountLine.match(/([+-])/);
+  const sign = signMatch ? signMatch[1] : ("-" === "-" ? "-" : "+");
+  const amount = parseAmount(amountLine.replace(/^(?:انتقال|برداشت|واریز|مبلغ)[:\s]*/, "").replace(/[^\d,٬ٔ٠-۹+\-]/g, ""));
+  if (amount <= 0) return null;
 
-  const amount = parseAmount(amountLine.replace(/^(?:انتقال|برداشت):/, ""));
-  const balanceLine = lines.find((line) => line.startsWith("مانده:"));
-  const balance = balanceLine ? parseAmount(balanceLine.replace(/^مانده:/, "")) : undefined;
-  const dateLine = lines.find((line) => /^\d{4}-\d{2}:\d{2}$/.test(line));
+  const balanceLine = lines.find((line) => line.startsWith("مانده:") || /مانده[:\s]*[+-]?\d/.test(line));
+  const balance = balanceLine ? parseAmount(balanceLine.replace(/^مانده[:\s]*/, "")) : undefined;
+  const dateLine = lines.find((line) => /^\d{4}-\d{2}:\d{2}$/.test(line) || /^\d{4}\/\d{2}\s+\d{2}:\d{2}$/.test(line));
   const date = dateLine ? buildDate(dateLine, "melli") : new Date();
   if (!date) return null;
 
@@ -145,11 +155,11 @@ const parseBankMelli = (text: string): SmsParse | null => {
     accountIdentifier: "83008",
     type: sign === "+" ? "income" : "expense",
     amount,
-      amountToman: Math.round(amount / 10),
+    amountToman: Math.round(amount / 10),
     date,
-      dateISO: localDateISO(date),
+    dateISO: localDateISO(date),
     balance,
-      balanceToman: balance == null ? undefined : Math.round(balance / 10),
+    balanceToman: balance == null ? undefined : Math.round(balance / 10),
     source: "melli",
     confidence: "high",
     rawAmount: amount,
@@ -212,6 +222,18 @@ const normalizeStoredSms = (item: PendingSmsTransaction): PendingSmsTransaction 
     },
   };
 };
+
+export function getSmsScanFromTimestamp(fromDate?: string): number {
+  if (!fromDate) return 0;
+  const trimmed = fromDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return 0;
+
+  const [year, month, day] = trimmed.split("-").map(Number);
+  if (!year || !month || !day) return 0;
+
+  const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+  return Number.isNaN(start.getTime()) ? 0 : start.getTime();
+}
 
 export function loadPendingSms(): PendingSmsTransaction[] {
   try {
@@ -276,8 +298,11 @@ export function enqueuePendingSms(raw: string, timestamp = Date.now(), scanFromD
 export async function scanInboxForBankMessages(scanFromDate = todayISO()): Promise<PendingSmsTransaction[]> {
   if (!Capacitor.isNativePlatform()) return [];
 
-  const timestamp = new Date(`${scanFromDate}T00:00:00`).getTime();
-  const inbox = await ReadSMS.getSMS({ timestamp: String(timestamp), pageSize: 200 });
+  const fromTimestamp = getSmsScanFromTimestamp(scanFromDate) || new Date(`${scanFromDate}T00:00:00`).getTime();
+  const inbox = await ReadSMS.getSMS({
+    timestamp: String(fromTimestamp),
+    pageSize: 200,
+  });
   const items = Array.isArray(inbox?.value)
     ? (inbox.value ?? [])
     : [];
@@ -285,19 +310,25 @@ export async function scanInboxForBankMessages(scanFromDate = todayISO()): Promi
   const current = loadPendingSms();
   const list: PendingSmsTransaction[] = [];
   for (const message of items) {
+    const messageDate = Number(message?.date ?? 0);
+    if (!messageDate || messageDate < fromTimestamp) continue;
+
     const body = typeof message?.body === "string" ? message.body : "";
     if (!body) continue;
-    if (localDateISO(new Date(Number(message?.date ?? 0))) < scanFromDate) continue;
+    if (localDateISO(new Date(messageDate)) < scanFromDate) continue;
+
     const parsed = parseBankSMS(body);
     if (!parsed) continue;
-    const id = stableSmsId(body, Number(message?.date ?? 0));
+
+    const id = stableSmsId(body, messageDate);
     if (current.some((entry) => entry.id === id || entry.raw === body)) continue;
+
     parsed.id = id;
     const item: PendingSmsTransaction = {
       id,
       raw: body,
       parsed,
-      createdAt: Number(message?.date ?? Date.now()),
+      createdAt: messageDate || Date.now(),
       status: "pending",
     };
     list.push(item);

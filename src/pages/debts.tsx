@@ -100,7 +100,7 @@ export default function DebtsPage() {
             return (
               <div key={d.id} className="card p-4 rise-in">
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                  <div className="min-w-0 flex-1 basis-40">
+                  <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-black flex items-center gap-2">
                       <span className="shrink-0">{d.kind === "debt" ? <ArrowUpLeft className="w-4 h-4" style={{ color: "var(--fp-coral)" }} /> : <ArrowDownRight className="w-4 h-4" style={{ color: "var(--fp-mint)" }} />}</span>
                       <span className="truncate">{d.person}</span>

@@ -230,7 +230,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
       {isNative && (
         <>
           <div className="card p-5 rise-in" style={{ ["--d" as string]: "100ms" }}>
-            <h3 className="text-[14px] font-black flex items-center gap-2"><Bell className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> پیامک‌های بانکی</h3>
+            <h3 className="text-[14px] font-black flex items-center gap-2"><Bell className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> مجوز پیامک‌های بانکی</h3>
             <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
               برای ثبت خودکار تراکنش‌ها از پیامک بانک، اجازهٔ خواندن پیام‌ها را فعال کنید. پیام‌ها فقط روی دستگاه شما بررسی می‌شوند و بدون تأیید نهایی ذخیره نمی‌شوند.
             </p>

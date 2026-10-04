@@ -1,7 +1,7 @@
 /* ---------- صفحهٔ داشبورد ---------- */
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownRight, ArrowUpLeft, Bot, CheckCircle2, Coins, Landmark, Lightbulb, MessageSquare, Plus, Receipt, Sparkles, Wallet,
+  ArrowDownRight, ArrowUpLeft, Bot, CheckCircle2, Coins, Download, Landmark, Lightbulb, MessageSquare, Plus, Receipt, Scan, Sparkles, Wallet,
 } from "lucide-react";
 import { catById, getTags, sumTx, useStore } from "../lib/data";
 import {
@@ -12,11 +12,14 @@ import { readAccent } from "../lib/themes";
 import { Bar, CatGlyph, hiddenMoney } from "../ui";
 import { Sparkline } from "../widgets";
 import { EyeOff, EyeOn, Head } from "./shared";
-import { loadPendingSms, type PendingSmsTransaction } from "../lib/sms";
+import { loadPendingSms, scanInboxForBankMessages, checkSmsPermissions, openSmsAppSettings, type PendingSmsTransaction } from "../lib/sms";
+import { useToast } from "../ui";
 
-export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuickAdd: () => void; onOpenSmsReview: (pending: PendingSmsTransaction) => void }) {
-  const { state } = useStore();
+export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuickAdd: () => void; onOpenSmsReview: (pending: PendingSmsTransaction) => void; onScanSms?: () => void }) {
+  const { state, mutate } = useStore();
+  const toast = useToast();
   const t = jalaliToday();
+  const scanFromDate = state.prefs.smsScanFromDate ?? t.jy + "-" + String(t.jm).padStart(2, "0") + "-" + String(t.jd).padStart(2, "0");
   const mr = jalaliMonthRange(t.jy, t.jm);
   const monthTxs = state.transactions.filter((x) => inRange(x.date, mr));
   const income = sumTx(monthTxs, "income");
@@ -98,7 +101,17 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
               <MessageSquare className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} />
               <h2 className="text-[14px] font-black">پیامک‌های بانکی اخیر</h2>
             </div>
-            <span className="chip !py-1 !px-2 text-[10px]">{recentSms.length}</span>
+            <div className="flex gap-2">
+              <span className="chip !py-1 !px-2 text-[10px]">{recentSms.length}</span>
+              <button className="btn btn-ghost btn-sm" onClick={async () => {
+                const granted = await checkSmsPermissions();
+                if (!granted) { await openSmsAppSettings(); return; }
+                const items = await scanInboxForBankMessages(scanFromDate);
+                toast("ok", items.length ? `${items.length} پیام بانکی برای بررسی پیدا شد.` : "پیام بانکی جدیدی پیدا نشد.");
+              }} title="اسکن پیامک‌های جدید">
+                <Scan className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="grid gap-2">
             {recentSms.map((item) => (
