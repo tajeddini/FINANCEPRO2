@@ -373,7 +373,7 @@ function BudgetsTab() {
       </div>
       {state.budgets.map((b) => {
         const cat = state.categories.find((c) => c.id === b.categoryId);
-        const spent = state.transactions.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && inRange(x.date, mr)).reduce((a, x) => a + x.amount, 0);
+        const spent = state.transactions.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && !x.reimbursable && inRange(x.date, mr)).reduce((a, x) => a + x.amount, 0);
         const pct = b.limit > 0 ? (spent / b.limit) * 100 : 0;
         return (
           <div key={b.id} className="card p-4 rise-in">

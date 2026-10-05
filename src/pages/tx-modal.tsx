@@ -4,7 +4,7 @@ import { Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-reac
 import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../lib/data";
 import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
 import { markSmsUsed, matchAccountByCard, matchAccountByBankName, parseBankSMS, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
-import { AmountInput, Field, JalaliPicker, MicButton, Modal, TSelect, useToast } from "../ui";
+import { AmountInput, Field, JalaliPicker, MicButton, Modal, TInput, TSelect, useToast } from "../ui";
 
 /* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
 const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
@@ -28,6 +28,8 @@ export default function TxModal({
   const [date, setDate] = useState(todayISO());
   const [pay, setPay] = useState("کارت");
   const [tag, setTag] = useState<ID | "">("");
+  const [reimbursable, setReimbursable] = useState(false);
+  const [reimbursablePerson, setReimbursablePerson] = useState("");
   const [touchedCat, setTouchedCat] = useState(false);
   const [smart, setSmart] = useState(() => localStorage.getItem("fp_smart") === "1");
   const [detected, setDetected] = useState<string[]>([]);
@@ -61,8 +63,10 @@ export default function TxModal({
       setAmount(String(editing.amount));
       setCategoryId(editing.categoryId); setAccountId(editing.accountId);
       setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTag(editing.tag ?? ""); setTouchedCat(true);
+      setReimbursable(editing.reimbursable === true); setReimbursablePerson("");
     } else {
       setType("expense"); setNote(""); setAmount(""); setDate(todayISO()); setPay("کارت"); setTag("");
+      setReimbursable(false); setReimbursablePerson("");
       setTouchedCat(false);
       setAccountId(state.accounts[0]?.id ?? "");
       setCategoryId(state.categories.find((c) => c.type === "expense")?.id ?? "");
@@ -111,7 +115,7 @@ export default function TxModal({
     const j = jalaliToday();
     const mr = jalaliMonthRange(j.jy, j.jm);
     const before = state.transactions
-      .filter((x) => x.categoryId === catId && x.type === "expense" && inRange(x.date, mr))
+      .filter((x) => x.categoryId === catId && x.type === "expense" && !x.reimbursable && inRange(x.date, mr))
       .reduce((a, x) => a + x.amount, 0);
     const after = before + amt;
     const catName = state.categories.find((c) => c.id === catId)?.name ?? "دسته";
@@ -132,24 +136,36 @@ export default function TxModal({
     if (editing) {
       mutate((d) => {
         const t = d.transactions.find((x) => x.id === editing.id);
-        if (t) Object.assign(t, { title: label, note: note.trim() || undefined, tag: tag || undefined, amount: amt, type, categoryId, accountId, date, payMethod: pay });
+        if (t) Object.assign(t, { title: label, note: note.trim() || undefined, tag: tag || undefined, amount: amt, type, categoryId, accountId, date, payMethod: pay, reimbursable });
       }, `تراکنش «${label}» ویرایش شد`);
       toast("ok", "تراکنش ویرایش شد.");
-      if (type === "expense") budgetCheck(amt, categoryId);
+      if (type === "expense" && !reimbursable) budgetCheck(amt, categoryId);
       handleClose();
       return;
     }
+    if (reimbursable && type === "expense" && !reimbursablePerson.trim()) {
+      return toast("warn", "نام شخصی که باید مبلغ را بازپرداخت کند وارد کنید.");
+    }
     const newId = uid();
+    const linkedDebtId = reimbursable && type === "expense" ? uid() : undefined;
     mutate((d) => {
       d.transactions.unshift({
         id: newId, date, type, amount: amt,
         title: label, note: note.trim() || undefined, tag: tag || undefined, categoryId, accountId, payMethod: pay,
-        createdAt: Date.now(), source: "app",
+        createdAt: Date.now(), source: "app", reimbursable: reimbursable || undefined, linkedDebtId,
       });
+      if (linkedDebtId) {
+        d.debts.push({
+          id: linkedDebtId, kind: "credit", person: reimbursablePerson.trim(), amount: amt, paid: 0,
+          note: note.trim() || `خرید امانی: ${label}`, linkedTransactionId: newId,
+        });
+      }
     }, `تراکنش «${label}» ثبت شد`);
     if (initialSms) markSmsUsed(initialSms.id, newId);
-    toast("ok", `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
-    if (type === "expense") {
+    toast("ok", linkedDebtId
+      ? `«${label}» به مبلغ ${faMoney(amt)} ثبت شد و طلب از ${reimbursablePerson.trim()} ساخته شد.`
+      : `«${label}» به مبلغ ${faMoney(amt)} ثبت شد.`);
+    if (type === "expense" && !reimbursable) {
       budgetCheck(amt, categoryId);
       if (!tag && getTags(state).length > 0) {
         setSuggestTxId(newId);
@@ -236,7 +252,13 @@ export default function TxModal({
       <>
       <div className="flex rounded-xl p-1 gap-1 mb-4" style={{ background: "var(--fp-bg)" }}>
         {(["expense", "income"] as const).map((t) => (
-          <button key={t} onClick={() => setType(t)}
+          <button key={t} onClick={() => {
+            setType(t);
+            if (!editing && t === "income") {
+              setReimbursable(false);
+              setReimbursablePerson("");
+            }
+          }}
             className="flex-1 rounded-lg py-2 text-[13px] font-black transition-all cursor-pointer"
             style={{ background: type === t ? (t === "income" ? "var(--fp-mint)" : "var(--fp-coral)") : "transparent", color: type === t ? "#071b16" : "var(--fp-text3)" }}>
             {t === "income" ? "درآمد" : "هزینه"}
@@ -361,6 +383,25 @@ export default function TxModal({
           </div>
         </Field>
       </div>
+
+      {(editing || type === "expense") && (
+        <div className="mt-4 rounded-xl border p-3.5" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+          <label className="flex items-center gap-2.5 text-[12.5px] font-black cursor-pointer">
+            <input type="checkbox" checked={reimbursable} onChange={(e) => setReimbursable(e.target.checked)} />
+            امانی / قابل‌استرداد
+          </label>
+          {reimbursable && !editing && type === "expense" && (
+            <div className="mt-3">
+              <Field label="نام شخصِ بازپرداخت‌کننده">
+                <TInput value={reimbursablePerson} onChange={(e) => setReimbursablePerson(e.target.value)} placeholder="مثلاً: مریم" />
+              </Field>
+              <p className="text-[10.5px] font-bold mt-1.5" style={{ color: "var(--fp-text3)" }}>
+                طلبی با همین مبلغ و پیوند به این تراکنش ساخته می‌شود.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={handleClose}>انصراف</button>

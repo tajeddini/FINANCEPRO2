@@ -13,7 +13,7 @@ import { exportExcel, exportCSV } from "../excel";
 function buildSmartReport(s: AppState): string {
   const t = jalaliToday();
   const mr = jalaliMonthRange(t.jy, t.jm);
-  const txs = s.transactions.filter((x) => inRange(x.date, mr));
+  const txs = s.transactions.filter((x) => !x.reimbursable && inRange(x.date, mr));
   const income = txs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
   const expense = txs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
   const total = s.accounts.reduce((a, x) => a + x.balance, 0);
@@ -101,7 +101,7 @@ export default function ReportsPage() {
   const comparison = useMemo(() => {
     const sumBy = (arr: AppState["transactions"]) => {
       const m = new Map<string, number>();
-      for (const x of arr.filter((x) => x.type === "expense")) {
+      for (const x of arr.filter((x) => x.type === "expense" && !x.reimbursable)) {
         const name = catById(state, x.categoryId)?.name ?? "نامشخص";
         m.set(name, (m.get(name) ?? 0) + x.amount);
       }

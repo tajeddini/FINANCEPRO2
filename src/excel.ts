@@ -3,7 +3,7 @@
    و کتابخانهٔ واقعی هنگام exportExcel به‌صورت داینامیک لود می‌شود تا
    حدود ۹۰۰ کیلوبایت از باندلٔ اولیهٔ اپ خارج شود. */
 import type ExcelJS from "exceljs";
-import { getTags, type AppState, type Tx } from "./lib/data";
+import { getTags, isReportableTx, type AppState, type Tx } from "./lib/data";
 import { faDate, jalaliDateStr, toEnDigits } from "./lib/utils";
 import { exportFile } from "./lib/native-files";
 
@@ -94,8 +94,8 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
   sub.getCell(2).value = `بازهٔ گزارش: ${periodLabel} · تاریخ تولید: ${jalaliDateStr()}`;
   sub.getCell(2).font = { size: 10.5, color: { argb: GRAY }, name: "Vazirmatn" };
 
-  const income = txs.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0);
-  const expense = txs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
+  const income = txs.filter((t) => t.type === "income" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
+  const expense = txs.filter((t) => t.type === "expense" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
   const netWorth = s.accounts.reduce((a, x) => a + x.balance, 0)
     + s.assets.reduce((a, x) => a + x.nowPrice * x.qty, 0)
     + s.currencies.reduce((a, x) => a + x.rate * x.qty, 0)
@@ -128,7 +128,7 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
   h1.getCell(2).value = "برترین دسته‌های هزینه";
   h1.getCell(2).font = { bold: true, size: 13, color: { argb: PINE }, name: "Lalezar" };
   const map = new Map<string, number>();
-  for (const t of txs.filter((x) => x.type === "expense")) map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount);
+  for (const t of txs.filter((x) => x.type === "expense" && isReportableTx(x))) map.set(t.categoryId, (map.get(t.categoryId) ?? 0) + t.amount);
   const top = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
   for (const [catId, sum] of top) {
     const row = ws.getRow(r++);
@@ -169,8 +169,8 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   wb.lastModifiedBy = "FinancePro";
   const txs = [...(opts?.txs ?? s.transactions)].sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
   const periodLabel = opts?.periodLabel ?? "همهٔ دوره‌ها";
-  const income = txs.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0);
-  const expense = txs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
+  const income = txs.filter((t) => t.type === "income" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
+  const expense = txs.filter((t) => t.type === "expense" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
 
   summarySheet(wb, s, txs, periodLabel);
 
@@ -178,7 +178,7 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   const tagName = (id?: string) => tags.find((x) => x.id === id)?.label ?? "—";
   const w1 = makeSheet(wb, "تراکنش‌ها", [
     { h: "ردیف", w: 7 }, { h: "تاریخ شمسی", w: 17 }, { h: "نوع", w: 10 }, { h: "دسته", w: 17 },
-    { h: "حساب", w: 17 }, { h: "توضیحات", w: 30 }, { h: "تگ", w: 17 }, { h: "روش پرداخت", w: 13 }, { h: "مبلغ (تومان)", w: 17 }, { h: "منبع", w: 10 },
+    { h: "حساب", w: 17 }, { h: "توضیحات", w: 30 }, { h: "تگ", w: 17 }, { h: "روش پرداخت", w: 13 }, { h: "مبلغ (تومان)", w: 17 }, { h: "منبع", w: 10 }, { h: "امانی / قابل‌استرداد", w: 20 },
   ]);
   txs.forEach((t, i) => {
     w1.addRow({
@@ -188,6 +188,7 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
       c5: t.note || t.title || "—", c6: tagName(t.tag), c7: t.payMethod ?? "—",
       c8: t.type === "income" ? t.amount : -t.amount,
       c9: t.source === "bot" ? "ربات" : "برنامه",
+      c10: t.reimbursable ? "بله" : "—",
     });
     const row = w1.getRow(i + 2);
     const typeCell = row.getCell(3);
@@ -199,13 +200,14 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   totalRow(w1, `جمع درآمد بازهٔ «${periodLabel}»`, income, 9, "FF1F7A56");
   totalRow(w1, `جمع هزینهٔ بازهٔ «${periodLabel}»`, expense, 9, "FFC24A3D");
   totalRow(w1, "تراز نهایی", income - expense, 9, PINE);
-  w1.autoFilter = { from: "A1", to: `J${txs.length + 1}` };
+  w1.autoFilter = { from: "A1", to: `K${txs.length + 1}` };
 
   const w2 = makeSheet(wb, "گزارش دسته‌ها", [
     { h: "دسته", w: 22 }, { h: "نوع", w: 10 }, { h: "تعداد تراکنش", w: 14 }, { h: "جمع (تومان)", w: 18 }, { h: "سهم از کل", w: 12 },
   ]);
   const catMap = new Map<string, { sum: number; n: number; type: string }>();
   for (const t of txs) {
+    if (!isReportableTx(t)) continue;
     const e = catMap.get(t.categoryId) ?? { sum: 0, n: 0, type: t.type === "income" ? "درآمد" : "هزینه" };
     e.sum += t.amount; e.n++;
     catMap.set(t.categoryId, e);
@@ -253,7 +255,7 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
     { h: "دسته", w: 22 }, { h: "سقف ماهانه", w: 17 }, { h: "خرجِ بازه", w: 17 }, { h: "باقی‌مانده", w: 17 }, { h: "وضعیت", w: 13 },
   ]);
   s.budgets.forEach((b, idx) => {
-    const spent = txs.filter((t) => t.categoryId === b.categoryId && t.type === "expense").reduce((x, t) => x + t.amount, 0);
+    const spent = txs.filter((t) => t.categoryId === b.categoryId && t.type === "expense" && isReportableTx(t)).reduce((x, t) => x + t.amount, 0);
     w6.addRow({
       c0: s.categories.find((c) => c.id === b.categoryId)?.name ?? "—", c1: b.limit, c2: spent,
       c3: b.limit - spent, c4: spent > b.limit ? "مازاد بر سقف" : "در محدوده",
@@ -275,7 +277,7 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
   const w8 = makeSheet(wb, "برچسب‌ها", [
     { h: "برچسب", w: 24 }, { h: "توضیح", w: 34 }, { h: "تعداد تراکنش", w: 14 }, { h: "جمع (تومان)", w: 17 }, { h: "سهم از هزینه", w: 13 },
   ]);
-  const tagExpense = txs.filter((t) => t.type === "expense");
+  const tagExpense = txs.filter((t) => t.type === "expense" && isReportableTx(t));
   tags.forEach((tg, idx) => {
     const list = tagExpense.filter((t) => t.tag === tg.id);
     const sum = list.reduce((a, t) => a + t.amount, 0);
@@ -320,7 +322,7 @@ export async function xlsxBytesToCsv(bytes: Uint8Array): Promise<string> {
 
 /* ---------- CSV ---------- */
 export function exportCSV(s: AppState) {
-  const rows = [["date", "type", "title", "category", "amount"]];
+  const rows = [["date", "type", "title", "category", "amount", "reimbursable"]];
   for (const t of s.transactions) {
     rows.push([
       t.date,
@@ -328,6 +330,7 @@ export function exportCSV(s: AppState) {
       `"${(t.note || t.title).replace(/"/g, '""')}"`,
       s.categories.find((c) => c.id === t.categoryId)?.name ?? "",
       String(t.amount),
+      t.reimbursable ? "true" : "false",
     ]);
   }
   const blob = new Blob(["\uFEFF" + rows.map((r) => r.join(",")).join("\n")], {

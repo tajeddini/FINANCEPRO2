@@ -106,6 +106,7 @@ export default function DebtsPage() {
                       <span className="truncate">{d.person}</span>
                     </p>
                     {d.note && <p className="text-[10.5px] font-bold mt-0.5 truncate" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
+                    {d.linkedTransactionId && <p className="text-[10px] font-black mt-0.5" style={{ color: "var(--fp-accent)" }}>طلب امانی · ثبت خودکار تراکنش هنگام دریافت</p>}
                     {d.due && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>سررسید: {faDate(d.due)}</p>}
                   </div>
                   <div className="text-end shrink-0">
@@ -218,6 +219,7 @@ export default function DebtsPage() {
             mutate((d) => {
               const x = d.debts.find((y) => y.id === payFor!.id);
               if (x) x.paid = Math.min(x.amount, x.paid + v);
+              const linkedReimbursement = !isDebt && !!x?.linkedTransactionId;
               const cat = d.categories.find((c) => c.type === (isDebt ? "expense" : "income"));
               d.transactions.unshift({
                 id: uid(), date: todayISO(),
@@ -226,6 +228,8 @@ export default function DebtsPage() {
                 note: "تسویهٔ بدهی/طلب",
                 categoryId: cat?.id ?? "", accountId: payAcc || d.accounts[0]?.id || "",
                 payMethod: "کارت", createdAt: Date.now(), source: "app",
+                reimbursable: linkedReimbursement || undefined,
+                linkedDebtId: linkedReimbursement ? x?.id : undefined,
               });
             }, isDebt ? `پرداخت ${faMoney(v)} به ${payFor?.person}` : `دریافت ${faMoney(v)} از ${payFor?.person}`);
             toast("ok", "ثبت شد و تراکنش آن در حساب نشست.");

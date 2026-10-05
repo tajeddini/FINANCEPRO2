@@ -14,8 +14,8 @@ export default function DailyPage() {
   const t = jalaliToday();
 
   const todayTxs = state.transactions.filter((x) => x.date === today);
-  const spent = todayTxs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
-  const earned = todayTxs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
+  const spent = todayTxs.filter((x) => x.type === "expense" && !x.reimbursable).reduce((a, x) => a + x.amount, 0);
+  const earned = todayTxs.filter((x) => x.type === "income" && !x.reimbursable).reduce((a, x) => a + x.amount, 0);
 
   const todayAppts = state.appointments.filter((a) => a.date === today).sort((a, b) => a.time.localeCompare(b.time));
 
@@ -28,7 +28,7 @@ export default function DailyPage() {
   }
   const mr = jalaliMonthRange(t.jy, t.jm);
   for (const b of state.budgets) {
-    const s = state.transactions.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && inRange(x.date, mr)).reduce((a, x) => a + x.amount, 0);
+    const s = state.transactions.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && !x.reimbursable && inRange(x.date, mr)).reduce((a, x) => a + x.amount, 0);
     if (b.limit > 0 && s >= b.limit * 0.8) {
       const name = state.categories.find((c) => c.id === b.categoryId)?.name ?? "دسته";
       reminders.push({
@@ -67,12 +67,12 @@ export default function DailyPage() {
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "40ms" }}>
           <p className="text-[11.5px] font-black" style={{ color: "var(--fp-text3)" }}>خرج امروز</p>
           <p className="font-display text-3xl tabular mt-1.5" style={{ color: "var(--fp-coral)" }}>{faMoney(spent)}</p>
-          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{faNum(todayTxs.filter((x) => x.type === "expense").length)} تراکنش</p>
+          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{faNum(todayTxs.filter((x) => x.type === "expense" && !x.reimbursable).length)} تراکنش</p>
         </div>
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "80ms" }}>
           <p className="text-[11.5px] font-black" style={{ color: "var(--fp-text3)" }}>درآمد امروز</p>
           <p className="font-display text-3xl tabular mt-1.5" style={{ color: "var(--fp-mint)" }}>{faMoney(earned)}</p>
-          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{faNum(todayTxs.filter((x) => x.type === "income").length)} تراکنش</p>
+          <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>{faNum(todayTxs.filter((x) => x.type === "income" && !x.reimbursable).length)} تراکنش</p>
         </div>
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "120ms" }}>
           <p className="text-[11.5px] font-black" style={{ color: "var(--fp-text3)" }}>قرارهای امروز</p>

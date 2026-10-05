@@ -1,6 +1,6 @@
 /* ---------- ویجت‌های تحلیلی: نقشهٔ حرارتی، پیش‌بینی، امتیاز سلامت، نشان‌ها ---------- */
 import { useMemo } from "react";
-import type { AppState, Tx } from "./lib/data";
+import { isReportableTx, type AppState, type Tx } from "./lib/data";
 import {
   addDaysISO, addJalaliMonths, faNum, groupInt, inRange, jalaliMonthRange,
   jalaliToday, jalaliMonthKey, weekdayOfISO, isoToJalali, MONTHS_FA,
@@ -17,7 +17,7 @@ export function Heatmap({ txs }: { txs: Tx[] }) {
     const start = addDaysISO(end, -(weeks * 7 - 1));
     const byDay = new Map<string, number>();
     for (const t of txs) {
-      if (t.type !== "expense") continue;
+      if (t.type !== "expense" || !isReportableTx(t)) continue;
       byDay.set(t.date, (byDay.get(t.date) ?? 0) + t.amount);
     }
     const cells: { date: string; amount: number }[] = [];
@@ -65,9 +65,9 @@ export function Heatmap({ txs }: { txs: Tx[] }) {
 export function computeHealthScore(s: AppState, monthTxs: Tx[], lastMonthTxs: Tx[]): {
   score: number; parts: { label: string; pct: number; tip: string }[];
 } {
-  const income = monthTxs.filter((t) => t.type === "income").reduce((a, t) => a + t.amount, 0);
-  const expense = monthTxs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
-  const lastExpense = lastMonthTxs.filter((t) => t.type === "expense").reduce((a, t) => a + t.amount, 0);
+  const income = monthTxs.filter((t) => t.type === "income" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
+  const expense = monthTxs.filter((t) => t.type === "expense" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
+  const lastExpense = lastMonthTxs.filter((t) => t.type === "expense" && isReportableTx(t)).reduce((a, t) => a + t.amount, 0);
 
   const saveRate = income > 0 ? Math.max(0, (income - expense) / income) : 0;
   const savePct = Math.round(Math.min(1, saveRate / 0.35) * 100);
@@ -76,7 +76,7 @@ export function computeHealthScore(s: AppState, monthTxs: Tx[], lastMonthTxs: Tx
   if (s.budgets.length) {
     let ok = 0;
     for (const b of s.budgets) {
-      const spent = monthTxs.filter((t) => t.type === "expense" && t.categoryId === b.categoryId).reduce((a, t) => a + t.amount, 0);
+      const spent = monthTxs.filter((t) => t.type === "expense" && isReportableTx(t) && t.categoryId === b.categoryId).reduce((a, t) => a + t.amount, 0);
       if (spent <= b.limit) ok++;
     }
     budgetPct = Math.round((ok / s.budgets.length) * 100);
@@ -136,8 +136,8 @@ export function Forecast({ s }: { s: AppState }) {
       months.push({
         key: `${m.jy}-${String(m.jm).padStart(2, "0")}`,
         label: MONTHS_FA[m.jm - 1],
-        income: txs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0),
-        expense: txs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0),
+        income: txs.filter((x) => x.type === "income" && isReportableTx(x)).reduce((a, x) => a + x.amount, 0),
+        expense: txs.filter((x) => x.type === "expense" && isReportableTx(x)).reduce((a, x) => a + x.amount, 0),
       });
     }
     const last3 = months.slice(2, 5);
@@ -178,12 +178,12 @@ export function computeBadges(s: AppState): Badge[] {
   const t = jalaliToday();
   const r = jalaliMonthRange(t.jy, t.jm);
   const monthTxs = s.transactions.filter((x) => inRange(x.date, r));
-  const income = monthTxs.filter((x) => x.type === "income").reduce((a, x) => a + x.amount, 0);
-  const expense = monthTxs.filter((x) => x.type === "expense").reduce((a, x) => a + x.amount, 0);
+  const income = monthTxs.filter((x) => x.type === "income" && isReportableTx(x)).reduce((a, x) => a + x.amount, 0);
+  const expense = monthTxs.filter((x) => x.type === "expense" && isReportableTx(x)).reduce((a, x) => a + x.amount, 0);
   const saveRate = income > 0 ? (income - expense) / income : 0;
 
   let streak = 0;
-  const expenseDates = new Set(s.transactions.filter((x) => x.type === "expense").map((x) => x.date));
+  const expenseDates = new Set(s.transactions.filter((x) => x.type === "expense" && isReportableTx(x)).map((x) => x.date));
   const today = new Date();
   for (let i = 0; i < 365; i++) {
     const dd = new Date(today);
@@ -201,7 +201,7 @@ export function computeBadges(s: AppState): Badge[] {
     { id: "goal", icon: "🎯", title: "هدف‌دار", desc: "یک هدف پس‌انداز بالای ۵۰٪", earned: s.savings_goals.some((g) => g.target > 0 && g.saved / g.target >= 0.5) },
     { id: "clean", icon: "🕊️", title: "بدون بدهی", desc: "هیچ بدهی باز ندارید", earned: s.debts.filter((d) => d.kind === "debt" && d.paid < d.amount).length === 0 },
     { id: "bot", icon: "🤖", title: "همراه ربات", desc: "تراکنشی از ربات تلگرام ثبت شده", earned: s.transactions.some((x) => x.source === "bot") },
-    { id: "budget", icon: "📐", title: "منضبط", desc: "بودجهٔ این ماه رعایت شده", earned: s.budgets.length > 0 && s.budgets.every((b) => monthTxs.filter((x) => x.categoryId === b.categoryId && x.type === "expense").reduce((a, x) => a + x.amount, 0) <= b.limit) },
+    { id: "budget", icon: "📐", title: "منضبط", desc: "بودجهٔ این ماه رعایت شده", earned: s.budgets.length > 0 && s.budgets.every((b) => monthTxs.filter((x) => x.categoryId === b.categoryId && x.type === "expense" && isReportableTx(x)).reduce((a, x) => a + x.amount, 0) <= b.limit) },
   ];
 }
 
