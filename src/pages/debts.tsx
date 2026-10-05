@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpLeft, Banknote, Check, Plus, QrCode, Repeat, Scale } from "lucide-react";
 import { accById, useStore, type ID, type Installment } from "../lib/data";
-import { calcEMI, faDate, faMoney, faNum, jalaliShort, todayISO } from "../lib/utils";
+import { calcEMI, faDate, faMoney, faNum, jalaliShort, todayISO, uid } from "../lib/utils";
 import { AmountInput, Bar, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, Modal, TInput, TSelect, useToast } from "../ui";
 import { Head } from "./shared";
 
@@ -46,7 +46,7 @@ export default function DebtsPage() {
       toast("ok", "قسط ویرایش شد.");
     } else {
       mutate((d) => {
-        d.installments.push({ id: Math.random().toString(36).slice(2, 10), ...base, paidCount: 0, schedule: buildScheduleLocal(base, 0) });
+        d.installments.push({ id: uid(), ...base, paidCount: 0, schedule: buildScheduleLocal(base, 0) });
       }, `قسط «${title}» ثبت شد`);
       toast("ok", "قسط ثبت شد.");
     }
@@ -67,7 +67,7 @@ export default function DebtsPage() {
       const acc = d.accounts.find((a) => a.id === accId);
       const method = acc && /کارت/.test(acc.type) ? "کارت" : "شبا";
       d.transactions.unshift({
-        id: Math.random().toString(36).slice(2, 10), date: todayISO(), type: "expense",
+        id: uid(), date: todayISO(), type: "expense",
         amount: m.amount, title: `قسط ${faNum(idx + 1)} «${x.title}»`, categoryId: catId,
         accountId: accId, payMethod: method, createdAt: Date.now(), source: "app",
       });
@@ -220,7 +220,7 @@ export default function DebtsPage() {
               if (x) x.paid = Math.min(x.amount, x.paid + v);
               const cat = d.categories.find((c) => c.type === (isDebt ? "expense" : "income"));
               d.transactions.unshift({
-                id: Math.random().toString(36).slice(2, 10), date: todayISO(),
+                id: uid(), date: todayISO(),
                 type: isDebt ? "expense" : "income", amount: v,
                 title: isDebt ? `پرداخت بدهی به ${payFor?.person}` : `دریافت طلب از ${payFor?.person}`,
                 note: "تسویهٔ بدهی/طلب",
@@ -401,7 +401,7 @@ function AddDebtForm({ kind, onDone }: { kind: "debt" | "credit"; onDone: () => 
         <button className="btn btn-gold mt-1" onClick={() => {
           if (!person.trim() || !Number(amount)) return;
           mutate((d) => {
-            d.debts.push({ id: Math.random().toString(36).slice(2, 10), kind, person: person.trim(), amount: Number(amount), paid: 0, due, note: note.trim() || undefined });
+            d.debts.push({ id: uid(), kind, person: person.trim(), amount: Number(amount), paid: 0, due, note: note.trim() || undefined });
           }, `${kind === "debt" ? "بدهی" : "طلب"} «${person.trim()}» ثبت شد`);
           setPerson(""); setAmount(""); setNote(""); onDone();
         }}>

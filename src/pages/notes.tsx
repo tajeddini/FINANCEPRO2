@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { CalendarDays, PencilLine, Pin, PinOff, Plus, Search, StickyNote, Trash2 } from "lucide-react";
 import { useStore, type Note } from "../lib/data";
-import { faDate, todayISO } from "../lib/utils";
+import { faDate, todayISO, uid } from "../lib/utils";
 import { Empty, Field, JalaliPicker, MicButton, Modal, TInput, useToast } from "../ui";
 
 const NOTE_COLORS = [
@@ -53,7 +53,7 @@ export default function NotesPage() {
       toast("ok", "یادداشت ویرایش شد.");
     } else {
       mutate((d) => {
-        d.notes.unshift({ id: Math.random().toString(36).slice(2, 10), title: title.trim(), date, body: body.trim(), color, cat: cat.trim() || undefined, pinned: false, createdAt: Date.now() });
+        d.notes.unshift({ id: uid(), title: title.trim(), date, body: body.trim(), color, cat: cat.trim() || undefined, pinned: false, createdAt: Date.now() });
       }, `یادداشت «${title.trim()}» ثبت شد`);
       toast("ok", "یادداشت ذخیره شد.");
     }

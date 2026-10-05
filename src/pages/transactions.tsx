@@ -2,7 +2,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Bot, CalendarDays, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
 import { accById, catById, getTags, sumTx, tagById, useStore, type ID, type Tx } from "../lib/data";
-import { faDate, faMoney, faNum, inRange } from "../lib/utils";
+import { faDate, faMoney, faNum, inRange, uid } from "../lib/utils";
 import { parseCSV, exportCSV, xlsxBytesToCsv } from "../excel";
 import { CatGlyph, Confirm, Empty, PeriodFilter, TInput, TSelect, usePeriod, useToast } from "../ui";
 import { base64ToBytes, base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
@@ -55,7 +55,7 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
     mutate((d) => {
       for (const r of rows) {
         d.transactions.unshift({
-          id: Math.random().toString(36).slice(2, 10), date: r.date, type: r.type, amount: r.amount,
+          id: uid(), date: r.date, type: r.type, amount: r.amount,
           title: r.title, categoryId: r.categoryId || d.categories[0]?.id || "", accountId: d.accounts[0]?.id || "",
           createdAt: Date.now(), source: "app",
         });

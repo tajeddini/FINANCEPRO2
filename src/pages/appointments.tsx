@@ -5,7 +5,7 @@ import { useStore, type Appointment } from "../lib/data";
 import {
   addJalaliMonths, faDate, faNum, faTime, fireNotification, jalaliDateStr, jalaliFirstOffset,
   jalaliMonthLen, jalaliShort, jalaliToISO, jalaliToday, MONTHS_FA, playChime, todayISO,
-  useNow, WEEKDAYS_MIN,
+  uid, useNow, WEEKDAYS_MIN,
 } from "../lib/utils";
 import { DeleteBtn, EditBtn, Field, JalaliPicker, MicButton, Modal, TInput, useToast } from "../ui";
 import { isNativePlat } from "../lib/native-files";
@@ -231,7 +231,7 @@ function ApptForm({ open, onClose, editing }: { open: boolean; onClose: () => vo
       toast("ok", "قرار ویرایش شد.");
     } else {
       mutate((d) => {
-        d.appointments.push({ id: Math.random().toString(36).slice(2, 10), title: title.trim(), date, time, note: note.trim() || undefined });
+        d.appointments.push({ id: uid(), title: title.trim(), date, time, note: note.trim() || undefined });
       }, `قرار «${title.trim()}» ثبت شد`);
       toast("ok", "قرار ثبت شد.");
     }

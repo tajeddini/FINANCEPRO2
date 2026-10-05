@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { toGregorian, toJalaali } from "jalaali-js";
 import { ReadSMS } from "capacitor-sms-reader";
-import { todayISO } from "./utils";
+import { todayISO, uid } from "./utils";
 
 export type SmsTransactionType = "income" | "expense";
 
@@ -116,7 +116,7 @@ const parseResalat = (text: string, receivedAt?: number): SmsParse | null => {
   const amount = parseAmount(amountLine);
 
   return {
-    id: `sms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: uid(),
     raw: text,
     bankLabel: "رسالت",
     accountIdentifier: "10.10070145.1",
@@ -158,7 +158,7 @@ const parseBankMelli = (text: string, receivedAt?: number): SmsParse | null => {
   if (!date) return null;
 
   return {
-    id: `sms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: uid(),
     raw: text,
     bankLabel: "بانک ملی",
     accountIdentifier: "83008",

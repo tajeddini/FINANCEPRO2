@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Bell, CheckCircle2, Plus, Repeat, Target, Trash2, Upload, Wallet } from "lucide-react";
 import { clearData, getTags, sampleFill, useStore } from "../lib/data";
-import { faDate, faMoney, faNum, inRange, jalaliMonthRange, jalaliToday, todayISO } from "../lib/utils";
+import { faDate, faMoney, faNum, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
 import { checkSmsPermissions, loadPendingSms, openSmsAppSettings, removeUsedSms, scanInboxForBankMessages, type PendingSmsTransaction } from "../lib/sms";
 import { AmountInput, Bar, CatGlyph, CATEGORY_ICONS, CATEGORY_ICON_LABELS, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, Modal, PeriodFilter, TInput, TSelect, usePeriod, useToast } from "../ui";
 import TxModal from "./tx-modal";
@@ -203,7 +203,7 @@ function AccountsTab() {
                   }, `حساب «${form.name.trim()}» ویرایش شد`);
                 } else {
                   mutate((d) => {
-                    d.accounts.push({ id: Math.random().toString(36).slice(2, 10), name: form.name.trim(), type: form.type, initial: Number(form.initial) || 0, color: form.color, balance: 0 });
+                    d.accounts.push({ id: uid(), name: form.name.trim(), type: form.type, initial: Number(form.initial) || 0, color: form.color, balance: 0 });
                   }, `حساب «${form.name.trim()}» ساخته شد`);
                 }
                 toast("ok", "ذخیره شد."); setForm(null);
@@ -278,7 +278,7 @@ function CategoriesTab() {
                   }, `دستهٔ «${form.name.trim()}» ویرایش شد`);
                 } else {
                   mutate((d) => {
-                    d.categories.push({ id: Math.random().toString(36).slice(2, 10), name: form.name.trim(), type: form.type, color: form.color, icon: form.icon });
+                    d.categories.push({ id: uid(), name: form.name.trim(), type: form.type, color: form.color, icon: form.icon });
                   }, `دستهٔ «${form.name.trim()}» ساخته شد`);
                 }
                 toast("ok", "ذخیره شد."); setForm(null);
@@ -347,7 +347,7 @@ function TagsTab() {
                   }, `برچسب «${form.label.trim()}» ویرایش شد`);
                 } else {
                   mutate((d) => {
-                    d.tags.push({ id: Math.random().toString(36).slice(2, 10), label: form.label.trim(), color: form.color, desc: form.desc.trim() || undefined });
+                    d.tags.push({ id: uid(), label: form.label.trim(), color: form.color, desc: form.desc.trim() || undefined });
                   }, `برچسب «${form.label.trim()}» ساخته شد`);
                 }
                 toast("ok", "ذخیره شد."); setForm(null);
@@ -414,7 +414,7 @@ function BudgetsTab() {
                   }, "بودجه ویرایش شد");
                 } else {
                   mutate((d) => {
-                    d.budgets.push({ id: Math.random().toString(36).slice(2, 10), categoryId: form.categoryId, limit: Number(form.limit) });
+                    d.budgets.push({ id: uid(), categoryId: form.categoryId, limit: Number(form.limit) });
                   }, "بودجه ثبت شد");
                 }
                 toast("ok", "ذخیره شد."); setForm(null);
@@ -472,7 +472,7 @@ function GoalsTab() {
                   }, `هدف «${form.title.trim()}» ویرایش شد`);
                 } else {
                   mutate((d) => {
-                    d.savings_goals.push({ id: Math.random().toString(36).slice(2, 10), title: form.title.trim(), target: Number(form.target), saved: Number(form.saved) || 0 });
+                    d.savings_goals.push({ id: uid(), title: form.title.trim(), target: Number(form.target), saved: Number(form.saved) || 0 });
                   }, `هدف «${form.title.trim()}» ثبت شد`);
                 }
                 toast("ok", "ذخیره شد."); setForm(null);
@@ -518,7 +518,7 @@ function MethodsTab() {
         <TInput value={name} onChange={(e) => setName(e.target.value)} placeholder="روش پرداخت جدید — مثلاً: شبا" />
         <button className="btn btn-gold btn-sm" onClick={() => {
           if (!name.trim()) return;
-          mutate((d) => { d.payment_methods.push({ id: Math.random().toString(36).slice(2, 10), name: name.trim() }); }, `روش «${name.trim()}» اضافه شد`);
+          mutate((d) => { d.payment_methods.push({ id: uid(), name: name.trim() }); }, `روش «${name.trim()}» اضافه شد`);
           setName(""); toast("ok", "اضافه شد.");
         }}><Plus className="w-4 h-4" strokeWidth={3} /> افزودن</button>
       </div>

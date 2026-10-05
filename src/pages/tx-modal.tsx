@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../lib/data";
-import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO } from "../lib/utils";
+import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
 import { markSmsUsed, matchAccountByCard, matchAccountByBankName, parseBankSMS, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
 import { AmountInput, Field, JalaliPicker, MicButton, Modal, TSelect, useToast } from "../ui";
 
@@ -139,7 +139,7 @@ export default function TxModal({
       handleClose();
       return;
     }
-    const newId = Math.random().toString(36).slice(2, 10);
+    const newId = uid();
     mutate((d) => {
       d.transactions.unshift({
         id: newId, date, type, amount: amt,

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
+
 /* =====================================================================
    ربات تلگرام فایننس‌پرو — بدون هیچ وابستگی npm (فقط Node 18+)
    دفترکل مشترک با سایت از راه جدول financepro_state در Supabase.
@@ -166,7 +168,7 @@ async function handle(chat_id, text) {
     const acc = (state.accounts || [])[0];
     if (!acc) return send(chat_id, "⚠️ حسابی تعریف نشده.");
     const tx = {
-      id: Math.random().toString(36).slice(2, 10),
+      id: randomUUID(),
       date: new Date().toISOString().slice(0, 10),
       type: p.type,
       amount: p.amount,
@@ -193,7 +195,7 @@ async function handle(chat_id, text) {
     const acc = (state.accounts || [])[0];
     if (!acc) return send(chat_id, "⚠️ حسابی تعریف نشده.");
     const tx = {
-      id: Math.random().toString(36).slice(2, 10),
+      id: randomUUID(),
       date: new Date().toISOString().slice(0, 10),
       type: p.type,
       amount: p.amount,

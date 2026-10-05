@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { toJalaali, toGregorian, isLeapJalaaliYear } from "jalaali-js";
+import { v4 as uuidv4 } from "uuid";
 
 /* ---------- عمومی ---------- */
-export const uid = (): string =>
-  Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+export const uid = (): string => uuidv4();
 
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const AR_DIGITS = "٠١٢٣٤٥٦٧٨٩";
