@@ -1,5 +1,5 @@
 import type { AuthChangeEvent, Session, User as SupabaseUser } from "@supabase/supabase-js";
-import { envCloud, getCloud, getSupabaseClient } from "./cloud";
+import { deleteCloudAccount, envCloud, getCloud, getSupabaseClient } from "./cloud";
 
 export interface User {
   id: string;
@@ -117,6 +117,7 @@ export function guestLogin(): User {
 }
 
 export async function deleteAccount(userId: string, guestOnly = false): Promise<void> {
+  if (!guestOnly) await deleteCloudAccount(userId);
   localStorage.removeItem(`fp_data_${userId}`);
   await logout(guestOnly);
 }

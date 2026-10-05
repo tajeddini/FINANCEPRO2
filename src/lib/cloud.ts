@@ -177,6 +177,26 @@ async function authenticatedUser(cfg: CloudCfg): Promise<{ id: string; accessTok
   return { id: userData.user.id, accessToken: sessionData.session.access_token };
 }
 
+/** حذف داده‌های کاربر با JWT نشست جاری؛ RLS مالکیت هر ردیف را اعمال می‌کند. */
+export async function deleteCloudAccount(userId: string): Promise<void> {
+  const cfg = getCloud() ?? envCloud();
+  if (!cfg) throw new Error("اتصال Supabase تنظیم نشده است؛ دادهٔ ابری حذف نشد.");
+  const auth = await authenticatedUser(cfg);
+  if (!auth) throw new Error("نشست Supabase معتبر نیست؛ برای حذف دادهٔ ابری دوباره وارد شوید.");
+  if (auth.id !== userId) throw new Error("شناسهٔ کاربر با نشست جاری مطابقت ندارد؛ درخواست حذف رد شد.");
+
+  for (const table of ["financepro_state", "fp_users"]) {
+    const response = await fetch(
+      `${restBase(cfg.url)}/${table}?user_id=eq.${encodeURIComponent(auth.id)}`,
+      {
+        method: "DELETE",
+        headers: authHeaders(cfg.key, auth.accessToken, { Prefer: "return=minimal" }),
+      }
+    );
+    if (!response.ok) throw new Error(httpDiagnosis(response.status, `حذف داده از ${table}`));
+  }
+}
+
 /** فرستادن دفترکل — داده‌های حساس prefs هرگز فرستاده نمی‌شوند */
 export async function pushToCloud(
   s: AppState,

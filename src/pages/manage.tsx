@@ -170,7 +170,7 @@ function AccountsTab() {
           <p className="text-[13px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>{faMoney(a.balance)}</p>
           <span className="flex gap-1.5 shrink-0">
             <EditBtn onClick={() => setForm({ id: a.id, name: a.name, type: a.type, initial: String(a.initial), color: a.color })} />
-            <DeleteBtn onClick={() => { trashItem("accounts", a.id, a.name); toast("warn", "حساب حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+            <DeleteBtn onClick={() => { trashItem("accounts", a.id, a.name); toast("warn", "حساب حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
           </span>
         </div>
       ))}
@@ -234,7 +234,7 @@ function CategoriesTab() {
           </div>
           <span className="flex gap-1.5 shrink-0">
             <EditBtn onClick={() => setForm({ id: c.id, name: c.name, type: c.type, color: c.color, icon: c.icon ?? "wallet" })} />
-            <DeleteBtn onClick={() => { trashItem("categories", c.id, c.name); toast("warn", "دسته حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+            <DeleteBtn onClick={() => { trashItem("categories", c.id, c.name); toast("warn", "دسته حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
           </span>
         </div>
       ))}
@@ -318,7 +318,7 @@ function TagsTab() {
             </div>
             <span className="flex gap-1.5 shrink-0">
               <EditBtn onClick={() => setForm({ id: tg.id, label: tg.label, color: tg.color, desc: tg.desc ?? "" })} />
-              <DeleteBtn onClick={() => { trashItem("tags", tg.id, tg.label); toast("warn", "برچسب حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+              <DeleteBtn onClick={() => { trashItem("tags", tg.id, tg.label); toast("warn", "برچسب حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
             </span>
           </div>
         );

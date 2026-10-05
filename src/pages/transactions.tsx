@@ -246,11 +246,11 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
         onYes={() => {
           if (confirmDel) {
             trashItem("transactions", confirmDel.id, confirmDel.note || confirmDel.title);
-            toast("warn", "حذف شد — تا ۳۰ ثانیه می‌توانی برگردانی.");
+            toast("warn", "حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است.");
           }
         }}
         title="حذف تراکنش"
-        desc={`آیا از حذف «${confirmDel?.note || confirmDel?.title}» مطمئن هستید؟ تا ۳۰ ثانیه فرصت بازگردانی دارید.`}
+        desc={`آیا از حذف «${confirmDel?.note || confirmDel?.title}» مطمئن هستید؟ تا ۳۰ روز از سطل زباله فرصت بازگردانی دارید.`}
         yesLabel="بله، حذف شود"
       />
     </div>

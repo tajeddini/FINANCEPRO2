@@ -1,6 +1,6 @@
 /* ---------- صفحهٔ تنظیمات ---------- */
-import { useRef, useState } from "react";
-import { Bell, Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, RotateCcw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
 import { migrateLoadedState, useStore, type AppState } from "../lib/data";
 import { copyText, faNum, todayISO } from "../lib/utils";
 import type { User } from "../lib/auth";
@@ -16,9 +16,9 @@ import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions } from "
 import { dl } from "./shared";
 
 export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
-  user: User; onLogout: () => void; onDelete: () => void; onLock: () => void;
+  user: User; onLogout: () => void; onDelete: () => Promise<void>; onLock: () => void;
 }) {
-  const { state, mutate, getSyncSnapshot, markSyncClean } = useStore();
+  const { state, mutate, getSyncSnapshot, markSyncClean, restore, discardTrash } = useStore();
   const toast = useToast();
   const p = state.prefs;
   const [syncUrl, setSyncUrl] = useState(p.syncUrl ?? "");
@@ -32,6 +32,8 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const [botToken, setBotToken] = useState(p.botToken ?? "");
   const [transferCode, setTransferCode] = useState("");
   const [importCode, setImportCode] = useState("");
+  const [trashPage, setTrashPage] = useState(0);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const saveAi = () => {
@@ -141,6 +143,28 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   };
 
   const isNative = isNativePlat();
+  const activeTrash = state.trash
+    .filter((entry) => entry.until > Date.now())
+    .sort((a, b) => (b.deletedAt ?? b.until - 30000) - (a.deletedAt ?? a.until - 30000));
+  const trashPageSize = 25;
+  const trashPageCount = Math.ceil(activeTrash.length / trashPageSize);
+  const currentTrashPage = Math.min(trashPage, Math.max(0, trashPageCount - 1));
+  const visibleTrash = activeTrash.slice(currentTrashPage * trashPageSize, (currentTrashPage + 1) * trashPageSize);
+  useEffect(() => {
+    if (trashPage !== currentTrashPage) setTrashPage(currentTrashPage);
+  }, [trashPage, currentTrashPage]);
+
+  const deleteAccountConfirmed = async () => {
+    if (!window.confirm("حذف حساب غیرقابل‌بازگشت است. داده‌های ابری و محلی این حساب حذف و از نشست خارج می‌شوید. ادامه می‌دهید؟")) return;
+    setDeletingAccount(true);
+    try {
+      await onDelete();
+    } catch (error) {
+      toast("err", error instanceof Error ? error.message : "حذف حساب انجام نشد.");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
   const [smsPermissionState, setSmsPermissionState] = useState<"granted" | "denied" | "permanently_denied" | "unknown">("unknown");
 
   const refreshSmsPermissionState = async () => {
@@ -344,6 +368,52 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
         </div>
       </div>
 
+      <div className="card p-5 rise-in" style={{ ["--d" as string]: "190ms" }}>
+        <h3 className="text-[14px] font-black flex items-center gap-2"><Trash2 className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> سطل زباله</h3>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          موارد حذف‌شده تا ۳۰ روز نگه‌داری می‌شوند؛ پس از آن به‌طور خودکار برای همیشه پاک می‌شوند.
+        </p>
+        {activeTrash.length === 0 ? (
+          <p className="text-[12px] font-bold mt-4" style={{ color: "var(--fp-text3)" }}>سطل زباله خالی است.</p>
+        ) : (
+          <>
+            <div className="grid gap-2 mt-4">
+              {visibleTrash.map((entry) => {
+                const deletedAt = entry.deletedAt ?? entry.until - 30000;
+                return (
+                  <div key={entry.key} className="flex flex-wrap items-center gap-3 rounded-xl border p-3"
+                    style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-black truncate">{entry.label}</p>
+                      <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>
+                        حذف‌شده در {new Date(deletedAt).toLocaleString("fa-IR")}
+                      </p>
+                    </div>
+                    <button className="btn btn-mint btn-sm" onClick={() => restore(entry.key)}>
+                      <RotateCcw className="w-3.5 h-3.5" /> بازگردانی
+                    </button>
+                    <button className="btn btn-danger btn-sm" onClick={() => {
+                      if (window.confirm(`«${entry.label}» برای همیشه حذف شود؟`)) discardTrash(entry.key);
+                    }}>
+                      <Trash2 className="w-3.5 h-3.5" /> حذف دائم
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            {trashPageCount > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-4">
+                <button className="btn btn-ghost btn-sm" disabled={currentTrashPage === 0} onClick={() => setTrashPage((page) => Math.max(0, page - 1))}>قبلی</button>
+                <span className="text-[11px] font-bold tabular" style={{ color: "var(--fp-text3)" }}>
+                  صفحهٔ {faNum(currentTrashPage + 1)} از {faNum(trashPageCount)}
+                </span>
+                <button className="btn btn-ghost btn-sm" disabled={currentTrashPage >= trashPageCount - 1} onClick={() => setTrashPage((page) => Math.min(trashPageCount - 1, page + 1))}>بعدی</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "200ms" }}>
         <h3 className="text-[14px] font-black flex items-center gap-2"><Shield className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> حساب کاربری</h3>
         <div className="flex items-center gap-3 mt-4">
@@ -355,8 +425,8 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
           <button className="btn btn-ghost btn-sm" onClick={onLogout}>خروج</button>
         </div>
         {!user.guest && (
-          <button className="btn btn-danger btn-sm mt-4" onClick={() => { if (confirm("حساب و همهٔ داده‌های این دستگاه حذف شود؟")) onDelete(); }}>
-            <Trash2 className="w-4 h-4" /> حذف حساب و داده‌ها
+          <button className="btn btn-danger btn-sm mt-4" onClick={() => { void deleteAccountConfirmed(); }} disabled={deletingAccount}>
+            <Trash2 className="w-4 h-4" /> {deletingAccount ? "در حال حذف…" : "حذف حساب و داده‌ها"}
           </button>
         )}
       </div>

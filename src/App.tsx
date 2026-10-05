@@ -113,7 +113,7 @@ export default function App() {
     <ToastProvider>
       {user ? (
         <DataProvider key={`${user.id}:${gen}`} userId={user.id} fresh={consumeFresh()}>
-          <Shell user={user} onLogout={() => { void logout(!!user.guest).then(() => setUser(null)).catch((error: unknown) => console.error("Supabase sign-out failed:", error)); }} onDelete={() => { void deleteAccount(user.id, !!user.guest).then(() => setUser(null)).catch((error: unknown) => console.error("Sign-out after account cleanup failed:", error)); }} />
+          <Shell user={user} onLogout={() => { void logout(!!user.guest).then(() => setUser(null)).catch((error: unknown) => console.error("Supabase sign-out failed:", error)); }} onDelete={async () => { await deleteAccount(user.id, !!user.guest); setUser(null); }} />
         </DataProvider>
       ) : (
         <AuthScreen initialError={authError} onAuthed={(u) => { setUser(u); setGen((g) => g + 1); }} />
@@ -170,7 +170,7 @@ function AuthScreen({ initialError, onAuthed }: { initialError: string; onAuthed
             همهٔ درآمد و خرج‌تان یک‌جا، حتی آفلاین.
           </p>
           <div className="flex flex-wrap gap-2 mt-6">
-            {["تقویم شمسی", "PWA و آفلاین", "ربات تلگرام", "خروجی اکسل", "حذف با بازگشت ۳۰ ثانیه"].map((f) => (
+            {["تقویم شمسی", "PWA و آفلاین", "ربات تلگرام", "خروجی اکسل", "سطل زباله با نگه‌داری ۳۰روزه"].map((f) => (
               <span key={f} className="chip !cursor-default !py-1.5">{f}</span>
             ))}
           </div>
@@ -307,7 +307,7 @@ export function BrandMark() {
 }
 
 /* ================= پوستهٔ اصلی ================= */
-function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => void }) {
+function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => Promise<void> }) {
   const { state, mutate, getSyncSnapshot, markSyncClean, restore, purgeTrash } = useStore();
   const toast = useToast();
   const now = useNow();
@@ -642,7 +642,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
         </div>
       </nav>
 
-      <UndoBar />
+      <UndoBar onBrowse={() => setPage("settings")} />
       <TxModal open={quickAdd || !!smsReview} onClose={() => { setSmsReview(null); setQuickAdd(false); }} initialSms={smsReview ?? undefined} />
     </div>
   );
@@ -725,42 +725,33 @@ function AccentCycle() {
   );
 }
 
-function UndoBar() {
+function UndoBar({ onBrowse }: { onBrowse: () => void }) {
   const { state, restore, purgeTrash } = useStore();
-  const now = useNow(200);
-  useEffect(() => { purgeTrash(); }, [now, purgeTrash]);
-  const pending = state.trash
-    .map((e) => ({ e, remaining: e.until - now.getTime() }))
-    .filter((x) => x.remaining > 0)
-    .sort((a, b) => b.e.until - a.e.until);
-  if (pending.length === 0) return null;
+  const now = useNow(1000);
+  const purgeMinute = Math.floor(now.getTime() / 60000);
+  useEffect(() => { purgeTrash(); }, [purgeMinute, purgeTrash]);
+  const latest = state.trash
+    .filter((entry) => entry.until > now.getTime())
+    .sort((a, b) => (b.deletedAt ?? b.until - 30000) - (a.deletedAt ?? a.until - 30000))[0];
+  const deletedAt = latest?.deletedAt ?? (latest ? latest.until - 30000 : 0);
+  if (!latest || now.getTime() - deletedAt > 10000) return null;
   return (
     <div className="fixed bottom-20 lg:bottom-6 inset-x-0 z-[110] px-4 pointer-events-none no-print">
-      <div className="pointer-events-auto max-w-lg mx-auto grid gap-2">
-        {pending.map(({ e, remaining }) => {
-          const secs = Math.ceil(remaining / 1000);
-          return (
-            <div key={e.key} className="rounded-2xl border overflow-hidden slide-up shadow-2xl"
-              style={{ background: "var(--fp-bg2)", borderColor: "color-mix(in srgb, var(--fp-accent) 50%, transparent)" }}>
-              <div className="flex items-center gap-3 px-4 py-3">
-                <span className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)", color: "var(--fp-accent)" }}>
-                  <RotateCcw className="w-4 h-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12.5px] font-black truncate">«{e.label}» حذف شد</p>
-                  <p className="text-[10.5px] font-bold tabular mt-0.5" style={{ color: "var(--fp-accent)" }}>
-                    {faNum(secs)} ثانیه تا حذف دائم
-                  </p>
-                </div>
-                <button className="btn btn-gold btn-sm" onClick={() => restore(e.key)}>بازگردانی</button>
-                <button className="icon-btn !w-8 !h-8" onClick={purgeTrash} title="حذف فوری همه"><X className="w-4 h-4" /></button>
-              </div>
-              <div className="h-1" style={{ background: "var(--fp-bg3)" }}>
-                <div className="h-full transition-[width] duration-200 ease-linear" style={{ width: `${(remaining / 30000) * 100}%`, background: "var(--fp-accent)" }} />
-              </div>
-            </div>
-          );
-        })}
+      <div className="pointer-events-auto max-w-lg mx-auto rounded-2xl border slide-up shadow-2xl"
+        style={{ background: "var(--fp-bg2)", borderColor: "color-mix(in srgb, var(--fp-accent) 50%, transparent)" }}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="w-8 h-8 rounded-lg grid place-items-center shrink-0" style={{ background: "color-mix(in srgb, var(--fp-accent) 15%, transparent)", color: "var(--fp-accent)" }}>
+            <RotateCcw className="w-4 h-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[12.5px] font-black truncate">«{latest.label}» حذف شد</p>
+            <p className="text-[10.5px] font-bold tabular mt-0.5" style={{ color: "var(--fp-accent)" }}>
+              تا ۳۰ روز در سطل زباله قابل بازیابی است
+            </p>
+          </div>
+          <button className="btn btn-gold btn-sm" onClick={() => restore(latest.key)}>بازگردانی</button>
+          <button className="btn btn-ghost btn-sm" onClick={onBrowse}>سطل زباله</button>
+        </div>
       </div>
     </div>
   );

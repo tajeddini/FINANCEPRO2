@@ -83,8 +83,9 @@ export interface Asset { id: ID; name: string; buyPrice: number; nowPrice: numbe
 export interface Subscription { id: ID; name: string; amount: number; cycle: "monthly" | "yearly"; renew: string; }
 export interface ActivityLog { id: ID; at: number; text: string; }
 export interface TelegramUser { id: ID; name: string; username: string; joined: number; }
-export interface TrashEntry { key: string; table: string; item: unknown; until: number; label: string; }
+export interface TrashEntry { key: string; table: string; item: unknown; deletedAt?: number; until: number; label: string; }
 export interface Tombstone { table: TableName; id: ID; at: number; }
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface Prefs {
   theme: "dark" | "light";
@@ -422,6 +423,7 @@ interface Store {
   markSyncClean: (generation: number) => void;
   trashItem: (table: TableName, id: string, label: string) => void;
   restore: (key: string) => void;
+  discardTrash: (key: string) => void;
   purgeTrash: () => void;
 }
 
@@ -518,10 +520,11 @@ export function DataProvider({ userId, fresh = false, children }: {
       const arr = d[table] as { id: ID }[];
       const item = arr.find((x) => x.id === id);
       if (!item) return;
+      const deletedAt = Date.now();
       d[table] = arr.filter((x) => x.id !== id) as never;
       d.trash = [...d.trash.filter((e) => e.table !== table || (e.item as { id: ID }).id !== id), {
-        key: uid(), table, item, until: Date.now() + 30000, label,
-      }].slice(-5);
+        key: uid(), table, item, deletedAt, until: deletedAt + TRASH_RETENTION_MS, label,
+      }];
       recordTombstones(d, [{ table, id }]);
     });
   };
@@ -542,6 +545,12 @@ export function DataProvider({ userId, fresh = false, children }: {
     });
   };
 
+  const discardTrash = (key: string) => {
+    mutate((d) => {
+      d.trash = d.trash.filter((entry) => entry.key !== key);
+    });
+  };
+
   const purgeTrash = () => {
     setState((prev) => {
       if (!prev.trash.some((e) => e.until <= Date.now())) return prev;
@@ -553,7 +562,7 @@ export function DataProvider({ userId, fresh = false, children }: {
   };
 
   return (
-    <Ctx.Provider value={{ state, mutate, getSyncSnapshot, markSyncClean, trashItem, restore, purgeTrash }}>
+    <Ctx.Provider value={{ state, mutate, getSyncSnapshot, markSyncClean, trashItem, restore, discardTrash, purgeTrash }}>
       {children}
     </Ctx.Provider>
   );

@@ -121,7 +121,7 @@ export default function DebtsPage() {
                         <button className="btn btn-ghost btn-sm" onClick={() => setQr(d.person)} title="QR درخواست وجه"><QrCode className="w-4 h-4" /></button>
                       )}
                       <EditBtn onClick={() => setEditDebt({ id: d.id, kind: d.kind, person: d.person, amount: d.amount, paid: d.paid, due: d.due, note: d.note })} />
-                      <DeleteBtn onClick={() => { trashItem("debts", d.id, `${d.kind === "debt" ? "بدهی" : "طلب"} ${d.person}`); toast("warn", "حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+                      <DeleteBtn onClick={() => { trashItem("debts", d.id, `${d.kind === "debt" ? "بدهی" : "طلب"} ${d.person}`); toast("warn", "حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
                     </div>
                   </div>
                 </div>
@@ -148,7 +148,7 @@ export default function DebtsPage() {
                       <p className="text-[14px] font-black flex items-center gap-2 min-w-0"><Repeat className="w-4 h-4 shrink-0" style={{ color: "var(--fp-accent)" }} /> <span className="truncate">{x.title}</span></p>
                       <div className="flex gap-1.5 shrink-0">
                         <EditBtn onClick={() => setInstForm({ id: x.id, title: x.title, total: String(x.total), months: String(x.months), amountPerMonth: String(x.amountPerMonth), start: x.start, accountId: x.accountId, categoryId: x.categoryId ?? "" })} />
-                        <DeleteBtn onClick={() => { trashItem("installments", x.id, x.title); toast("warn", "حذف شد — تا ۳۰ ثانیه قابل بازگشت."); }} />
+                        <DeleteBtn onClick={() => { trashItem("installments", x.id, x.title); toast("warn", "حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
                       </div>
                     </div>
                     <div className="flex justify-between text-[11.5px] font-bold mb-1.5">
