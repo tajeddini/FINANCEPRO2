@@ -140,11 +140,11 @@ export default function AppointmentsPage() {
             {dayEvents.length === 0 && <p className="text-[12px] font-bold py-4 text-center" style={{ color: "var(--fp-text3)" }}>قراری در این روز نیست.</p>}
             <div className="grid gap-2">
               {dayEvents.map((a) => (
-                <div key={a.id} className="group flex items-center gap-3 rounded-xl border px-3.5 py-2.5 transition-colors hover:border-[var(--fp-mint)]" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                <div key={a.id} className="group flex items-start gap-3 rounded-xl border px-3.5 py-2.5 transition-colors hover:border-[var(--fp-mint)]" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
                   <span className="text-[12px] font-black tabular px-2 py-1 rounded-lg" style={{ background: "var(--fp-bg3)", color: "var(--fp-accent)" }} dir="ltr">{faNum(a.time)}</span>
                   <div className="flex-1 min-w-0">
-                    <p className={`text-[13px] font-black truncate ${a.done ? "line-through opacity-50" : ""}`}>{a.title}</p>
-                    {a.note && <p className="text-[10.5px] font-bold truncate" style={{ color: "var(--fp-text3)" }}>{a.note}</p>}
+                    <p className={`text-[13px] font-black break-words [overflow-wrap:anywhere] ${a.done ? "line-through opacity-50" : ""}`}>{a.title}</p>
+                    {a.note && <p className="text-[10.5px] font-bold break-words [overflow-wrap:anywhere]" style={{ color: "var(--fp-text3)" }}>{a.note}</p>}
                   </div>
                   <button className="icon-btn !w-8 !h-8" title={a.done ? "برگرداندن" : "انجام شد"}
                     onClick={() => mutate((d) => { const x = d.appointments.find((y) => y.id === a.id); if (x) x.done = !x.done; })}>
@@ -183,7 +183,7 @@ export default function AppointmentsPage() {
                     <CalendarDays className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-black truncate">{a.title}</p>
+                    <p className="text-[13px] font-black break-words [overflow-wrap:anywhere]">{a.title}</p>
                     <p className="text-[10.5px] font-bold" style={{ color: "var(--fp-text3)" }}>{jalaliShort(a.date)} · ساعت {faNum(a.time)}</p>
                   </div>
                   {a.date === todayISO() && <span className="chip !cursor-default" style={{ color: "var(--fp-coral)", borderColor: "var(--fp-coral)" }}>امروز</span>}

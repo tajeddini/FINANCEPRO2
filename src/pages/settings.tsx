@@ -384,7 +384,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
                   <div key={entry.key} className="flex flex-wrap items-center gap-3 rounded-xl border p-3"
                     style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-black truncate">{entry.label}</p>
+                      <p className="min-w-0 text-[12px] font-black truncate">{entry.label}</p>
                       <p className="text-[10.5px] font-bold mt-1" style={{ color: "var(--fp-text3)" }}>
                         حذف‌شده در {new Date(deletedAt).toLocaleString("fa-IR")}
                       </p>

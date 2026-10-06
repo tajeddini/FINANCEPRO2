@@ -119,7 +119,7 @@ export default function DebtsPage() {
                       <span className="truncate">{d.kind === "custody" ? `امانت متعلق به ${d.person}` : d.person}</span>
                     </p>
                     {d.kind === "custody" && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-accent)" }}>وجه متعلق به دیگری · نزد شما نگه‌داری می‌شود</p>}
-                    {d.note && <p className="text-[10.5px] font-bold mt-0.5 truncate" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
+                    {d.note && <p className="min-w-0 text-[10.5px] font-bold mt-0.5 break-words [overflow-wrap:anywhere]" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
                     {d.due && d.kind !== "custody" && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>سررسید: {faDate(d.due)}</p>}
                   </div>
                   <div className="text-end shrink-0">

@@ -195,7 +195,7 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
                   </button>
                 );
                 return (
-                  <div key={tx.id} className="flex items-center gap-2.5 px-4 py-2.5 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_3%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
+                  <div key={tx.id} className="flex items-start gap-2.5 px-4 py-2.5 border-b last:border-b-0 transition-colors hover:bg-[color-mix(in_srgb,var(--fp-mint)_3%,transparent)]" style={{ borderColor: "var(--fp-border2)" }}>
                     {/* آیکون دسته */}
                     <CatGlyph icon={c?.icon} color={c?.color} className="w-9 h-9 rounded-xl shrink-0" iconClass="w-4.5 h-4.5" />
 
@@ -217,7 +217,7 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
                       </p>
                       <div className="flex items-center gap-1 md:hidden mt-0.5">
                         {hasDetail ? (
-                          <p className="flex-1 min-w-0 truncate text-[11px] leading-5 font-medium" style={{ color: "var(--fp-text3)" }}>{detail}</p>
+                          <p className="flex-1 min-w-0 text-[11px] leading-5 font-medium break-words [overflow-wrap:anywhere]" style={{ color: "var(--fp-text3)" }}>{detail}</p>
                         ) : (
                           <span className="flex-1" />
                         )}

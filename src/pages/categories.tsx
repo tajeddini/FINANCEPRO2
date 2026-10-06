@@ -96,9 +96,9 @@ export default function CategoriesPage() {
                       </p>
                       <div className="max-h-64 overflow-y-auto grid gap-1.5">
                         {selTxs.map((t) => (
-                          <div key={t.id} className="flex items-center gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--fp-bg2)" }}>
+                          <div key={t.id} className="flex items-start gap-2 rounded-lg px-2.5 py-1.5" style={{ background: "var(--fp-bg2)" }}>
                             <span className="text-[10.5px] font-bold shrink-0 whitespace-nowrap" style={{ color: "var(--fp-text3)" }}>{jalaliShort(t.date)}</span>
-                            <span className="text-[11.5px] font-black flex-1 min-w-0 truncate">{t.note || t.title}</span>
+                            <span className="text-[11.5px] font-black flex-1 min-w-0 break-words [overflow-wrap:anywhere]">{t.note || t.title}</span>
                             <span className="text-[11.5px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: "var(--fp-text)" }}>{faMoney(t.amount)}</span>
                           </div>
                         ))}

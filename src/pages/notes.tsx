@@ -91,12 +91,12 @@ export default function NotesPage() {
         <div className="columns-1 sm:columns-2 lg:columns-3 gap-4 [column-fill:balance]">
           {notes.map((n, i) => (
             <div key={n.id}
-              className="group relative break-inside-avoid mb-4 rounded-xl p-5 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rise-in"
+              className="group relative min-w-0 break-inside-avoid mb-4 rounded-xl p-5 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl rise-in"
               style={{ background: n.color, color: "#0d2c24", ["--d" as string]: `${Math.min(i, 6) * 60}ms`, transform: `rotate(${(i % 3 - 1) * 0.6}deg)` }}>
               <span className="absolute -top-1.5 right-6 w-3.5 h-3.5 rounded-full shadow-inner"
                 style={{ background: "color-mix(in srgb, #0d2c24 22%, transparent)", boxShadow: "inset 0 1px 2px rgba(0,0,0,.35)" }} />
               <div className="flex items-start justify-between gap-2">
-                <h3 className="font-display text-xl leading-snug">{n.title}</h3>
+                <h3 className="min-w-0 font-display text-xl leading-snug break-words [overflow-wrap:anywhere]">{n.title}</h3>
                 <button onClick={() => togglePin(n)} title={n.pinned ? "برداشتن سنجاق" : "سنجاق کردن"}
                   className="shrink-0 cursor-pointer transition-transform hover:scale-110"
                   style={{ color: n.pinned ? "#c2410c" : "rgba(13,44,36,0.4)" }}>
@@ -107,7 +107,7 @@ export default function NotesPage() {
                 <span className="flex items-center gap-1.5"><CalendarDays className="w-3.5 h-3.5" /> {faDate(n.date)}</span>
                 {n.cat && <span className="px-1.5 py-0.5 rounded-full" style={{ background: "rgba(13,44,36,0.12)" }}>{n.cat}</span>}
               </p>
-              {n.body && <p className="text-[13px] font-bold leading-7 mt-3 whitespace-pre-wrap">{n.body}</p>}
+              {n.body && <p className="text-[13px] font-bold leading-7 mt-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{n.body}</p>}
               <div className="flex justify-end gap-1.5 mt-4">
                 <button className="flex items-center gap-1 text-[11px] font-black px-2.5 py-1.5 rounded-lg cursor-pointer transition-transform hover:scale-105 active:scale-95"
                   style={{ background: "rgba(13,44,36,0.14)", color: "#0d2c24", border: "1px solid rgba(13,44,36,0.25)" }}

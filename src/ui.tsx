@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <span className="mt-0.5 shrink-0" style={{ color: t.kind === "ok" ? "var(--fp-mint)" : t.kind === "err" ? "var(--fp-coral)" : "var(--fp-accent)" }}>
               {t.kind === "ok" ? <Check className="w-4 h-4" strokeWidth={3} /> : t.kind === "err" ? <X className="w-4 h-4" strokeWidth={3} /> : <AlertTriangle className="w-4 h-4" />}
             </span>
-            <p className="text-[12.5px] font-bold leading-6">{t.text}</p>
+            <p className="min-w-0 flex-1 text-[12.5px] font-bold leading-6 break-words [overflow-wrap:anywhere]">{t.text}</p>
           </div>
         ))}
       </div>

@@ -608,9 +608,9 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
             </div>
           </header>
 
-          <main className="flex-1 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
+          <main className="flex-1 min-w-0 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
             <Suspense fallback={<PageLoader />}>
-            <div key={page + drill.key}>
+            <div key={page + drill.key} className="min-w-0">
               {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} onOpenSmsReview={(pending) => setSmsReview(pending)} />}
               {page === "daily" && <DailyPage />}
               {page === "transactions" && <TransactionsPage initQuery={drill.query} initCat={drill.cat} />}
