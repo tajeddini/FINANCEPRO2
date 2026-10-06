@@ -148,8 +148,8 @@ async function handle(chat_id, text) {
     const today = new Date();
     const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const txs = (state.transactions || []).filter((x) => x.date === iso);
-    const inc = txs.filter((x) => x.type === "income").reduce((s, x) => s + x.amount, 0);
-    const exp = txs.filter((x) => x.type === "expense").reduce((s, x) => s + x.amount, 0);
+    const inc = txs.filter((x) => x.type === "income" && !x.reimbursable).reduce((s, x) => s + x.amount, 0);
+    const exp = txs.filter((x) => x.type === "expense" && !x.reimbursable).reduce((s, x) => s + x.amount, 0);
     return send(chat_id, `📅 <b>امروز</b>\n\nدرآمد: ${faMoney(inc)}\nهزینه: ${faMoney(exp)}\nتراکنش: ${faNum(txs.length)}`);
   }
 
@@ -157,8 +157,8 @@ async function handle(chat_id, text) {
     const j = jalaliToday();
     const from = `${j.jy}-${String(j.jm).padStart(2, "0")}-01`;
     const txs = (state.transactions || []).filter((x) => x.date >= from);
-    const inc = txs.filter((x) => x.type === "income").reduce((s, x) => s + x.amount, 0);
-    const exp = txs.filter((x) => x.type === "expense").reduce((s, x) => s + x.amount, 0);
+    const inc = txs.filter((x) => x.type === "income" && !x.reimbursable).reduce((s, x) => s + x.amount, 0);
+    const exp = txs.filter((x) => x.type === "expense" && !x.reimbursable).reduce((s, x) => s + x.amount, 0);
     return send(chat_id, `📊 <b>${MONTHS_FA[j.jm - 1]} ${faNum(j.jy)}</b>\n\nدرآمد: ${faMoney(inc)}\nهزینه: ${faMoney(exp)}\nتراز: ${faMoney(inc - exp)}\nتراکنش: ${faNum(txs.length)}`);
   }
 

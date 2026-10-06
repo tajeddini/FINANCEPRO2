@@ -67,7 +67,7 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
 
   /* تحلیل رفتار خرج این ماه بر اساس برچسب‌ها */
   const tagAnalysis = useMemo(() => {
-    const expTxs = monthTxs.filter((x) => x.type === "expense");
+    const expTxs = monthTxs.filter((x) => x.type === "expense" && !x.reimbursable);
     const byTag = new Map<string, { label: string; color: string; sum: number; count: number }>();
     let untagged = 0;
     for (const x of expTxs) {

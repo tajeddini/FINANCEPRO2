@@ -14,7 +14,7 @@ export default function CategoriesPage() {
 
   const range = pf.range;
   const txs = useMemo(() =>
-    state.transactions.filter((t) => t.type === type && inRange(t.date, range)),
+    state.transactions.filter((t) => t.type === type && !t.reimbursable && inRange(t.date, range)),
     [state.transactions, type, range]);
   const total = sumTx(txs);
 

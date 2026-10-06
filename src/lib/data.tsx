@@ -25,9 +25,10 @@ export interface Tx {
   note?: string; tag?: ID; categoryId: ID; accountId: ID; payMethod?: string;
   createdAt: number; updatedAt?: number;
   source?: "app" | "bot";
+  reimbursable?: boolean; linkedDebtId?: ID;
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
-export interface Debt { id: ID; kind: "debt" | "credit" | "custody"; person: string; amount: number; paid: number; due?: string; note?: string; }
+export interface Debt { id: ID; kind: "debt" | "credit" | "custody"; person: string; amount: number; paid: number; due?: string; note?: string; linkedTransactionId?: ID; }
 
 /* ---------- اقساط با برنامهٔ ماهانه ---------- */
 export interface InstallmentMonth {
@@ -569,8 +570,10 @@ export function DataProvider({ userId, fresh = false, children }: {
 }
 
 /* ---------- گزینش‌گرها ---------- */
+export const isReportableTx = (t: Tx) => !t.reimbursable;
+
 export const sumTx = (txs: Tx[], type?: "income" | "expense") =>
-  txs.filter((t) => !type || t.type === type).reduce((s, t) => s + t.amount, 0);
+  txs.filter((t) => isReportableTx(t) && (!type || t.type === type)).reduce((s, t) => s + t.amount, 0);
 
 export const catById = (s: AppState, id: ID) => s.categories.find((c) => c.id === id);
 export const accById = (s: AppState, id: ID) => s.accounts.find((a) => a.id === id);

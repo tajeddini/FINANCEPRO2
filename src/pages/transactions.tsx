@@ -204,6 +204,11 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
                       <p className="flex items-center gap-1.5 min-w-0 text-[13px] leading-6">
                         <span className="font-black truncate" style={{ color: "var(--fp-text)" }}>{tx.title}</span>
                         {tx.source === "bot" && <Bot className="w-3 h-3 shrink-0" style={{ color: "var(--fp-sky)" }} />}
+                        {tx.reimbursable && (
+                          <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0 whitespace-nowrap" style={{ background: "color-mix(in srgb, var(--fp-accent) 14%, transparent)", color: "var(--fp-accent)" }}>
+                            امانی
+                          </span>
+                        )}
                         {tg && (
                           <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0 whitespace-nowrap" style={{ background: `color-mix(in srgb, ${tg.color} 14%, transparent)`, color: tg.color }}>
                             {tg.label}

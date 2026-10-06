@@ -96,7 +96,7 @@ export async function rescheduleReminders(state: AppState): Promise<void> {
     for (const b of state.budgets) {
       if (b.limit <= 0) continue;
       const spent = state.transactions
-        .filter((x) => x.categoryId === b.categoryId && x.type === "expense" && inRange(x.date, mr))
+        .filter((x) => x.categoryId === b.categoryId && x.type === "expense" && !x.reimbursable && inRange(x.date, mr))
         .reduce((a, x) => a + x.amount, 0);
       const pct = Math.round((spent / b.limit) * 100);
       if (pct < 80) continue;
