@@ -9,12 +9,12 @@ import { Head } from "./shared";
 export default function DebtsPage() {
   const { state, mutate, trashItem } = useStore();
   const toast = useToast();
-  const [tab, setTab] = useState<"debt" | "credit" | "inst">("debt");
+  const [tab, setTab] = useState<"debt" | "credit" | "custody" | "inst">("debt");
   const [adding, setAdding] = useState(false);
   const [payFor, setPayFor] = useState<{ id: string; person: string; remaining: number; kind: "debt" | "credit" } | null>(null);
   const [payAmt, setPayAmt] = useState("");
   const [payAcc, setPayAcc] = useState("");
-  const [editDebt, setEditDebt] = useState<{ id: string; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string } | null>(null);
+  const [editDebt, setEditDebt] = useState<{ id: string; kind: "debt" | "credit" | "custody"; person: string; amount: number; paid: number; due?: string; note?: string } | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [instForm, setInstForm] = useState<null | { id?: string; title: string; total: string; months: string; amountPerMonth: string; start: string; accountId: string; categoryId: string }>(null);
   const [payInst, setPayInst] = useState<{ inst: Installment; idx: number } | null>(null);
@@ -23,7 +23,7 @@ export default function DebtsPage() {
 
   const emi = useMemo(() => calcEMI(Number(loan.p) || 0, Number(loan.r) || 0, Number(loan.n) || 0), [loan]);
 
-  const list = state.debts.filter((d) => d.kind === tab);
+  const list = tab === "inst" ? [] : state.debts.filter((d) => d.kind === tab);
 
   const saveInst = () => {
     if (!instForm) return;
@@ -81,51 +81,65 @@ export default function DebtsPage() {
         <h1 className="font-display text-3xl md:text-4xl">بدهی‌ها و اقساط</h1>
         {tab !== "inst" && (
           <button className="btn btn-gold btn-sm" onClick={() => setAdding(true)}>
-            <Plus className="w-4 h-4" strokeWidth={3} /> {tab === "debt" ? "بدهی جدید" : "طلب جدید"}
+            <Plus className="w-4 h-4" strokeWidth={3} /> {tab === "debt" ? "بدهی جدید" : tab === "credit" ? "طلب جدید" : "ثبت امانت"}
           </button>
         )}
       </div>
 
       <div className="flex gap-1.5 rise-in" style={{ ["--d" as string]: "40ms" }}>
-        {[["debt", "بدهی‌ها"], ["credit", "طلب‌ها"], ["inst", "اقساط"]].map(([k, l]) => (
-          <button key={k} className={`chip ${tab === k ? "chip-on" : ""}`} onClick={() => setTab(k as "debt" | "credit" | "inst")}>{l}</button>
+        {([
+          ["debt", "بدهی‌ها"],
+          ["credit", "طلب‌ها"],
+          ["custody", "امانت‌ها"],
+          ["inst", "اقساط"],
+        ] as const).map(([k, label]) => (
+          <button key={k} className={`chip ${tab === k ? "chip-on" : ""}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
 
       {tab !== "inst" ? (
         <div className="grid gap-3">
-          {list.length === 0 && <div className="card rise-in"><Empty text={tab === "debt" ? "هیچ بدهی‌ای نداری — آفرین! 🎉" : "طلبی ثبت نشده."} /></div>}
+          {tab === "custody" && (
+            <div className="card p-4 border rise-in" style={{ borderColor: "color-mix(in srgb, var(--fp-accent) 45%, transparent)", background: "color-mix(in srgb, var(--fp-accent) 7%, transparent)" }}>
+              <p className="text-[13px] font-black">امانت‌های نزد من</p>
+              <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text2)" }}>
+                این مبالغ متعلق به دیگران است و در حساب شما نگه‌داری می‌شود؛ بدهی شخصی یا هزینهٔ شما نیست.
+              </p>
+            </div>
+          )}
+          {list.length === 0 && <div className="card rise-in"><Empty text={tab === "debt" ? "هیچ بدهی‌ای نداری — آفرین! 🎉" : tab === "credit" ? "طلبی ثبت نشده." : "امانتی ثبت نشده."} /></div>}
           {list.map((d) => {
             const remaining = d.amount - d.paid;
             return (
-              <div key={d.id} className="card p-4 rise-in">
+              <div key={d.id} className="card p-4 rise-in" style={d.kind === "custody" ? { borderColor: "color-mix(in srgb, var(--fp-accent) 35%, var(--fp-border))" } : undefined}>
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-black flex items-center gap-2">
-                      <span className="shrink-0">{d.kind === "debt" ? <ArrowUpLeft className="w-4 h-4" style={{ color: "var(--fp-coral)" }} /> : <ArrowDownRight className="w-4 h-4" style={{ color: "var(--fp-mint)" }} />}</span>
-                      <span className="truncate">{d.person}</span>
+                      <span className="shrink-0">{d.kind === "debt" ? <ArrowUpLeft className="w-4 h-4" style={{ color: "var(--fp-coral)" }} /> : <ArrowDownRight className="w-4 h-4" style={{ color: d.kind === "custody" ? "var(--fp-accent)" : "var(--fp-mint)" }} />}</span>
+                      <span className="truncate">{d.kind === "custody" ? `امانت متعلق به ${d.person}` : d.person}</span>
                     </p>
+                    {d.kind === "custody" && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-accent)" }}>وجه متعلق به دیگری · نزد شما نگه‌داری می‌شود</p>}
                     {d.note && <p className="text-[10.5px] font-bold mt-0.5 truncate" style={{ color: "var(--fp-text3)" }}>{d.note}</p>}
-                    {d.due && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>سررسید: {faDate(d.due)}</p>}
+                    {d.due && d.kind !== "custody" && <p className="text-[10.5px] font-bold mt-0.5" style={{ color: "var(--fp-text3)" }}>سررسید: {faDate(d.due)}</p>}
                   </div>
                   <div className="text-end shrink-0">
-                    <p className="text-[14px] font-black tabular whitespace-nowrap" style={{ color: tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)" }}>
-                      {faMoney(remaining)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>از {faMoney(d.amount)}</span>
+                    <p className="text-[14px] font-black tabular whitespace-nowrap" style={{ color: d.kind === "debt" ? "var(--fp-coral)" : d.kind === "custody" ? "var(--fp-accent)" : "var(--fp-mint)" }}>
+                      {faMoney(remaining)} <span className="text-[10px]" style={{ color: "var(--fp-text3)" }}>{d.kind === "custody" ? "امانت باقی‌مانده از" : "از"} {faMoney(d.amount)}</span>
                     </p>
                     <div className="flex flex-wrap gap-1.5 mt-1.5 justify-end">
-                      <button className="btn btn-mint btn-sm" disabled={remaining <= 0}
-                        onClick={() => { setPayFor({ id: d.id, person: d.person, remaining, kind: d.kind }); setPayAmt(""); setPayAcc(state.accounts[0]?.id ?? ""); }}>
-                        {tab === "debt" ? "پرداخت" : "دریافت"}
-                      </button>
+                      {d.kind !== "custody" && <button className="btn btn-mint btn-sm" disabled={remaining <= 0}
+                        onClick={() => { setPayFor({ id: d.id, person: d.person, remaining, kind: d.kind === "debt" ? "debt" : "credit" }); setPayAmt(""); setPayAcc(state.accounts[0]?.id ?? ""); }}>
+                        {d.kind === "debt" ? "پرداخت" : "دریافت"}
+                      </button>}
                       {d.kind === "credit" && remaining > 0 && (
                         <button className="btn btn-ghost btn-sm" onClick={() => setQr(d.person)} title="QR درخواست وجه"><QrCode className="w-4 h-4" /></button>
                       )}
                       <EditBtn onClick={() => setEditDebt({ id: d.id, kind: d.kind, person: d.person, amount: d.amount, paid: d.paid, due: d.due, note: d.note })} />
-                      <DeleteBtn onClick={() => { trashItem("debts", d.id, `${d.kind === "debt" ? "بدهی" : "طلب"} ${d.person}`); toast("warn", "حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
+                      <DeleteBtn onClick={() => { trashItem("debts", d.id, `${d.kind === "debt" ? "بدهی" : d.kind === "credit" ? "طلب" : "امانت"} ${d.person}`); toast("warn", "حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
                     </div>
                   </div>
                 </div>
-                <div className="mt-3"><Bar pct={(d.paid / d.amount) * 100} color={tab === "debt" ? "var(--fp-coral)" : "var(--fp-mint)"} /></div>
+                <div className="mt-3"><Bar pct={(d.paid / d.amount) * 100} color={d.kind === "debt" ? "var(--fp-coral)" : d.kind === "custody" ? "var(--fp-accent)" : "var(--fp-mint)"} /></div>
               </div>
             );
           })}
@@ -234,13 +248,13 @@ export default function DebtsPage() {
         </div>
       </Modal>
 
-      <Modal open={!!editDebt} onClose={() => setEditDebt(null)} title={editDebt?.kind === "debt" ? "ویرایش بدهی" : "ویرایش طلب"}>
+      <Modal open={!!editDebt} onClose={() => setEditDebt(null)} title={editDebt?.kind === "debt" ? "ویرایش بدهی" : editDebt?.kind === "credit" ? "ویرایش طلب" : "ویرایش امانت"}>
         {editDebt && (
           <div className="grid gap-3.5">
             <Field label="شخص"><TInput value={editDebt.person} onChange={(e) => setEditDebt({ ...editDebt, person: e.target.value })} /></Field>
             <Field label="مبلغ کل (تومان)"><AmountInput value={String(editDebt.amount)} onChange={(v) => setEditDebt({ ...editDebt, amount: Number(v) || 0 })} /></Field>
-            <Field label="پرداخت‌شده تاکنون (تومان)"><AmountInput value={String(editDebt.paid)} onChange={(v) => setEditDebt({ ...editDebt, paid: Number(v) || 0 })} /></Field>
-            <Field label="سررسید (شمسی)"><JalaliPicker value={editDebt.due ?? todayISO()} onChange={(v) => setEditDebt({ ...editDebt, due: v })} /></Field>
+            <Field label={editDebt.kind === "custody" ? "بازگردانده‌شده تاکنون (تومان)" : "پرداخت‌شده تاکنون (تومان)"}><AmountInput value={String(editDebt.paid)} onChange={(v) => setEditDebt({ ...editDebt, paid: Number(v) || 0 })} /></Field>
+            {editDebt.kind !== "custody" && <Field label="سررسید (شمسی)"><JalaliPicker value={editDebt.due ?? todayISO()} onChange={(v) => setEditDebt({ ...editDebt, due: v })} /></Field>}
             <Field label="یادداشت"><TInput value={editDebt.note ?? ""} onChange={(e) => setEditDebt({ ...editDebt, note: e.target.value })} /></Field>
             <div className="flex justify-end gap-2 mt-1">
               <button className="btn btn-ghost" onClick={() => setEditDebt(null)}>انصراف</button>
@@ -252,7 +266,7 @@ export default function DebtsPage() {
                     person: editDebt.person.trim(), amount: editDebt.amount,
                     paid: Math.min(editDebt.paid, editDebt.amount), due: editDebt.due, note: editDebt.note?.trim() || undefined,
                   });
-                }, `ویرایش ${editDebt.kind === "debt" ? "بدهی" : "طلب"} «${editDebt.person.trim()}»`);
+                }, `ویرایش ${editDebt.kind === "debt" ? "بدهی" : editDebt.kind === "credit" ? "طلب" : "امانت"} «${editDebt.person.trim()}»`);
                 toast("ok", "ویرایش ذخیره شد.");
                 setEditDebt(null);
               }}>ذخیرهٔ تغییرات</button>
@@ -385,24 +399,25 @@ function toEnDigitsLocal(s: string): string {
   return s.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 }
 
-function AddDebtForm({ kind, onDone }: { kind: "debt" | "credit"; onDone: () => void }) {
+function AddDebtForm({ kind, onDone }: { kind: "debt" | "credit" | "custody"; onDone: () => void }) {
   const { mutate } = useStore();
   const [person, setPerson] = useState("");
   const [amount, setAmount] = useState("");
   const [due, setDue] = useState(todayISO());
   const [note, setNote] = useState("");
   return (
-    <Modal open onClose={onDone} title={kind === "debt" ? "ثبت بدهی جدید" : "ثبت طلب جدید"}>
+    <Modal open onClose={onDone} title={kind === "debt" ? "ثبت بدهی جدید" : kind === "credit" ? "ثبت طلب جدید" : "ثبت امانت"}>
       <div className="grid gap-3">
-        <Field label="طرف حساب"><TInput value={person} onChange={(e) => setPerson(e.target.value)} placeholder="مثلاً: رضا" /></Field>
+        <Field label={kind === "custody" ? "صاحب وجه" : "طرف حساب"}><TInput value={person} onChange={(e) => setPerson(e.target.value)} placeholder="مثلاً: رضا" /></Field>
         <Field label="مبلغ (تومان)"><AmountInput value={amount} onChange={setAmount} /></Field>
-        <Field label="سررسید"><JalaliPicker value={due} onChange={setDue} /></Field>
+        {kind !== "custody" && <Field label="سررسید"><JalaliPicker value={due} onChange={setDue} /></Field>}
+        {kind === "custody" && <p className="text-[11px] font-bold leading-5" style={{ color: "var(--fp-text3)" }}>این مبلغ از قبل در موجودی حساب شماست و متعلق به {person.trim() || "شخص دیگری"} است؛ این ثبت فقط برای تفکیک و گزارش امانت است.</p>}
         <Field label="یادداشت"><TInput value={note} onChange={(e) => setNote(e.target.value)} /></Field>
         <button className="btn btn-gold mt-1" onClick={() => {
           if (!person.trim() || !Number(amount)) return;
           mutate((d) => {
             d.debts.push({ id: uid(), kind, person: person.trim(), amount: Number(amount), paid: 0, due, note: note.trim() || undefined });
-          }, `${kind === "debt" ? "بدهی" : "طلب"} «${person.trim()}» ثبت شد`);
+          }, `${kind === "debt" ? "بدهی" : kind === "credit" ? "طلب" : "امانت"} «${person.trim()}» ثبت شد`);
           setPerson(""); setAmount(""); setNote(""); onDone();
         }}>
           <Plus className="w-4 h-4" strokeWidth={3} /> ثبت

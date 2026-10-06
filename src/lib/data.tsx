@@ -27,7 +27,7 @@ export interface Tx {
   source?: "app" | "bot";
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
-export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; }
+export interface Debt { id: ID; kind: "debt" | "credit" | "custody"; person: string; amount: number; paid: number; due?: string; note?: string; }
 
 /* ---------- اقساط با برنامهٔ ماهانه ---------- */
 export interface InstallmentMonth {
