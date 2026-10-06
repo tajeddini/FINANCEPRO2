@@ -61,8 +61,15 @@ function buildSmartReport(s: AppState): string {
   });
   L.push("");
   L.push("## ۵. بدهی‌ها و طلب‌ها");
-  if (s.debts.length === 0) L.push("- موردی نیست.");
-  s.debts.forEach((d) => L.push(`- ${d.kind === "debt" ? "بدهی به" : "طلب از"} ${d.person}: ${faMoney(d.amount - d.paid)} باقی‌مانده`));
+  const obligations = s.debts.filter((d) => d.kind === "debt" || d.kind === "credit");
+  if (obligations.length === 0) L.push("- بدهی یا طلبی نیست.");
+  obligations.forEach((d) => L.push(`- ${d.kind === "debt" ? "بدهی به" : "طلب از"} ${d.person}: ${faMoney(d.amount - d.paid)} باقی‌مانده`));
+  const custodyEntries = s.debts.filter((d) => d.kind === "custody");
+  if (custodyEntries.length > 0) {
+    L.push("");
+    L.push("## امانت‌های نزد شما (وجه متعلق به دیگران، نه بدهی شخصی)");
+    custodyEntries.forEach((d) => L.push(`- امانت نزد شما از طرف ${d.person}: ${faMoney(d.amount - d.paid)} باقی‌مانده`));
+  }
   L.push("");
   L.push("## ۶. اهداف پس‌انداز");
   if (s.savings_goals.length === 0) L.push("- هدفی نیست.");

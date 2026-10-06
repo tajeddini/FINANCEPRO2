@@ -99,7 +99,7 @@ function summarySheet(wb: ExcelJS.Workbook, s: AppState, txs: Tx[], periodLabel:
   const netWorth = s.accounts.reduce((a, x) => a + x.balance, 0)
     + s.assets.reduce((a, x) => a + x.nowPrice * x.qty, 0)
     + s.currencies.reduce((a, x) => a + x.rate * x.qty, 0)
-    - s.debts.filter((d) => d.kind === "debt").reduce((a, d) => a + (d.amount - d.paid), 0)
+    - s.debts.filter((d) => d.kind === "debt" || d.kind === "custody").reduce((a, d) => a + (d.amount - d.paid), 0)
     + s.debts.filter((d) => d.kind === "credit").reduce((a, d) => a + (d.amount - d.paid), 0);
 
   let r = 5;
@@ -236,7 +236,7 @@ export async function exportExcel(s: AppState, opts?: { txs?: Tx[]; periodLabel?
     { h: "باقی‌مانده", w: 16 }, { h: "سررسید", w: 15 }, { h: "یادداشت", w: 26 },
   ]);
   s.debts.forEach((d) => w4.addRow({
-    c0: d.kind === "debt" ? "بدهی" : "طلب", c1: d.person, c2: d.amount, c3: d.paid,
+    c0: d.kind === "debt" ? "بدهی" : d.kind === "credit" ? "طلب" : "امانت (متعلق به دیگری)", c1: d.person, c2: d.amount, c3: d.paid,
     c4: d.amount - d.paid, c5: d.due ? faDate(d.due) : "—", c6: d.note ?? "—",
   }));
   zebra(w4, 2, s.debts.length + 1, [1], [3, 4, 5]);

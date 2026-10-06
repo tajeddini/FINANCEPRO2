@@ -187,10 +187,10 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
             {recent.map((x) => {
               const c = catById(state, x.categoryId);
               return (
-                <div key={x.id} className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
+                <div key={x.id} className="flex items-start gap-2.5 rounded-lg px-2 py-1.5">
                   <CatGlyph icon={c?.icon} color={c?.color} className="w-8 h-8 rounded-lg" iconClass="w-4 h-4" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12px] font-black truncate">{x.note || x.title}</p>
+                    <p className="text-[12px] font-black break-words [overflow-wrap:anywhere]">{x.note || x.title}</p>
                     <p className="text-[9.5px] font-bold flex items-center gap-1" style={{ color: "var(--fp-text3)" }}>
                       {jalaliShort(x.date)}
                       {x.source === "bot" && <span className="flex items-center gap-0.5" style={{ color: "var(--fp-sky)" }}><Bot className="w-3 h-3" /> ربات</span>}

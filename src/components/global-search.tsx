@@ -176,7 +176,7 @@ export function GlobalSearch({ onNavigate }: {
                   <button key={t.id} onClick={() => onNavigate("transactions", { query: t.note || t.title })}
                     className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-start cursor-pointer hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
                     <CatGlyph icon={c?.icon} color={c?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
-                    <span className="flex-1 text-[12px] font-bold truncate">{t.note || t.title}</span>
+                    <span className="min-w-0 flex-1 text-[12px] font-bold truncate">{t.note || t.title}</span>
                     <span className="text-[11px] font-black tabular" style={{ color: t.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                       {t.type === "income" ? "+" : "−"}{faNum(t.amount.toLocaleString("fa-IR"))}
                     </span>
@@ -192,7 +192,7 @@ export function GlobalSearch({ onNavigate }: {
                 <button key={n.id} onClick={() => onNavigate("notes")}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start cursor-pointer hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
                   <StickyNote className="w-4 h-4 shrink-0" style={{ color: "var(--fp-accent)" }} />
-                  <span className="text-[12px] font-bold truncate">{n.title}</span>
+                  <span className="min-w-0 flex-1 text-[12px] font-bold truncate">{n.title}</span>
                 </button>
               ))}
             </div>
@@ -204,7 +204,7 @@ export function GlobalSearch({ onNavigate }: {
                 <button key={a.id} onClick={() => onNavigate("appointments")}
                   className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start cursor-pointer hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
                   <CalendarDays className="w-4 h-4 shrink-0" style={{ color: "var(--fp-sky)" }} />
-                  <span className="text-[12px] font-bold truncate">{a.title}</span>
+                  <span className="min-w-0 flex-1 text-[12px] font-bold truncate">{a.title}</span>
                 </button>
               ))}
             </div>
@@ -216,7 +216,7 @@ export function GlobalSearch({ onNavigate }: {
                 <button key={c.id} onClick={() => onNavigate("transactions", { cat: c.id })}
                   className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-start cursor-pointer hover:bg-[color-mix(in_srgb,var(--fp-mint)_7%,transparent)]">
                   <CatGlyph icon={c.icon} color={c.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
-                  <span className="text-[12px] font-bold truncate">{c.name}</span>
+                  <span className="min-w-0 flex-1 text-[12px] font-bold truncate">{c.name}</span>
                 </button>
               ))}
             </div>

@@ -28,7 +28,7 @@ export interface Tx {
   reimbursable?: boolean; linkedDebtId?: ID;
 }
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
-export interface Debt { id: ID; kind: "debt" | "credit"; person: string; amount: number; paid: number; due?: string; note?: string; linkedTransactionId?: ID; }
+export interface Debt { id: ID; kind: "debt" | "credit" | "custody"; person: string; amount: number; paid: number; due?: string; note?: string; linkedTransactionId?: ID; }
 
 /* ---------- اقساط با برنامهٔ ماهانه ---------- */
 export interface InstallmentMonth {

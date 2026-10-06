@@ -98,7 +98,7 @@ export default function DailyPage() {
                   className="flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-start cursor-pointer transition-all hover:-translate-y-0.5"
                   style={{ borderColor: a.done ? "var(--fp-border)" : "color-mix(in srgb, var(--fp-mint) 40%, transparent)", background: a.done ? "var(--fp-bg)" : "color-mix(in srgb, var(--fp-mint) 6%, transparent)" }}>
                   <span className="font-display text-xl tabular shrink-0" dir="ltr" style={{ color: a.done ? "var(--fp-text3)" : "var(--fp-accent)" }}>{faNum(a.time)}</span>
-                  <span className={`flex-1 text-[12.5px] font-black ${a.done ? "line-through opacity-60" : ""}`}>{a.title}</span>
+                  <span className={`min-w-0 flex-1 text-[12.5px] font-black break-words [overflow-wrap:anywhere] ${a.done ? "line-through opacity-60" : ""}`}>{a.title}</span>
                   <span className="w-5 h-5 rounded-md grid place-items-center shrink-0 border"
                     style={{ borderColor: a.done ? "var(--fp-mint)" : "var(--fp-border2)", background: a.done ? "var(--fp-mint)" : "transparent" }}>
                     {a.done && <Check className="w-3.5 h-3.5" strokeWidth={3.5} style={{ color: "#071b16" }} />}
@@ -121,7 +121,7 @@ export default function DailyPage() {
                 <div key={i} className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 border"
                   style={{ borderColor: `color-mix(in srgb, ${r.color} 35%, transparent)`, background: `color-mix(in srgb, ${r.color} 7%, transparent)` }}>
                   <span style={{ color: r.color }} className="shrink-0">{r.icon}</span>
-                  <span className="text-[12px] font-bold leading-6">{r.text}</span>
+                  <span className="min-w-0 flex-1 text-[12px] font-bold leading-6 break-words [overflow-wrap:anywhere]">{r.text}</span>
                 </div>
               ))}
             </div>
@@ -140,9 +140,9 @@ export default function DailyPage() {
             {todayTxs.map((x) => {
               const c = state.categories.find((cc) => cc.id === x.categoryId);
               return (
-                <div key={x.id} className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5" style={{ background: "var(--fp-bg)" }}>
+                <div key={x.id} className="flex items-start gap-2.5 rounded-xl px-3.5 py-2.5" style={{ background: "var(--fp-bg)" }}>
                   <CatGlyph icon={c?.icon} color={c?.color} className="w-7 h-7 rounded-lg" iconClass="w-3.5 h-3.5" />
-                  <span className="flex-1 text-[12px] font-black truncate">{x.note || x.title}</span>
+                  <span className="min-w-0 flex-1 text-[12px] font-black break-words [overflow-wrap:anywhere]">{x.note || x.title}</span>
                   <span className="text-[12px] font-black tabular shrink-0" style={{ color: x.type === "income" ? "var(--fp-mint)" : "var(--fp-coral)" }}>
                     {x.type === "income" ? "+" : "−"}{faMoney(x.amount)}
                   </span>
