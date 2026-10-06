@@ -1,6 +1,6 @@
 /* ---------- صفحهٔ تنظیمات ---------- */
 import { useEffect, useRef, useState } from "react";
-import { Bell, Bot, Cloud, Copy, Download, KeyRound, Lock, Moon, Palette, RefreshCw, RotateCcw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
+import { Bell, Bot, Cloud, Copy, Download, Eye, EyeOff, KeyRound, Lock, Moon, Palette, RefreshCw, RotateCcw, Shield, Sparkles, Sun, Trash2, Upload } from "lucide-react";
 import { migrateLoadedState, useStore, type AppState } from "../lib/data";
 import { copyText, faNum, todayISO } from "../lib/utils";
 import type { User } from "../lib/auth";
@@ -9,7 +9,8 @@ import {
   pushToCloud, sameLedgerContent, saveCloud, testConnection,
 } from "../lib/cloud";
 import { applyAccent, THEMES } from "../lib/themes";
-import { Field, TInput, useToast } from "../ui";
+import { Field, TInput, TSelect, useToast } from "../ui";
+import { callAI } from "../lib/ai";
 import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import { requestNotificationPermission, rescheduleReminders } from "../lib/reminders";
 import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions } from "../lib/sms";
@@ -26,9 +27,18 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const [pin, setPin] = useState(p.pin ?? "");
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [aiApiUrl, setAiApiUrl] = useState(p.aiApiUrl ?? "");
+  const existingAiUrl = p.aiApiUrl?.replace(/\/+$/, "").replace(/\/chat\/completions$/i, "") ?? "";
+  const inferredProvider = p.aiProvider ??
+    (existingAiUrl.includes("generativelanguage.googleapis.com") ? "gemini"
+      : existingAiUrl.includes("openrouter.ai") ? "openrouter" : "custom");
+  const [aiProvider, setAiProvider] = useState<"gemini" | "openrouter" | "custom">(inferredProvider);
+  const [aiApiUrl, setAiApiUrl] = useState(existingAiUrl);
   const [aiApiKey, setAiApiKey] = useState(p.aiApiKey ?? "");
   const [aiModel, setAiModel] = useState(p.aiModel ?? "");
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiTestMessage, setAiTestMessage] = useState("");
+  const [aiTestOk, setAiTestOk] = useState<boolean | null>(null);
   const [botToken, setBotToken] = useState(p.botToken ?? "");
   const [transferCode, setTransferCode] = useState("");
   const [importCode, setImportCode] = useState("");
@@ -37,8 +47,42 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const saveAi = () => {
-    mutate((d) => { d.prefs.aiApiUrl = aiApiUrl.trim(); d.prefs.aiApiKey = aiApiKey.trim(); d.prefs.aiModel = aiModel.trim(); }, "تنظیمات هوش مصنوعی ذخیره شد");
+    mutate((d) => {
+      d.prefs.aiProvider = aiProvider;
+      d.prefs.aiApiUrl = aiApiUrl.trim();
+      d.prefs.aiApiKey = aiApiKey.trim();
+      d.prefs.aiModel = aiModel.trim();
+    }, "تنظیمات هوش مصنوعی ذخیره شد");
     toast("ok", "تنظیمات هوش مصنوعی ذخیره شد.");
+  };
+
+  const selectAIProvider = (provider: "gemini" | "openrouter" | "custom") => {
+    setAiProvider(provider);
+    setAiTestMessage("");
+    setAiTestOk(null);
+    if (provider === "gemini") setAiApiUrl("https://generativelanguage.googleapis.com/v1beta/openai/");
+    else if (provider === "openrouter") setAiApiUrl("https://openrouter.ai/api/v1");
+    else setAiApiUrl("");
+  };
+
+  const testAI = async () => {
+    setTestingAi(true);
+    setAiTestMessage("");
+    setAiTestOk(null);
+    try {
+      await callAI(
+        [{ role: "user", content: "فقط بنویس: اتصال موفق است." }],
+        { aiApiUrl, aiApiKey, aiModel },
+        { maxTokens: 24 },
+      );
+      setAiTestMessage("اتصال موفق بود؛ پاسخ از مدل دریافت شد.");
+      setAiTestOk(true);
+    } catch (error) {
+      setAiTestMessage(error instanceof Error ? error.message : "آزمایش اتصال ناموفق بود.");
+      setAiTestOk(false);
+    } finally {
+      setTestingAi(false);
+    }
   };
 
   const saveBot = () => {
@@ -315,15 +359,42 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
       </div>
 
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "140ms" }}>
-        <h3 className="text-[14px] font-black flex items-center gap-2"><Sparkles className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> هوش مصنوعی</h3>
+        <h3 className="text-[14px] font-black flex items-center gap-2"><Sparkles className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> تنظیمات هوش مصنوعی</h3>
         <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
-          برای تحلیل مستقیم گزارش‌ها با هوش مصنوعی، آدرس API و کلید را وارد کنید (سازگار با OpenAI و OpenRouter). کلید فقط روی همین مرورگر ذخیره می‌شود.
+          تنظیمات و کلید فقط در حافظهٔ محلی این دستگاه ذخیره می‌شوند و به سینک ابری فرستاده نمی‌شوند. درخواست‌ها مستقیماً از دستگاه شما به ارائه‌دهنده فرستاده می‌شوند.
         </p>
         <div className="grid gap-3 mt-4">
-          <Field label="آدرس API"><TInput dir="ltr" value={aiApiUrl} onChange={(e) => setAiApiUrl(e.target.value)} placeholder="https://api.openai.com/v1/chat/completions" /></Field>
-          <Field label="کلید API"><TInput dir="ltr" type="password" value={aiApiKey} onChange={(e) => setAiApiKey(e.target.value)} placeholder="sk-…" /></Field>
-          <Field label="مدل"><TInput dir="ltr" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder="gpt-4o-mini" /></Field>
-          <button className="btn btn-gold btn-sm self-start" onClick={saveAi}>ذخیرهٔ تنظیمات هوش مصنوعی</button>
+          <Field label="ارائه‌دهنده">
+            <TSelect value={aiProvider} onChange={(e) => {
+              const value = e.target.value;
+              if (value === "gemini" || value === "openrouter" || value === "custom") selectAIProvider(value);
+            }}>
+              <option value="gemini">Gemini (Google)</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="custom">سفارشی</option>
+            </TSelect>
+          </Field>
+          <Field label="آدرس پایه (Base URL)">
+            <TInput dir="ltr" value={aiApiUrl} onChange={(e) => setAiApiUrl(e.target.value)} placeholder="https://api.example.com/v1" autoComplete="url" />
+          </Field>
+          <Field label="کلید API">
+            <div className="flex gap-2">
+              <TInput dir="ltr" type={showAiKey ? "text" : "password"} value={aiApiKey} onChange={(e) => setAiApiKey(e.target.value)} placeholder="کلید API" autoComplete="new-password" className="flex-1 min-w-0" />
+              <button type="button" className="btn btn-ghost" onClick={() => setShowAiKey((visible) => !visible)} title={showAiKey ? "پنهان‌کردن کلید" : "نمایش کلید"} aria-label={showAiKey ? "پنهان‌کردن کلید" : "نمایش کلید"}>
+                {showAiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </Field>
+          <Field label="نام مدل">
+            <TInput dir="ltr" value={aiModel} onChange={(e) => setAiModel(e.target.value)} placeholder={aiProvider === "gemini" ? "gemini-2.0-flash" : aiProvider === "openrouter" ? "deepseek/deepseek-v4-flash:free" : "نام مدل ارائه‌دهنده"} autoComplete="off" />
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn btn-gold btn-sm" onClick={saveAi}>ذخیرهٔ تنظیمات</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => void testAI()} disabled={testingAi}>
+              <RefreshCw className={`w-4 h-4 ${testingAi ? "spin-slow" : ""}`} /> {testingAi ? "در حال آزمایش…" : "تست اتصال"}
+            </button>
+          </div>
+          {aiTestMessage && <p role="status" className="text-[11.5px] font-bold" style={{ color: aiTestOk ? "var(--fp-mint)" : "var(--fp-coral)" }}>{aiTestMessage}</p>}
         </div>
       </div>
 

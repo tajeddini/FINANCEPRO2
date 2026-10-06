@@ -618,7 +618,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               {page === "debts" && <DebtsPage />}
               {page === "appointments" && <AppointmentsPage />}
               {page === "notes" && <NotesPage />}
-              {page === "reports" && <ReportsPage />}
+              {page === "reports" && <ReportsPage onOpenSettings={() => go("settings")} />}
               {page === "manage" && <ManagePage />}
               {page === "settings" && (
                 <SettingsPage user={user} onLogout={onLogout} onDelete={onDelete} onLock={() => setLocked(true)} />

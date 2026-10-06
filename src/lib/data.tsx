@@ -106,6 +106,7 @@ export interface Prefs {
   aiApiUrl?: string;
   aiApiKey?: string;
   aiModel?: string;
+  aiProvider?: "gemini" | "openrouter" | "custom";
 }
 
 export interface AppState {
