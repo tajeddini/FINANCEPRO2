@@ -14,10 +14,21 @@ import { Sparkline } from "../widgets";
 import { EyeOff, EyeOn, Head } from "./shared";
 import { loadPendingSms, scanInboxForBankMessages, checkSmsPermissions, openSmsAppSettings, type PendingSmsTransaction } from "../lib/sms";
 import { useToast } from "../ui";
+import { hasAIConfig } from "../lib/ai";
+import { parseTransactionText, type TransactionDraft } from "../lib/ai-transaction";
 
-export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuickAdd: () => void; onOpenSmsReview: (pending: PendingSmsTransaction) => void; onScanSms?: () => void }) {
+export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTransactionDraft, onOpenSettings }: {
+  onQuickAdd: () => void;
+  onOpenSmsReview: (pending: PendingSmsTransaction) => void;
+  onOpenTransactionDraft: (draft: TransactionDraft) => void;
+  onOpenSettings: () => void;
+  onScanSms?: () => void;
+}) {
   const { state, mutate } = useStore();
   const toast = useToast();
+  const [transactionText, setTransactionText] = useState("");
+  const [parsingTransaction, setParsingTransaction] = useState(false);
+  const [transactionParseError, setTransactionParseError] = useState("");
   const t = jalaliToday();
   const scanFromDate = state.prefs.smsScanFromDate ?? t.jy + "-" + String(t.jm).padStart(2, "0") + "-" + String(t.jd).padStart(2, "0");
   const mr = jalaliMonthRange(t.jy, t.jm);
@@ -64,6 +75,25 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
   const recent = [...state.transactions].sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString())).slice(0, 6);
   const challenge = state.challenges[0];
   const currenciesTotal = state.currencies.reduce((s, c) => s + c.rate * c.qty, 0);
+  const submitNaturalTransaction = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!hasAIConfig(state.prefs)) {
+      setTransactionParseError("ابتدا ارائه‌دهنده و کلید هوش مصنوعی را در تنظیمات وارد کنید.");
+      return;
+    }
+    if (!transactionText.trim() || parsingTransaction) return;
+    setParsingTransaction(true);
+    setTransactionParseError("");
+    try {
+      const draft = await parseTransactionText(transactionText, state.categories, state.prefs);
+      onOpenTransactionDraft(draft);
+      setTransactionText("");
+    } catch (error) {
+      setTransactionParseError(error instanceof Error ? error.message : "متوجه نشدم، لطفاً واضح‌تر بنویسید یا دستی ثبت کنید.");
+    } finally {
+      setParsingTransaction(false);
+    }
+  };
 
   /* تحلیل رفتار خرج این ماه بر اساس برچسب‌ها */
   const tagAnalysis = useMemo(() => {
@@ -93,6 +123,40 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
           <Plus className="w-4 h-4" strokeWidth={3} /> ثبت سریع تراکنش
         </button>
       </div>
+
+      <section className="card p-5 rise-in" aria-labelledby="natural-transaction-title">
+        <h2 id="natural-transaction-title" className="text-[14px] font-black flex items-center gap-2">
+          <Sparkles className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} />
+          ثبت تراکنش با متن
+        </h2>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          جمله‌ات را بنویس؛ اطلاعات استخراج‌شده در فرم ثبت باز می‌شود تا بررسی و تأیید کنی.
+        </p>
+        {!hasAIConfig(state.prefs) ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[11.5px] font-bold" style={{ color: "var(--fp-text2)" }}>برای ثبت با هوش مصنوعی، ابتدا سرویس و کلید را تنظیم کنید.</p>
+            <button type="button" className="btn btn-gold btn-sm" onClick={onOpenSettings}>تنظیمات هوش مصنوعی</button>
+          </div>
+        ) : (
+          <form className="grid gap-2 mt-3" onSubmit={(event) => void submitNaturalTransaction(event)}>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                className="input min-w-0 flex-1"
+                value={transactionText}
+                onChange={(event) => setTransactionText(event.target.value)}
+                placeholder="چی خرج/دریافت کردی؟ (مثلاً: امروز ۴۵۰ تومن اسنپ دادم)"
+                aria-label="متن تراکنش"
+                disabled={parsingTransaction}
+              />
+              <button className="btn btn-mint shrink-0" type="submit" disabled={parsingTransaction || !transactionText.trim()}>
+                <Sparkles className={`w-4 h-4 ${parsingTransaction ? "spin-slow" : ""}`} />
+                {parsingTransaction ? "در حال تشخیص…" : "بررسی و ادامه"}
+              </button>
+            </div>
+            {transactionParseError && <p role="alert" className="text-[11.5px] font-bold" style={{ color: "var(--fp-coral)" }}>{transactionParseError}</p>}
+          </form>
+        )}
+      </section>
 
       {recentSms.length > 0 && (
         <div className="card p-5 rise-in" style={{ ["--d" as string]: "30ms" }}>

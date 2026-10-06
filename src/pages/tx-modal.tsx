@@ -5,6 +5,7 @@ import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../li
 import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
 import { markSmsUsed, matchAccountByCard, matchAccountByBankName, parseBankSMS, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
 import { AmountInput, Field, JalaliPicker, MicButton, Modal, TInput, TSelect, useToast } from "../ui";
+import type { TransactionDraft } from "../lib/ai-transaction";
 
 /* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
 const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
@@ -14,9 +15,9 @@ const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
 ];
 
 export default function TxModal({
-  open, onClose, editing, initialSms,
+  open, onClose, editing, initialSms, initialTransaction,
 }: {
-  open: boolean; onClose: () => void; editing?: Tx | null; initialSms?: PendingSmsTransaction;
+  open: boolean; onClose: () => void; editing?: Tx | null; initialSms?: PendingSmsTransaction; initialTransaction?: TransactionDraft;
 }) {
   const { state, mutate } = useStore();
   const toast = useToast();
@@ -44,10 +45,24 @@ export default function TxModal({
     if (!open) return;
     setDetected([]);
     setSmsOpen(false); setSmsText(""); setSmsResult(null);
-    if (initialSms) {
+    if (editing) {
+      setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
+      setAmount(String(editing.amount));
+      setCategoryId(editing.categoryId); setAccountId(editing.accountId);
+      setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTag(editing.tag ?? ""); setTouchedCat(true);
+      setReimbursable(editing.reimbursable === true); setReimbursablePerson("");
+    } else if (initialTransaction) {
+      setType(initialTransaction.type); setNote(initialTransaction.title);
+      setAmount(String(initialTransaction.amount)); setCategoryId(initialTransaction.categoryId);
+      setAccountId(state.accounts[0]?.id ?? ""); setDate(initialTransaction.date);
+      setPay("کارت"); setTag(""); setTouchedCat(true);
+      setReimbursable(false); setReimbursablePerson("");
+    } else if (initialSms) {
       setSmsText(initialSms.raw);
       const parseResult = parseBankSMS(initialSms.raw, initialSms.createdAt);
       setSmsResult(parseResult);
+      setNote(""); setTag(""); setPay("کارت"); setTouchedCat(false);
+      setReimbursable(false); setReimbursablePerson("");
       if (parseResult) {
         setType(parseResult.type);
         setAmount(String(parseResult.amountToman));
@@ -55,15 +70,13 @@ export default function TxModal({
         const accountMatch =
           matchAccountByCard(state.accounts, undefined, parseResult.accountIdentifier) ??
           matchAccountByBankName(state.accounts, initialSms.raw);
-        if (accountMatch) setAccountId(accountMatch.id);
+        setAccountId(accountMatch?.id ?? state.accounts[0]?.id ?? "");
+        setCategoryId(state.categories.find((category) => category.type === parseResult.type)?.id ?? "");
+      } else {
+        setType("expense"); setAmount(""); setDate(todayISO());
+        setAccountId(state.accounts[0]?.id ?? "");
+        setCategoryId(state.categories.find((category) => category.type === "expense")?.id ?? "");
       }
-    }
-    if (editing) {
-      setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
-      setAmount(String(editing.amount));
-      setCategoryId(editing.categoryId); setAccountId(editing.accountId);
-      setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTag(editing.tag ?? ""); setTouchedCat(true);
-      setReimbursable(editing.reimbursable === true); setReimbursablePerson("");
     } else {
       setType("expense"); setNote(""); setAmount(""); setDate(todayISO()); setPay("کارت"); setTag("");
       setReimbursable(false); setReimbursablePerson("");
