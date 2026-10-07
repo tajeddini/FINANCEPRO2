@@ -1,8 +1,9 @@
 /* ---------- فرم ثبت/ویرایش تراکنش + ماشین‌حساب ---------- */
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../lib/data";
 import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
+import { getTransactionWarnings } from "../lib/smart-insights";
 import { markSmsUsed, matchAccountByCard, matchAccountByBankName, parseBankSMS, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
 import { AmountInput, Field, JalaliPicker, MicButton, Modal, TInput, TSelect, useToast } from "../ui";
 import type { TransactionDraft } from "../lib/ai-transaction";
@@ -40,10 +41,12 @@ export default function TxModal({
   const [smsText, setSmsText] = useState("");
   const [calcOpen, setCalcOpen] = useState(false);
   const [smsResult, setSmsResult] = useState<SmsParse | null>(null);
+  const [pendingWarning, setPendingWarning] = useState<{ key: string; messages: string[] } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDetected([]);
+    setPendingWarning(null);
     setSmsOpen(false); setSmsText(""); setSmsResult(null);
     if (editing) {
       setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
@@ -141,11 +144,20 @@ export default function TxModal({
 
   const handleClose = () => { setSuggestTxId(""); setSuggestCat(""); onClose(); };
 
-  const submit = () => {
+  const submit = (confirmWarnings = false) => {
     const amt = Number(amount) || 0;
     if (amt <= 0) return toast("warn", "مبلغ باید بزرگ‌تر از صفر باشد.");
     const cat = state.categories.find((c) => c.id === categoryId);
     const label = cat?.name ?? "تراکنش";
+    if (!editing) {
+      const warningKey = JSON.stringify({ amt, type, categoryId, accountId, date });
+      const warnings = getTransactionWarnings(state.transactions, { amount: amt, type, categoryId, accountId });
+      if (warnings.length && (!confirmWarnings || pendingWarning?.key !== warningKey)) {
+        setPendingWarning({ key: warningKey, messages: warnings });
+        return;
+      }
+    }
+    setPendingWarning(null);
     if (editing) {
       mutate((d) => {
         const t = d.transactions.find((x) => x.id === editing.id);
@@ -416,9 +428,23 @@ export default function TxModal({
         </div>
       )}
 
+      {pendingWarning && (
+        <div role="alert" className="mt-4 rounded-xl border p-3.5 grid gap-2" style={{ borderColor: "color-mix(in srgb, var(--fp-accent) 55%, transparent)", background: "color-mix(in srgb, var(--fp-accent) 8%, var(--fp-bg))" }}>
+          <p className="flex items-center gap-2 text-[12px] font-black" style={{ color: "var(--fp-accent)" }}>
+            <AlertTriangle className="w-4 h-4 shrink-0" /> لطفاً پیش از ثبت دوباره بررسی کنید:
+          </p>
+          {pendingWarning.messages.map((message) => (
+            <p key={message} className="text-[11px] font-bold" style={{ color: "var(--fp-text2)" }}>{message}</p>
+          ))}
+          <button type="button" className="btn btn-gold btn-sm justify-self-start" onClick={() => submit(true)}>
+            با این حال ثبت شود
+          </button>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={handleClose}>انصراف</button>
-        <button className="btn btn-gold" onClick={submit}>
+        <button className="btn btn-gold" onClick={() => submit()}>
           <Plus className="w-4 h-4" strokeWidth={3} />
           {editing ? "ذخیرهٔ تغییرات" : "ثبت تراکنش"}
         </button>

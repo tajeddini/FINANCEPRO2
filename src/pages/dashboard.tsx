@@ -16,6 +16,7 @@ import { loadPendingSms, scanInboxForBankMessages, checkSmsPermissions, openSmsA
 import { useToast } from "../ui";
 import { hasAIConfig } from "../lib/ai";
 import { parseTransactionText, type TransactionDraft } from "../lib/ai-transaction";
+import { detectRecurringExpenses, forecastMonthEndBalance } from "../lib/smart-insights";
 
 export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTransactionDraft, onOpenSettings }: {
   onQuickAdd: () => void;
@@ -36,6 +37,11 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTrans
   const income = sumTx(monthTxs, "income");
   const expense = sumTx(monthTxs, "expense");
   const total = state.accounts.reduce((s, a) => s + a.balance, 0);
+  const monthEndForecast = useMemo(() => forecastMonthEndBalance(state), [state]);
+  const recurringPatterns = useMemo(
+    () => detectRecurringExpenses(state.transactions, state.categories).slice(0, 5),
+    [state.transactions, state.categories],
+  );
 
   const [hideBal, setHideBal] = useState(false);
   const [hideInc, setHideInc] = useState(false);
@@ -219,6 +225,38 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTrans
           foot={<Bar pct={income > 0 ? Math.min(100, (expense / income) * 100) : 0} color="var(--fp-coral)" />}
         />
       </div>
+
+      <section className="grid lg:grid-cols-2 gap-4 rise-in" aria-label="پیش‌بینی و هزینه‌های تکراری">
+        <div className="card p-5">
+          <Head icon={<Lightbulb className="w-4.5 h-4.5" />} title="برآورد موجودی پایان ماه" />
+          <p className="mt-3 text-[14px] font-black leading-7" style={{ color: "var(--fp-text)" }}>
+            با روند فعلی، موجودی احتمالی پایان ماه: {faMoney(monthEndForecast.balance)} تومان
+          </p>
+          <p className="text-[10.5px] font-bold leading-5 mt-1" style={{ color: "var(--fp-text3)" }}>
+            برآورد بر پایهٔ میانگین خرج روزانهٔ {faMoney(monthEndForecast.dailyExpense)} تومان است؛ تضمینی نیست.
+            {monthEndForecast.recurringIncome > 0 && ` درآمد دوره‌ایِ سررسیدنشده: ${faMoney(monthEndForecast.recurringIncome)} تومان.`}
+          </p>
+        </div>
+        <div className="card p-5">
+          <Head icon={<Receipt className="w-4.5 h-4.5" />} title="هزینه‌های تکراری شناسایی‌شده" />
+          {recurringPatterns.length === 0 ? (
+            <p className="mt-3 text-[11px] font-bold leading-5" style={{ color: "var(--fp-text3)" }}>
+              هنوز الگوی ماهانهٔ مطمئنی پیدا نشده؛ برای شناسایی، دست‌کم سه ثبت مشابه لازم است.
+            </p>
+          ) : (
+            <div className="grid gap-2 mt-3">
+              {recurringPatterns.map((pattern) => (
+                <p key={`${pattern.categoryId}-${pattern.dayOfMonth}-${pattern.amount}`} className="text-[11px] font-bold leading-5" style={{ color: "var(--fp-text2)" }}>
+                  {pattern.categoryName} · حدود {faMoney(pattern.amount)} تومان · هر ماه حدود روز {faNum(pattern.dayOfMonth)}ام
+                  <span className="block text-[10px]" style={{ color: "var(--fp-text3)" }}>
+                    احتمالاً {pattern.nextInDays === 0 ? "امروز" : `${faNum(pattern.nextInDays)} روز دیگر`} تکرار می‌شود
+                  </span>
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-5 lg:col-span-2 rise-in" style={{ ["--d" as string]: "80ms" }}>

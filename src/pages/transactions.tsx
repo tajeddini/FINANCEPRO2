@@ -1,11 +1,12 @@
 /* ---------- صفحهٔ تراکنش‌ها ---------- */
 import { useMemo, useRef, useState } from "react";
-import { Bot, CalendarDays, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
+import { Bot, CalendarDays, Download, PencilLine, Search, Trash2, Upload, X } from "lucide-react";
 import { accById, catById, getTags, sumTx, tagById, useStore, type ID, type Tx } from "../lib/data";
 import { faDate, faMoney, faNum, inRange, uid } from "../lib/utils";
 import { parseCSV, exportCSV, xlsxBytesToCsv } from "../excel";
 import { CatGlyph, Confirm, Empty, PeriodFilter, TInput, TSelect, usePeriod, useToast } from "../ui";
 import { base64ToBytes, base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
+import { parseTransactionSearch, transactionMatchesSearch } from "../lib/smart-insights";
 import TxModal from "./tx-modal";
 
 export default function TransactionsPage({ initQuery, initCat }: { initQuery?: string; initCat?: string }) {
@@ -23,17 +24,19 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
   const fileRef = useRef<HTMLInputElement>(null);
 
   const range = pf.range;
+  const naturalSearch = useMemo(() => parseTransactionSearch(q), [q]);
   const filtered = useMemo(() => {
     return state.transactions
       .filter((t) => (type === "all" || t.type === type))
-      .filter((t) => inRange(t.date, range))
+      .filter((t) => naturalSearch.type === undefined || t.type === naturalSearch.type)
+      .filter((t) => naturalSearch.range ? inRange(t.date, naturalSearch.range) : q.trim() ? true : inRange(t.date, range))
       .filter((t) => !catFilter || t.categoryId === catFilter)
       .filter((t) => !tagFilter || t.tag === tagFilter)
       .filter((t) => !accountFilter || t.accountId === accountFilter)
       .filter((t) => !payMethodFilter || t.payMethod === payMethodFilter)
-      .filter((t) => !q.trim() || (t.note || t.title).includes(q.trim()))
+      .filter((t) => !q.trim() || transactionMatchesSearch(t, naturalSearch, catById(state, t.categoryId)?.name ?? ""))
       .sort((a, b) => (b.date + b.createdAt).toString().localeCompare((a.date + a.createdAt).toString()));
-  }, [state.transactions, type, range, catFilter, tagFilter, accountFilter, payMethodFilter, q]);
+  }, [state, type, range, catFilter, tagFilter, accountFilter, payMethodFilter, q, naturalSearch]);
 
   const income = sumTx(filtered, "income");
   const expense = sumTx(filtered, "expense");
@@ -147,6 +150,15 @@ export default function TransactionsPage({ initQuery, initCat }: { initQuery?: s
           {state.payment_methods.map((pm) => <option key={pm.id} value={pm.name}>{pm.name}</option>)}
         </TSelect>
       </div>
+
+      {q.trim() && (
+        <div className="flex flex-wrap items-center gap-2" aria-live="polite">
+          <span className="chip chip-on !cursor-default">فیلتر فهمیده‌شده: {naturalSearch.label || "جست‌وجوی واژه‌ای در همهٔ تاریخ‌ها"}</span>
+          <button type="button" className="chip" onClick={() => setQ("")} aria-label="پاک کردن جست‌وجو">
+            <X className="w-3 h-3" /> پاک‌کردن
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5 rise-in" style={{ ["--d" as string]: "80ms" }}>
         <button className={`chip ${tagFilter === "" ? "chip-on" : ""}`} onClick={() => setTagFilter("")}>همهٔ برچسب‌ها</button>
