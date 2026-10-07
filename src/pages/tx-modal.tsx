@@ -100,7 +100,7 @@ export default function TxModal({
     const r = detectSmart(text, state.categories, state.accounts);
     const found: string[] = [];
     if (r.amount > 0) { setAmount(String(Math.round(r.amount))); found.push(`مبلغ: ${faMoney(r.amount)}`); }
-    if (r.categoryId) {
+    if (r.categoryId && !editing) {
       setCategoryId(r.categoryId); setTouchedCat(true);
       const c = state.categories.find((x) => x.id === r.categoryId);
       if (c) { setType(c.type); found.push(`دسته: ${c.name}`); }
