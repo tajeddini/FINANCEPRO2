@@ -198,12 +198,12 @@ export default function ReportsPage({ onOpenSettings }: { onOpenSettings: () => 
       const answer = await callAI([
         {
           role: "system",
-          content: "تو دستیار مالی شخصیِ فارسی‌زبان هستی. بر اساس خلاصهٔ آماری داده‌شده، به پرسش کاربر کوتاه، روشن و کاربردی پاسخ بده. همهٔ ارقام به تومان‌اند. داده‌ها فقط خلاصه‌های تجمیعی‌اند؛ اگر اطلاعات کافی نیست، محدودیت را صادقانه بگو و چیزی را حدس نزن.",
+          content: "IMPORTANT: You must respond ONLY in Persian (Farsi) language, using Persian script. Never respond in English, even if the question or data contains English words. Do not include any English text, translations, or transliterations in your answer, except for unavoidable proper nouns/brand names. | مهم: فقط و فقط به زبان فارسی (با خط فارسی) پاسخ بده. هیچ بخشی از پاسخ نباید انگلیسی باشد.\n\nتو دستیار مالی شخصیِ فارسی‌زبان هستی. بر اساس خلاصهٔ آماری داده‌شده، به پرسش کاربر کوتاه، روشن و کاربردی پاسخ بده. همهٔ ارقام به تومان‌اند. داده‌ها فقط خلاصه‌های تجمیعی‌اند؛ اگر اطلاعات کافی نیست، محدودیت را صادقانه بگو و چیزی را حدس نزن.",
         },
         ...history,
         {
           role: "user",
-          content: `خلاصهٔ مالی تجمیعی:\n${buildFinancialContext(state)}\n\nپرسش:\n${userQuestion}`,
+          content: `خلاصهٔ مالی تجمیعی:\n${buildFinancialContext(state)}\n\nپرسش:\n${userQuestion}\n\n(پاسخ را فقط به فارسی بنویس.)`,
         },
       ], state.prefs);
       setAiAnswers((answers) => [...answers, { question: userQuestion, answer }]);
