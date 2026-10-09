@@ -213,9 +213,9 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview }: { onQuick
             <div className="mt-3">
               <div className="flex flex-wrap justify-between gap-x-2 gap-y-1 text-[12px] font-black mb-1.5">
                 <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-text2)" }}>{faMoney(challenge.saved)} از {faMoney(challenge.target)}</span>
-                <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.min(100, Math.round((challenge.saved / challenge.target) * 100)))}</span>
+                <span className="tabular whitespace-nowrap" style={{ color: "var(--fp-accent)" }}>٪{faNum(Math.min(100, challenge.target ? Math.round((challenge.saved / challenge.target) * 100) : 0))}</span>
               </div>
-              <Bar pct={(challenge.saved / challenge.target) * 100} color="var(--fp-accent)" />
+              <Bar pct={challenge.target ? (challenge.saved / challenge.target) * 100 : 0} color="var(--fp-accent)" />
               <p className="text-[10.5px] font-bold mt-2" style={{ color: "var(--fp-text3)" }}>روزی {faMoney(challenge.perDay)} تومان</p>
             </div>
           </div>

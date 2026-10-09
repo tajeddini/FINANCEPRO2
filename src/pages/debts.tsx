@@ -140,7 +140,7 @@ export default function DebtsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-3"><Bar pct={(d.paid / d.amount) * 100} color={d.kind === "debt" ? "var(--fp-coral)" : d.kind === "custody" ? "var(--fp-accent)" : "var(--fp-mint)"} /></div>
+                <div className="mt-3"><Bar pct={d.amount ? (d.paid / d.amount) * 100 : 0} color={d.kind === "debt" ? "var(--fp-coral)" : d.kind === "custody" ? "var(--fp-accent)" : "var(--fp-mint)"} /></div>
               </div>
             );
           })}
