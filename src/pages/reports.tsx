@@ -1,13 +1,68 @@
 /* ---------- صفحهٔ گزارش‌ها و تحلیل ---------- */
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeftRight, BarChart3, Copy, Download, FileDown, Printer, Shield, Sparkles, Target, TrendingUp } from "lucide-react";
+import { ArrowLeftRight, BarChart3, Copy, Download, FileDown, MessageCircle, Printer, Shield, Sparkles, Target, TrendingUp } from "lucide-react";
 import { printOrPdf } from "../lib/pdf";
 import { BarChart, Bar as RBar, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
-import { catById, getTags, useStore, type AppState } from "../lib/data";
-import { addJalaliMonths, copyText, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange, jalaliToday } from "../lib/utils";
-import { Bar, Modal, PeriodFilter, usePeriod, useToast } from "../ui";
+import { catById, getTags, useStore, type AppState, type Tx } from "../lib/data";
+import { addJalaliMonths, copyText, faMoney, faNum, inRange, jalaliDateStr, jalaliMonthRange, jalaliToday, MONTHS_FA } from "../lib/utils";
+import { Bar, Field, Modal, PeriodFilter, TInput, usePeriod, useToast } from "../ui";
 import { computeBadges, computeHealthScore, Forecast, Heatmap, ScoreRing } from "../widgets";
 import { exportExcel, exportCSV } from "../excel";
+import { callAI, hasAIConfig, type AIMessage } from "../lib/ai";
+
+function getExpenseBreakdown(s: AppState, txs: Tx[]): Map<string, number> {
+  const byCategory = new Map<string, number>();
+  for (const tx of txs.filter((x) => x.type === "expense" && !x.reimbursable)) {
+    const name = catById(s, tx.categoryId)?.name ?? "نامشخص";
+    byCategory.set(name, (byCategory.get(name) ?? 0) + tx.amount);
+  }
+  return byCategory;
+}
+
+export function buildFinancialContext(s: AppState): string {
+  const today = jalaliToday();
+  const current = { jy: today.jy, jm: today.jm };
+  const previous = addJalaliMonths(today.jy, today.jm, -1);
+  const currentRange = jalaliMonthRange(current.jy, current.jm);
+  const currentTransactions = s.transactions.filter((tx) => inRange(tx.date, currentRange));
+  const currentBreakdown = getExpenseBreakdown(s, currentTransactions);
+  const periodSummary = (month: { jy: number; jm: number }) => {
+    const range = jalaliMonthRange(month.jy, month.jm);
+    const txs = s.transactions.filter((tx) => inRange(tx.date, range) && !tx.reimbursable);
+    const income = txs.filter((tx) => tx.type === "income").reduce((sum, tx) => sum + tx.amount, 0);
+    const expense = txs.filter((tx) => tx.type === "expense").reduce((sum, tx) => sum + tx.amount, 0);
+    const categories = [...getExpenseBreakdown(s, txs).entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([category, amount]) => ({ category, amount }));
+    return {
+      month: `${MONTHS_FA[month.jm - 1]} ${month.jy}`,
+      income,
+      expense,
+      net: income - expense,
+      savingsRatePercent: income > 0 ? Math.round(((income - expense) / income) * 100) : 0,
+      topExpenseCategories: categories,
+    };
+  };
+  const currentSummary = periodSummary(current);
+  const budgets = s.budgets.map((budget) => {
+    const category = catById(s, budget.categoryId);
+    const spent = currentBreakdown.get(category?.name ?? "نامشخص") ?? 0;
+    return {
+      category: category?.name ?? "نامشخص",
+      limit: budget.limit,
+      spent,
+      remaining: budget.limit - spent,
+    };
+  });
+  return JSON.stringify({
+    currency: "تومان",
+    currentMonth: currentSummary,
+    previousMonth: periodSummary(previous),
+    totalAccountBalance: s.accounts.reduce((sum, account) => sum + account.balance, 0),
+    budgets: budgets.slice(0, 8),
+  });
+}
 
 /* ---------- گزارش هوشمند — متن جامع و ساختاریافته برای تحلیل با هوش مصنوعی ---------- */
 function buildSmartReport(s: AppState): string {
@@ -30,11 +85,7 @@ function buildSmartReport(s: AppState): string {
   L.push(`- نرخ پس‌انداز: ٪${faNum(income > 0 ? Math.round(((income - expense) / income) * 100) : 0)}`);
   L.push("");
   L.push("## ۲. تفکیک هزینه بر اساس دسته");
-  const byCat = new Map<string, number>();
-  for (const x of txs.filter((x) => x.type === "expense")) {
-    const name = catById(s, x.categoryId)?.name ?? "نامشخص";
-    byCat.set(name, (byCat.get(name) ?? 0) + x.amount);
-  }
+  const byCat = getExpenseBreakdown(s, txs);
   [...byCat.entries()].sort((a, b) => b[1] - a[1]).forEach(([name, sum]) => {
     L.push(`- ${name}: ${faMoney(sum)} (٪${faNum(expense > 0 ? Math.round((sum / expense) * 100) : 0)} از کل هزینه)`);
   });
@@ -80,7 +131,7 @@ function buildSmartReport(s: AppState): string {
   return L.join("\n");
 }
 
-export default function ReportsPage() {
+export default function ReportsPage({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { state } = useStore();
   const toast = useToast();
   const t = jalaliToday();
@@ -126,7 +177,43 @@ export default function ReportsPage() {
   /* گزارش هوشمند */
   const [reportOpen, setReportOpen] = useState(false);
   const [reportText, setReportText] = useState("");
+  const [question, setQuestion] = useState("");
+  const [aiAnswers, setAiAnswers] = useState<{ question: string; answer: string }[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const aiConfigured = hasAIConfig(state.prefs);
   const openReport = () => { setReportText(buildSmartReport(state)); setReportOpen(true); };
+
+  const askAI = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const userQuestion = question.trim();
+    if (!userQuestion || aiLoading) return;
+    setAiError("");
+    setAiLoading(true);
+    const history: AIMessage[] = aiAnswers.slice(-3).flatMap(({ question: q, answer }) => [
+      { role: "user" as const, content: q },
+      { role: "assistant" as const, content: answer },
+    ]);
+    try {
+      const answer = await callAI([
+        {
+          role: "system",
+          content: "تو دستیار مالی شخصیِ فارسی‌زبان هستی. بر اساس خلاصهٔ آماری داده‌شده، به پرسش کاربر کوتاه، روشن و کاربردی پاسخ بده. همهٔ ارقام به تومان‌اند. داده‌ها فقط خلاصه‌های تجمیعی‌اند؛ اگر اطلاعات کافی نیست، محدودیت را صادقانه بگو و چیزی را حدس نزن.",
+        },
+        ...history,
+        {
+          role: "user",
+          content: `خلاصهٔ مالی تجمیعی:\n${buildFinancialContext(state)}\n\nپرسش:\n${userQuestion}`,
+        },
+      ], state.prefs);
+      setAiAnswers((answers) => [...answers, { question: userQuestion, answer }]);
+      setQuestion("");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "پاسخ‌گویی هوش مصنوعی ناموفق بود.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   /* چاپ / PDF — در اندروید PDF ساخته و ذخیره می‌شود */
   const pageRef = useRef<HTMLDivElement>(null);
@@ -167,6 +254,53 @@ export default function ReportsPage() {
       <div data-nopdf>
         <PeriodFilter pf={pf} count={<>{faNum(monthTxs.length)} تراکنش</>} className="rise-in" />
       </div>
+
+      <section className="card p-5 rise-in" data-nopdf aria-labelledby="financial-assistant-title">
+        <h2 id="financial-assistant-title" className="text-[14px] font-black flex items-center gap-2">
+          <MessageCircle className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} />
+          دستیار مالی — «چرا پول کم آوردم؟»
+        </h2>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          پرسش مالی‌ات را بپرس. فقط خلاصهٔ تجمیعی درآمد، هزینه، دسته‌ها و بودجه‌ها برای پاسخ به سرویس انتخابی فرستاده می‌شود؛ نه تاریخچهٔ خام تراکنش‌ها.
+        </p>
+        {!aiConfigured ? (
+          <div className="mt-4 rounded-xl border p-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+            <p className="text-[12px] font-bold" style={{ color: "var(--fp-text2)" }}>
+              برای استفاده، ارائه‌دهنده، مدل و کلید API را در تنظیمات وارد کنید.
+            </p>
+            <button className="btn btn-gold btn-sm" onClick={onOpenSettings}>رفتن به تنظیمات هوش مصنوعی</button>
+          </div>
+        ) : (
+          <>
+            {aiAnswers.length > 0 && (
+              <div className="grid gap-3 mt-4 max-h-[26rem] overflow-y-auto" aria-live="polite">
+                {aiAnswers.map((item, index) => (
+                  <div key={`${index}-${item.question}`} className="grid gap-2">
+                    <div className="justify-self-start max-w-[90%] rounded-xl px-3.5 py-2.5 text-[12px] font-bold leading-6" style={{ background: "color-mix(in srgb, var(--fp-accent) 12%, var(--fp-bg))" }}>
+                      {item.question}
+                    </div>
+                    <div className="justify-self-end w-full rounded-xl border px-3.5 py-2.5 text-[12px] font-medium leading-7 whitespace-pre-wrap" style={{ borderColor: "var(--fp-border)", background: "var(--fp-bg)" }}>
+                      {item.answer}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <form className="mt-4 grid gap-2" onSubmit={(event) => void askAI(event)}>
+              <Field label="پرسش شما">
+                <TInput value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="مثلاً: چرا این ماه هزینه‌ام بیشتر شد؟" disabled={aiLoading} />
+              </Field>
+              {aiError && <p role="alert" className="text-[11.5px] font-bold" style={{ color: "var(--fp-coral)" }}>{aiError}</p>}
+              <div className="flex justify-end">
+                <button className="btn btn-mint btn-sm" type="submit" disabled={aiLoading || !question.trim()}>
+                  <MessageCircle className={`w-4 h-4 ${aiLoading ? "spin-slow" : ""}`} />
+                  {aiLoading ? "در حال دریافت پاسخ…" : "پرسیدن از دستیار"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </section>
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="card p-5 flex flex-col items-center rise-in" style={{ ["--d" as string]: "60ms" }}>

@@ -21,6 +21,7 @@ import { GlobalSearch } from "./components/global-search";
 import { rescheduleReminders } from "./lib/reminders";
 import { startNativeSmsListener } from "./lib/sms";
 import type { PendingSmsTransaction } from "./lib/sms";
+import type { TransactionDraft } from "./lib/ai-transaction";
 import TxModal from "./pages/tx-modal";
 
 /* بارگذاری تنبل صفحه‌ها — هر صفحه فقط وقتی باز شود دانلود می‌شود */
@@ -315,6 +316,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const [drill, setDrill] = useState<{ cat?: string; query?: string; key: number }>({ key: 0 });
   const [quickAdd, setQuickAdd] = useState(false);
   const [smsReview, setSmsReview] = useState<PendingSmsTransaction | null>(null);
+  const [transactionDraft, setTransactionDraft] = useState<TransactionDraft | null>(null);
   const [locked, setLocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinErr, setPinErr] = useState(false);
@@ -611,14 +613,21 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
           <main className="flex-1 min-w-0 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
             <Suspense fallback={<PageLoader />}>
             <div key={page + drill.key} className="min-w-0">
-              {page === "dashboard" && <DashboardPage onQuickAdd={() => setQuickAdd(true)} onOpenSmsReview={(pending) => setSmsReview(pending)} />}
+              {page === "dashboard" && (
+                <DashboardPage
+                  onQuickAdd={() => setQuickAdd(true)}
+                  onOpenSmsReview={(pending) => setSmsReview(pending)}
+                  onOpenTransactionDraft={(draft) => setTransactionDraft(draft)}
+                  onOpenSettings={() => go("settings")}
+                />
+              )}
               {page === "daily" && <DailyPage />}
               {page === "transactions" && <TransactionsPage initQuery={drill.query} initCat={drill.cat} />}
               {page === "categories" && <CategoriesPage />}
               {page === "debts" && <DebtsPage />}
               {page === "appointments" && <AppointmentsPage />}
               {page === "notes" && <NotesPage />}
-              {page === "reports" && <ReportsPage />}
+              {page === "reports" && <ReportsPage onOpenSettings={() => go("settings")} />}
               {page === "manage" && <ManagePage />}
               {page === "settings" && (
                 <SettingsPage user={user} onLogout={onLogout} onDelete={onDelete} onLock={() => setLocked(true)} />
@@ -643,7 +652,12 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
       </nav>
 
       <UndoBar onBrowse={() => setPage("settings")} />
-      <TxModal open={quickAdd || !!smsReview} onClose={() => { setSmsReview(null); setQuickAdd(false); }} initialSms={smsReview ?? undefined} />
+      <TxModal
+        open={quickAdd || !!smsReview || !!transactionDraft}
+        onClose={() => { setSmsReview(null); setTransactionDraft(null); setQuickAdd(false); }}
+        initialSms={smsReview ?? undefined}
+        initialTransaction={transactionDraft ?? undefined}
+      />
     </div>
   );
 }

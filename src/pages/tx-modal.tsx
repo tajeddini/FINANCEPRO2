@@ -1,10 +1,12 @@
 /* ---------- فرم ثبت/ویرایش تراکنش + ماشین‌حساب ---------- */
 import { useEffect, useMemo, useState } from "react";
-import { Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Calculator, Check, MessageSquare, Plus, Sparkles, X } from "lucide-react";
 import { catById, detectSmart, getTags, useStore, type ID, type Tx } from "../lib/data";
 import { faMoney, faNum, groupInt, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
+import { getTransactionWarnings } from "../lib/smart-insights";
 import { markSmsUsed, matchAccountByCard, matchAccountByBankName, parseBankSMS, SMS_SAMPLES, type PendingSmsTransaction, type SmsParse } from "../lib/sms";
 import { AmountInput, Field, JalaliPicker, MicButton, Modal, TInput, TSelect, useToast } from "../ui";
+import type { TransactionDraft } from "../lib/ai-transaction";
 
 /* ---------- پیشنهاد هوشمند تگ بر اساس دسته ---------- */
 const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
@@ -14,9 +16,9 @@ const TAG_SUGGEST_KEYWORDS: { tag: string; words: string[] }[] = [
 ];
 
 export default function TxModal({
-  open, onClose, editing, initialSms,
+  open, onClose, editing, initialSms, initialTransaction,
 }: {
-  open: boolean; onClose: () => void; editing?: Tx | null; initialSms?: PendingSmsTransaction;
+  open: boolean; onClose: () => void; editing?: Tx | null; initialSms?: PendingSmsTransaction; initialTransaction?: TransactionDraft;
 }) {
   const { state, mutate } = useStore();
   const toast = useToast();
@@ -40,17 +42,32 @@ export default function TxModal({
   const [calcOpen, setCalcOpen] = useState(false);
   const [smsResult, setSmsResult] = useState<SmsParse | null>(null);
   const [smsAccountUnmatched, setSmsAccountUnmatched] = useState(false);
+  const [pendingWarning, setPendingWarning] = useState<{ key: string; messages: string[] } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setDetected([]);
+    setPendingWarning(null);
     setSmsOpen(false); setSmsText(""); setSmsResult(null);
     setSmsAccountUnmatched(false);
-    let matchedSmsAccountId: ID | undefined;
-    if (initialSms) {
+    if (editing) {
+      setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
+      setAmount(String(editing.amount));
+      setCategoryId(editing.categoryId); setAccountId(editing.accountId);
+      setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTag(editing.tag ?? ""); setTouchedCat(true);
+      setReimbursable(editing.reimbursable === true); setReimbursablePerson("");
+    } else if (initialTransaction) {
+      setType(initialTransaction.type); setNote(initialTransaction.title);
+      setAmount(String(initialTransaction.amount)); setCategoryId(initialTransaction.categoryId);
+      setAccountId(state.accounts[0]?.id ?? ""); setDate(initialTransaction.date);
+      setPay("کارت"); setTag(""); setTouchedCat(true);
+      setReimbursable(false); setReimbursablePerson("");
+    } else if (initialSms) {
       setSmsText(initialSms.raw);
       const parseResult = parseBankSMS(initialSms.raw, initialSms.createdAt);
       setSmsResult(parseResult);
+      setNote(""); setTag(""); setPay("کارت"); setTouchedCat(false);
+      setReimbursable(false); setReimbursablePerson("");
       if (parseResult) {
         setType(parseResult.type);
         setAmount(String(parseResult.amountToman));
@@ -58,25 +75,20 @@ export default function TxModal({
         const accountMatch =
           matchAccountByCard(state.accounts, undefined, parseResult.accountIdentifier) ??
           matchAccountByBankName(state.accounts, initialSms.raw);
-        matchedSmsAccountId = accountMatch?.id;
+        setAccountId(accountMatch?.id ?? "");
+        setSmsAccountUnmatched(!accountMatch);
+        setCategoryId(state.categories.find((category) => category.type === parseResult.type)?.id ?? "");
+      } else {
+        setType("expense"); setAmount(""); setDate(todayISO());
+        setAccountId("");
+        setSmsAccountUnmatched(true);
+        setCategoryId(state.categories.find((category) => category.type === "expense")?.id ?? "");
       }
-    }
-    if (editing) {
-      setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
-      setAmount(String(editing.amount));
-      setCategoryId(editing.categoryId); setAccountId(editing.accountId);
-      setDate(editing.date); setPay(editing.payMethod ?? "کارت"); setTag(editing.tag ?? ""); setTouchedCat(true);
-      setReimbursable(editing.reimbursable === true); setReimbursablePerson("");
     } else {
       setType("expense"); setNote(""); setAmount(""); setDate(todayISO()); setPay("کارت"); setTag("");
       setReimbursable(false); setReimbursablePerson("");
       setTouchedCat(false);
-      if (initialSms) {
-        setAccountId(matchedSmsAccountId ?? "");
-        setSmsAccountUnmatched(!matchedSmsAccountId);
-      } else {
-        setAccountId(state.accounts[0]?.id ?? "");
-      }
+      setAccountId(state.accounts[0]?.id ?? "");
       setCategoryId(state.categories.find((c) => c.type === "expense")?.id ?? "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,7 +104,7 @@ export default function TxModal({
     const r = detectSmart(text, state.categories, state.accounts);
     const found: string[] = [];
     if (r.amount > 0) { setAmount(String(Math.round(r.amount))); found.push(`مبلغ: ${faMoney(r.amount)}`); }
-    if (r.categoryId) {
+    if (r.categoryId && !editing) {
       setCategoryId(r.categoryId); setTouchedCat(true);
       const c = state.categories.find((x) => x.id === r.categoryId);
       if (c) { setType(c.type); found.push(`دسته: ${c.name}`); }
@@ -136,12 +148,21 @@ export default function TxModal({
 
   const handleClose = () => { setSuggestTxId(""); setSuggestCat(""); onClose(); };
 
-  const submit = () => {
+  const submit = (confirmWarnings = false) => {
     const amt = Number(amount) || 0;
     if (amt <= 0) return toast("warn", "مبلغ باید بزرگ‌تر از صفر باشد.");
     if (!accountId) return toast("warn", "لطفاً حساب را انتخاب کنید.");
     const cat = state.categories.find((c) => c.id === categoryId);
     const label = cat?.name ?? "تراکنش";
+    if (!editing) {
+      const warningKey = JSON.stringify({ amt, type, categoryId, accountId, date });
+      const warnings = getTransactionWarnings(state.transactions, { amount: amt, type, categoryId, accountId });
+      if (warnings.length && (!confirmWarnings || pendingWarning?.key !== warningKey)) {
+        setPendingWarning({ key: warningKey, messages: warnings });
+        return;
+      }
+    }
+    setPendingWarning(null);
     if (editing) {
       mutate((d) => {
         const t = d.transactions.find((x) => x.id === editing.id);
@@ -415,9 +436,23 @@ export default function TxModal({
         </div>
       )}
 
+      {pendingWarning && (
+        <div role="alert" className="mt-4 rounded-xl border p-3.5 grid gap-2" style={{ borderColor: "color-mix(in srgb, var(--fp-accent) 55%, transparent)", background: "color-mix(in srgb, var(--fp-accent) 8%, var(--fp-bg))" }}>
+          <p className="flex items-center gap-2 text-[12px] font-black" style={{ color: "var(--fp-accent)" }}>
+            <AlertTriangle className="w-4 h-4 shrink-0" /> لطفاً پیش از ثبت دوباره بررسی کنید:
+          </p>
+          {pendingWarning.messages.map((message) => (
+            <p key={message} className="text-[11px] font-bold" style={{ color: "var(--fp-text2)" }}>{message}</p>
+          ))}
+          <button type="button" className="btn btn-gold btn-sm justify-self-start" onClick={() => submit(true)}>
+            با این حال ثبت شود
+          </button>
+        </div>
+      )}
+
       <div className="flex justify-end gap-2 mt-5">
         <button className="btn btn-ghost" onClick={handleClose}>انصراف</button>
-        <button className="btn btn-gold" onClick={submit}>
+        <button className="btn btn-gold" onClick={() => submit()}>
           <Plus className="w-4 h-4" strokeWidth={3} />
           {editing ? "ذخیرهٔ تغییرات" : "ثبت تراکنش"}
         </button>
