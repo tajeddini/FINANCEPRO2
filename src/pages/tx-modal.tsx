@@ -41,6 +41,7 @@ export default function TxModal({
   const [smsText, setSmsText] = useState("");
   const [calcOpen, setCalcOpen] = useState(false);
   const [smsResult, setSmsResult] = useState<SmsParse | null>(null);
+  const [smsAccountUnmatched, setSmsAccountUnmatched] = useState(false);
   const [pendingWarning, setPendingWarning] = useState<{ key: string; messages: string[] } | null>(null);
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function TxModal({
     setDetected([]);
     setPendingWarning(null);
     setSmsOpen(false); setSmsText(""); setSmsResult(null);
+    setSmsAccountUnmatched(false);
     if (editing) {
       setType(editing.type); setNote(editing.note ?? (editing.title !== catById(state, editing.categoryId)?.name ? editing.title : ""));
       setAmount(String(editing.amount));
@@ -73,11 +75,13 @@ export default function TxModal({
         const accountMatch =
           matchAccountByCard(state.accounts, undefined, parseResult.accountIdentifier) ??
           matchAccountByBankName(state.accounts, initialSms.raw);
-        setAccountId(accountMatch?.id ?? state.accounts[0]?.id ?? "");
+        setAccountId(accountMatch?.id ?? "");
+        setSmsAccountUnmatched(!accountMatch);
         setCategoryId(state.categories.find((category) => category.type === parseResult.type)?.id ?? "");
       } else {
         setType("expense"); setAmount(""); setDate(todayISO());
-        setAccountId(state.accounts[0]?.id ?? "");
+        setAccountId("");
+        setSmsAccountUnmatched(true);
         setCategoryId(state.categories.find((category) => category.type === "expense")?.id ?? "");
       }
     } else {
@@ -147,6 +151,7 @@ export default function TxModal({
   const submit = (confirmWarnings = false) => {
     const amt = Number(amount) || 0;
     if (amt <= 0) return toast("warn", "مبلغ باید بزرگ‌تر از صفر باشد.");
+    if (!accountId) return toast("warn", "لطفاً حساب را انتخاب کنید.");
     const cat = state.categories.find((c) => c.id === categoryId);
     const label = cat?.name ?? "تراکنش";
     if (!editing) {
@@ -235,7 +240,8 @@ export default function TxModal({
     const matched =
       matchAccountByCard(state.accounts, undefined, r.accountIdentifier) ??
       matchAccountByBankName(state.accounts, source);
-    if (matched) setAccountId(matched.id);
+    setAccountId(matched?.id ?? "");
+    setSmsAccountUnmatched(!matched);
     toast("ok", r.type === "income"
       ? `واریز ${faMoney(r.amountToman)} تومانی شناسایی شد — فرم پر شد.`
       : `خرج ${faMoney(r.amountToman)} تومانی شناسایی شد — فرم پر شد.`);
@@ -385,9 +391,11 @@ export default function TxModal({
           </TSelect>
         </Field>
         <Field label="حساب">
-          <TSelect value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <TSelect value={accountId} onChange={(e) => { setAccountId(e.target.value); setSmsAccountUnmatched(false); }}>
+            <option value="">انتخاب حساب</option>
             {state.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </TSelect>
+          {smsAccountUnmatched && <p className="text-[11px] font-bold mt-1.5" style={{ color: "var(--fp-coral)" }}>حساب به‌صورت خودکار تشخیص داده نشد، لطفاً انتخاب کنید.</p>}
         </Field>
         <Field label="تاریخ (شمسی)"><JalaliPicker value={date} onChange={setDate} /></Field>
         <Field label="روش پرداخت">
