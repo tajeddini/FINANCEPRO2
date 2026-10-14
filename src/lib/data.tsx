@@ -1,5 +1,5 @@
 /* ---------- مدل داده + Store مرکزی + تشخیص هوشمند + تگ‌ها و یادداشت‌ها ---------- */
-import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   addDaysISO, addJalaliMonths, isoToJalali, jalaliMonthLen, jalaliToISO, jalaliToday,
   toEnDigits, todayISO, uid,
@@ -420,6 +420,9 @@ function recordTombstones(d: AppState, items: { table: TableName; id: ID }[], at
 
 interface Store {
   state: AppState;
+  recoveryNotice: { at: number; raw: string } | null;
+  dismissRecoveryNotice: () => void;
+  storageError: { at: number; message: string } | null;
   mutate: (fn: (draft: AppState) => void, log?: string) => void;
   getSyncSnapshot: () => { dirty: boolean; generation: number };
   markSyncClean: (generation: number) => void;
@@ -432,6 +435,110 @@ interface Store {
 const Ctx = createContext<Store>(null!);
 export const useStore = () => useContext(Ctx);
 
+interface LoadedData {
+  state: AppState;
+  recoveryNotice: { at: number; raw: string } | null;
+  storageError: { at: number; message: string } | null;
+  persistInitialState: boolean;
+}
+
+function saveCorruptBackup(storageKey: string, raw: string, at: number): boolean {
+  const backupPrefix = `${storageKey}__corrupt_`;
+  try {
+    const existing: { key: string; at: number }[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(backupPrefix)) continue;
+      const timestamp = Number(key.slice(backupPrefix.length));
+      if (Number.isFinite(timestamp)) existing.push({ key, at: timestamp });
+    }
+    existing.sort((a, b) => b.at - a.at);
+    let backupKey = existing.slice(0, 3).find((backup) => localStorage.getItem(backup.key) === raw)?.key ?? null;
+    if (!backupKey) {
+      backupKey = `${backupPrefix}${at}`;
+      while (localStorage.getItem(backupKey) !== null) {
+        backupKey = `${backupPrefix}${Number(backupKey.slice(backupPrefix.length)) + 1}`;
+      }
+      localStorage.setItem(backupKey, raw);
+    }
+  } catch (error) {
+    console.error("Could not preserve corrupt local ledger data:", error);
+    return false;
+  }
+
+  try {
+    const backups: { key: string; at: number }[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(backupPrefix)) continue;
+      const timestamp = Number(key.slice(backupPrefix.length));
+      if (Number.isFinite(timestamp)) backups.push({ key, at: timestamp });
+    }
+    backups.sort((a, b) => b.at - a.at);
+    for (const backup of backups.slice(3)) localStorage.removeItem(backup.key);
+  } catch (error) {
+    console.error("Could not prune old corrupt ledger backups:", error);
+  }
+  return true;
+}
+
+function loadStoredData(storageKey: string, fresh: boolean): LoadedData {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(storageKey);
+  } catch (error) {
+    console.error("Could not read local ledger data:", error);
+    return {
+      state: fresh ? seed() : emptyState(),
+      recoveryNotice: null,
+      storageError: { at: Date.now(), message: "ذخیره‌سازی محلی قابل‌خواندن نیست." },
+      persistInitialState: false,
+    };
+  }
+
+  if (raw === null) {
+    return {
+      state: fresh ? seed() : emptyState(),
+      recoveryNotice: null,
+      storageError: null,
+      persistInitialState: true,
+    };
+  }
+
+  let parsed: AppState;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("Stored ledger data must be a JSON object.");
+    }
+    parsed = value as AppState;
+  } catch (error) {
+    console.error("Could not parse local ledger data:", error);
+    const at = Date.now();
+    const recoveryNotice = { at, raw };
+    const backupSaved = saveCorruptBackup(storageKey, raw, at);
+    return {
+      state: fresh ? seed() : emptyState(),
+      recoveryNotice,
+      storageError: backupSaved ? null : { at, message: "نسخهٔ پشتیبان دادهٔ خراب ذخیره نشد." },
+      persistInitialState: backupSaved,
+    };
+  }
+
+  const postProcess = (name: string, step: () => void) => {
+    try {
+      step();
+    } catch (error) {
+      console.error(`Could not ${name} local ledger data:`, error);
+    }
+  };
+  postProcess("migrate", () => { parsed = migrateLoadedState(parsed); });
+  postProcess("apply recurring transactions to", () => applyRecurring(parsed));
+  postProcess("normalize installments in", () => normalizeInstallments(parsed));
+  postProcess("recompute balances in", () => recomputeBalances(parsed));
+  return { state: parsed, recoveryNotice: null, storageError: null, persistInitialState: false };
+}
+
 export function DataProvider({ userId, fresh = false, children }: {
   userId: string;
   fresh?: boolean;
@@ -439,6 +546,12 @@ export function DataProvider({ userId, fresh = false, children }: {
 }) {
   const storageKey = `fp_data_${userId}`;
   const syncDirtyKey = `fp_sync_dirty_${userId}`;
+  const [loadedData] = useState(() => loadStoredData(storageKey, fresh));
+  const [recoveryNotice, setRecoveryNotice] = useState(loadedData.recoveryNotice);
+  const [storageError, setStorageError] = useState(loadedData.storageError);
+  const lastStorageErrorAtRef = useRef(0);
+  const lastPersistAttemptStateRef = useRef<AppState | null>(null);
+  const persistBlockedRef = useRef(loadedData.storageError !== null);
   const syncGenerationRef = useRef(0);
   const syncDirtyRef = useRef<boolean | null>(null);
   if (syncDirtyRef.current === null) {
@@ -448,28 +561,44 @@ export function DataProvider({ userId, fresh = false, children }: {
       syncDirtyRef.current = false;
     }
   }
-  const [state, setState] = useState<AppState>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as AppState;
-        migrateLoadedState(parsed);
-        applyRecurring(parsed);
-        normalizeInstallments(parsed);
-        recomputeBalances(parsed);
-        return parsed;
-      }
-    } catch { /* دادهٔ خراب — از نو */ }
-    const init = fresh ? seed() : emptyState();
-    localStorage.setItem(storageKey, JSON.stringify(init));
-    return init;
-  });
+  const [state, setState] = useState<AppState>(loadedData.state);
 
-  const persist = (s: AppState) => {
+  useEffect(() => {
+    if (lastPersistAttemptStateRef.current === state) return;
+    lastPersistAttemptStateRef.current = state;
+    if (state === loadedData.state && !loadedData.persistInitialState) return;
+    const reportStorageError = (error: unknown) => {
+      const at = Date.now();
+      if (at - lastStorageErrorAtRef.current >= 3000) {
+        lastStorageErrorAtRef.current = at;
+        console.error("Could not persist local ledger data:", error);
+        setStorageError({ at, message: error instanceof Error ? error.message : String(error) });
+      }
+    };
+    if (persistBlockedRef.current) {
+      if (loadedData.recoveryNotice) {
+        if (!saveCorruptBackup(storageKey, loadedData.recoveryNotice.raw, loadedData.recoveryNotice.at)) {
+          reportStorageError(new Error("Could not save corrupt ledger backup."));
+          return;
+        }
+      } else {
+        try {
+          if (localStorage.getItem(storageKey) !== null) return;
+        } catch (error) {
+          reportStorageError(error);
+          return;
+        }
+      }
+      persistBlockedRef.current = false;
+    }
     try {
-      localStorage.setItem(storageKey, JSON.stringify(s));
-    } catch { /* حافظه پر */ }
-  };
+      localStorage.setItem(storageKey, JSON.stringify(state));
+      lastStorageErrorAtRef.current = 0;
+      setStorageError(null);
+    } catch (error) {
+      reportStorageError(error);
+    }
+  }, [loadedData, state, storageKey]);
 
   const markDirty = () => {
     syncDirtyRef.current = true;
@@ -512,7 +641,6 @@ export function DataProvider({ userId, fresh = false, children }: {
         draft.activity_logs = draft.activity_logs.slice(0, 80);
       }
       draft.lastSync = Date.now();
-      persist(draft);
       return draft;
     });
   };
@@ -558,13 +686,24 @@ export function DataProvider({ userId, fresh = false, children }: {
       if (!prev.trash.some((e) => e.until <= Date.now())) return prev;
       const draft: AppState = JSON.parse(JSON.stringify(prev));
       draft.trash = draft.trash.filter((e) => e.until > Date.now());
-      persist(draft);
       return draft;
     });
   };
 
   return (
-    <Ctx.Provider value={{ state, mutate, getSyncSnapshot, markSyncClean, trashItem, restore, discardTrash, purgeTrash }}>
+    <Ctx.Provider value={{
+      state,
+      recoveryNotice,
+      dismissRecoveryNotice: () => setRecoveryNotice(null),
+      storageError,
+      mutate,
+      getSyncSnapshot,
+      markSyncClean,
+      trashItem,
+      restore,
+      discardTrash,
+      purgeTrash,
+    }}>
       {children}
     </Ctx.Provider>
   );

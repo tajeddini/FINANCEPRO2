@@ -22,6 +22,7 @@ import { rescheduleReminders } from "./lib/reminders";
 import { startNativeSmsListener } from "./lib/sms";
 import type { PendingSmsTransaction } from "./lib/sms";
 import type { TransactionDraft } from "./lib/ai-transaction";
+import { dl } from "./pages/shared";
 import TxModal from "./pages/tx-modal";
 
 /* بارگذاری تنبل صفحه‌ها — هر صفحه فقط وقتی باز شود دانلود می‌شود */
@@ -309,7 +310,10 @@ export function BrandMark() {
 
 /* ================= پوستهٔ اصلی ================= */
 function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void; onDelete: () => Promise<void> }) {
-  const { state, mutate, getSyncSnapshot, markSyncClean, restore, purgeTrash } = useStore();
+  const {
+    state, recoveryNotice, dismissRecoveryNotice, storageError,
+    mutate, getSyncSnapshot, markSyncClean, restore, purgeTrash,
+  } = useStore();
   const toast = useToast();
   const now = useNow();
   const [page, setPage] = useState<PageId>("dashboard");
@@ -355,6 +359,15 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     const e = installEvt as Event & { prompt: () => Promise<void> };
     await e.prompt();
     setInstallEvt(null);
+  };
+  const exportBackup = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    dl(blob, `financepro-backup-${todayISO()}.json`);
+  };
+  const exportCorruptBackup = () => {
+    if (!recoveryNotice) return;
+    const blob = new Blob([recoveryNotice.raw], { type: "application/json" });
+    dl(blob, `financepro-corrupt-backup-${recoveryNotice.at}.json`);
   };
 
   const syncOn = (() => {
@@ -611,6 +624,33 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
           </header>
 
           <main className="flex-1 min-w-0 px-4 lg:px-8 py-6 pb-28 lg:pb-10 max-w-[1200px] w-full mx-auto">
+            {recoveryNotice && (
+              <div role="alert" className="rounded-xl border p-3.5 mb-4 flex flex-wrap items-center justify-between gap-3"
+                style={{ borderColor: "color-mix(in srgb, var(--fp-accent) 55%, transparent)", background: "color-mix(in srgb, var(--fp-accent) 8%, var(--fp-bg))" }}>
+                <p className="text-[12px] font-bold leading-6 flex-1 min-w-[220px]">
+                  داده‌های ذخیره‌شدهٔ این دستگاه قابل‌خواندن نبود. یک نسخهٔ پشتیبان از آن نگه داشته شد.
+                </p>
+                <div className="flex items-center gap-2">
+                  <button className="btn btn-ghost btn-sm" onClick={exportCorruptBackup}>
+                    <Download className="w-4 h-4" /> دانلود نسخهٔ پشتیبان
+                  </button>
+                  <button className="icon-btn !w-8 !h-8" title="بستن پیام" aria-label="بستن پیام" onClick={dismissRecoveryNotice}>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+            {storageError && (
+              <div role="alert" className="rounded-xl border p-3.5 mb-4 flex flex-wrap items-center justify-between gap-3"
+                style={{ borderColor: "color-mix(in srgb, var(--fp-coral) 55%, transparent)", background: "color-mix(in srgb, var(--fp-coral) 8%, var(--fp-bg))" }}>
+                <p className="text-[12px] font-bold leading-6 flex-1 min-w-[220px]">
+                  ذخیره‌سازی روی این دستگاه ناموفق بود (حافظه پر یا مسدود است). از تنظیمات یک فایل پشتیبان بگیرید.
+                </p>
+                <button className="btn btn-ghost btn-sm" onClick={exportBackup}>
+                  <Download className="w-4 h-4" /> دانلود پشتیبان JSON
+                </button>
+              </div>
+            )}
             <Suspense fallback={<PageLoader />}>
             <div key={page + drill.key} className="min-w-0">
               {page === "dashboard" && (
