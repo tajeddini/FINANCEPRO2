@@ -1,18 +1,21 @@
 /* ---------- صفحهٔ مدیریت (حساب‌ها، دسته‌ها، برچسب‌ها، بودجه‌ها، اهداف، دوره‌ای، روش پرداخت) ---------- */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, CheckCircle2, Plus, Repeat, Target, Trash2, Upload, Wallet } from "lucide-react";
-import { clearData, getTags, sampleFill, useStore } from "../lib/data";
+import { clearData, getReferences, getTags, sampleFill, trashInDraft, useStore } from "../lib/data";
 import { faDate, faMoney, faNum, inRange, jalaliMonthRange, jalaliToday, todayISO, uid } from "../lib/utils";
 import { checkSmsPermissions, loadPendingSms, openSmsAppSettings, removeUsedSms, scanInboxForBankMessages, type PendingSmsTransaction } from "../lib/sms";
 import { AmountInput, Bar, CatGlyph, CATEGORY_ICONS, CATEGORY_ICON_LABELS, Confirm, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, Modal, PeriodFilter, TInput, TSelect, usePeriod, useToast } from "../ui";
 import TxModal from "./tx-modal";
 
-export default function ManagePage() {
+export default function ManagePage({ orphanReassignRequest = 0 }: { orphanReassignRequest?: number }) {
   const { mutate } = useStore();
   const toast = useToast();
   const [tab, setTab] = useState("accounts");
   const [confirmClear, setConfirmClear] = useState(false);
   const [confirmSample, setConfirmSample] = useState(false);
+  useEffect(() => {
+    if (orphanReassignRequest) setTab("accounts");
+  }, [orphanReassignRequest]);
 
   const tabs = [
     ["accounts", "حساب‌ها"], ["categories", "دسته‌ها"], ["tags", "برچسب‌ها"], ["budgets", "بودجه‌ها"],
@@ -40,7 +43,7 @@ export default function ManagePage() {
         ))}
       </div>
 
-      {tab === "accounts" && <AccountsTab />}
+      {tab === "accounts" && <AccountsTab orphanReassignRequest={orphanReassignRequest} />}
       {tab === "categories" && <CategoriesTab />}
       {tab === "tags" && <TagsTab />}
       {tab === "budgets" && <BudgetsTab />}
@@ -151,12 +154,124 @@ function SmsTab() {
   );
 }
 
-function AccountsTab() {
-  const { state, mutate, trashItem } = useStore();
+type ReassignmentDialog =
+  | { kind: "entity"; id: string; label: string }
+  | { kind: "orphans" };
+
+function referenceSummary(refs: ReturnType<typeof getReferences>) {
+  return [
+    refs.transactions ? `${faNum(refs.transactions)} تراکنش` : "",
+    refs.transfers ? `${faNum(refs.transfers)} انتقال` : "",
+    refs.installments ? `${faNum(refs.installments)} قسط` : "",
+    refs.recurring ? `${faNum(refs.recurring)} مورد دوره‌ای` : "",
+    refs.budgets ? `${faNum(refs.budgets)} بودجه` : "",
+  ].filter(Boolean).join("، ");
+}
+
+function AccountsTab({ orphanReassignRequest }: { orphanReassignRequest: number }) {
+  const { state, mutate, trashItem, orphanCount } = useStore();
   const toast = useToast();
   const [form, setForm] = useState<{ id?: string; name: string; type: string; initial: string; color: string } | null>(null);
+  const [reassignment, setReassignment] = useState<ReassignmentDialog | null>(null);
+  const [targetId, setTargetId] = useState("");
+  const lastOrphanRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!orphanReassignRequest || lastOrphanRequestRef.current === orphanReassignRequest) return;
+    lastOrphanRequestRef.current = orphanReassignRequest;
+    setReassignment({ kind: "orphans" });
+    setTargetId(state.accounts[0]?.id ?? "");
+  }, [orphanReassignRequest, state.accounts]);
+
+  const openDelete = (id: string, label: string) => {
+    if (state.accounts.length <= 1) {
+      toast("warn", "آخرین حساب را نمی‌توان حذف کرد.");
+      return;
+    }
+    const refs = getReferences(state, "accounts", id);
+    if (!Object.values(refs).some((count) => count > 0)) {
+      trashItem("accounts", id, label);
+      toast("warn", "حساب حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است.");
+      return;
+    }
+    const targets = state.accounts.filter((item) => item.id !== id);
+    setReassignment({ kind: "entity", id, label });
+    setTargetId(targets[0]?.id ?? "");
+  };
+
+  const reassignAndDelete = () => {
+    if (!reassignment || !targetId) return;
+    if (reassignment.kind === "orphans") {
+      if (!state.accounts.some((account) => account.id === targetId)) return;
+      const at = Date.now();
+      mutate((d) => {
+        const accountIds = new Set(d.accounts.map((account) => account.id));
+        for (const transaction of d.transactions) {
+          if (!accountIds.has(transaction.accountId)) {
+            transaction.accountId = targetId;
+            transaction.updatedAt = at;
+          }
+        }
+        for (const transfer of d.transfers) {
+          if (!accountIds.has(transfer.from)) transfer.from = targetId;
+          if (!accountIds.has(transfer.to)) transfer.to = targetId;
+        }
+      }, "تراکنش‌ها و انتقال‌های یتیم به حساب موجود منتقل شدند");
+      toast("ok", "تراکنش‌ها و انتقال‌های بدون حساب به حساب انتخاب‌شده منتقل شدند.");
+      setReassignment(null);
+      return;
+    }
+
+    const { id, label } = reassignment;
+    const targetExists = state.accounts.some((account) => account.id === targetId && account.id !== id);
+    if (!targetExists) return;
+    const at = Date.now();
+    mutate((d) => {
+      const source = d.accounts.find((account) => account.id === id);
+      const target = d.accounts.find((account) => account.id === targetId);
+      if (!source || !target) return;
+      target.initial += source.initial;
+      for (const transaction of d.transactions) {
+        if (transaction.accountId === id) {
+          transaction.accountId = targetId;
+          transaction.updatedAt = at;
+        }
+      }
+      for (const transfer of d.transfers) {
+        if (transfer.from === id) transfer.from = targetId;
+        if (transfer.to === id) transfer.to = targetId;
+      }
+      for (const installment of d.installments) if (installment.accountId === id) installment.accountId = targetId;
+      for (const recurring of d.recurring) if (recurring.accountId === id) recurring.accountId = targetId;
+      trashInDraft(d, "accounts", id, label);
+    }, `ارجاع‌های «${label}» به مورد دیگری منتقل و حذف شد`);
+    toast("ok", "موارد وابسته منتقل شد و مورد قبلی به سطل زباله رفت.");
+    setReassignment(null);
+  };
+
+  const targetOptions = reassignment?.kind === "orphans"
+    ? state.accounts.map((account) => ({ id: account.id, label: account.name }))
+    : reassignment
+      ? state.accounts.filter((account) => account.id !== reassignment.id).map((account) => ({ id: account.id, label: account.name }))
+      : [];
+
+  const referenceDescription = reassignment?.kind === "entity"
+    ? referenceSummary(getReferences(state, "accounts", reassignment.id))
+    : "";
   return (
     <div className="grid gap-3">
+      {orphanCount > 0 && (
+        <div role="alert" className="rounded-xl border p-3.5 flex flex-wrap items-center justify-between gap-3"
+          style={{ borderColor: "color-mix(in srgb, var(--fp-coral) 50%, transparent)", background: "color-mix(in srgb, var(--fp-coral) 7%, var(--fp-bg))" }}>
+          <p className="text-[12px] font-bold leading-6">
+            {faNum(orphanCount)} تراکنش یا انتقال به حسابی که حذف شده متصل است.
+          </p>
+          <button className="btn btn-ghost btn-sm" onClick={() => {
+            setReassignment({ kind: "orphans" });
+            setTargetId(state.accounts[0]?.id ?? "");
+          }}>انتقال به حساب موجود</button>
+        </div>
+      )}
       <div className="flex justify-end">
         <button className="btn btn-gold btn-sm" onClick={() => setForm({ name: "", type: "کارت بانکی", initial: "0", color: "#57d9a3" })}><Plus className="w-4 h-4" strokeWidth={3} /> حساب جدید</button>
       </div>
@@ -170,7 +285,7 @@ function AccountsTab() {
           <p className="text-[13px] font-black tabular shrink-0 whitespace-nowrap" style={{ color: a.balance < 0 ? "var(--fp-coral)" : "var(--fp-mint)" }}>{faMoney(a.balance)}</p>
           <span className="flex gap-1.5 shrink-0">
             <EditBtn onClick={() => setForm({ id: a.id, name: a.name, type: a.type, initial: String(a.initial), color: a.color })} />
-            <DeleteBtn onClick={() => { trashItem("accounts", a.id, a.name); toast("warn", "حساب حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
+            <DeleteBtn onClick={() => openDelete(a.id, a.name)} />
           </span>
         </div>
       ))}
@@ -212,6 +327,41 @@ function AccountsTab() {
           </div>
         </Modal>
       )}
+      <Modal
+        open={!!reassignment}
+        onClose={() => setReassignment(null)}
+        title={reassignment?.kind === "orphans" ? "انتقال موارد بدون حساب" : "انتقال موارد وابسته"}
+      >
+        <div className="grid gap-3.5">
+          {reassignment?.kind === "entity" && (
+            <p className="text-[12px] font-bold leading-6" style={{ color: "var(--fp-text2)" }}>
+              «{reassignment.label}» این موارد را دارد: {referenceDescription}. همه به مورد انتخاب‌شده منتقل می‌شوند و سپس مورد قبلی حذف می‌شود.
+            </p>
+          )}
+          {reassignment?.kind === "orphans" && (
+            <p className="text-[12px] font-bold leading-6" style={{ color: "var(--fp-text2)" }}>
+              {faNum(orphanCount)} تراکنش یا انتقال به حساب حذف‌شده ارجاع دارد. آن‌ها به حساب انتخاب‌شده منتقل می‌شوند.
+            </p>
+          )}
+          {targetOptions.length ? (
+            <Field label="حساب مقصد">
+              <TSelect value={targetId} onChange={(event) => setTargetId(event.target.value)}>
+                {targetOptions.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </TSelect>
+            </Field>
+          ) : (
+            <p role="alert" className="text-[12px] font-bold leading-6" style={{ color: "var(--fp-coral)" }}>
+              "برای انتقال، ابتدا یک حساب دیگر بسازید."
+            </p>
+          )}
+          <div className="flex justify-end gap-2 mt-1">
+            <button className="btn btn-ghost" onClick={() => setReassignment(null)}>لغو</button>
+            <button className="btn btn-gold" disabled={!targetOptions.length || !targetId} onClick={reassignAndDelete}>
+              {reassignment?.kind === "orphans" ? "انتقال" : "انتقال همه و حذف"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -220,6 +370,61 @@ function CategoriesTab() {
   const { state, mutate, trashItem } = useStore();
   const toast = useToast();
   const [form, setForm] = useState<{ id?: string; name: string; type: "income" | "expense"; color: string; icon: string } | null>(null);
+  const [deleteCategory, setDeleteCategory] = useState<{ id: string; label: string } | null>(null);
+  const [targetCategoryId, setTargetCategoryId] = useState("");
+  const openDelete = (id: string, label: string) => {
+    const category = state.categories.find((item) => item.id === id);
+    if (state.categories.filter((item) => item.type === category?.type).length <= 1) {
+      toast("warn", "آخرین دستهٔ این نوع را نمی‌توان حذف کرد.");
+      return;
+    }
+    const refs = getReferences(state, "categories", id);
+    if (!Object.values(refs).some((count) => count > 0)) {
+      trashItem("categories", id, label);
+      toast("warn", "دسته حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است.");
+      return;
+    }
+    const target = state.categories.find((item) => item.id !== id && item.type === category?.type);
+    setDeleteCategory({ id, label });
+    setTargetCategoryId(target?.id ?? "");
+  };
+  const reassignAndDeleteCategory = () => {
+    if (!deleteCategory) return;
+    const source = state.categories.find((item) => item.id === deleteCategory.id);
+    const target = state.categories.find((item) => item.id === targetCategoryId);
+    if (!source || !target || source.type !== target.type) return;
+    const at = Date.now();
+    mutate((d) => {
+      const sourceCategory = d.categories.find((item) => item.id === deleteCategory.id);
+      const targetCategory = d.categories.find((item) => item.id === targetCategoryId);
+      if (!sourceCategory || !targetCategory || sourceCategory.type !== targetCategory.type) return;
+      for (const transaction of d.transactions) {
+        if (transaction.categoryId === deleteCategory.id) {
+          transaction.categoryId = targetCategoryId;
+          transaction.updatedAt = at;
+        }
+      }
+      for (const installment of d.installments) if (installment.categoryId === deleteCategory.id) installment.categoryId = targetCategoryId;
+      for (const recurring of d.recurring) if (recurring.categoryId === deleteCategory.id) recurring.categoryId = targetCategoryId;
+      const sourceBudgets = d.budgets.filter((budget) => budget.categoryId === deleteCategory.id);
+      const targetBudget = d.budgets.find((budget) => budget.categoryId === targetCategoryId);
+      if (targetBudget) {
+        targetBudget.limit += sourceBudgets.reduce((sum, budget) => sum + budget.limit, 0);
+        d.budgets = d.budgets.filter((budget) => budget.categoryId !== deleteCategory.id);
+      } else if (sourceBudgets.length) {
+        sourceBudgets[0].categoryId = targetCategoryId;
+        sourceBudgets[0].limit = sourceBudgets.reduce((sum, budget) => sum + budget.limit, 0);
+        d.budgets = d.budgets.filter((budget) => budget.categoryId !== deleteCategory.id || budget.id === sourceBudgets[0].id);
+      }
+      trashInDraft(d, "categories", deleteCategory.id, deleteCategory.label);
+    }, `ارجاع‌های دستهٔ «${deleteCategory.label}» منتقل و دسته حذف شد`);
+    toast("ok", "موارد وابسته منتقل شد و دستهٔ قبلی به سطل زباله رفت.");
+    setDeleteCategory(null);
+  };
+  const deleteCategoryTargets = deleteCategory
+    ? state.categories.filter((item) => item.id !== deleteCategory.id &&
+      item.type === state.categories.find((source) => source.id === deleteCategory.id)?.type)
+    : [];
   return (
     <div className="grid gap-3">
       <div className="flex justify-end">
@@ -234,7 +439,7 @@ function CategoriesTab() {
           </div>
           <span className="flex gap-1.5 shrink-0">
             <EditBtn onClick={() => setForm({ id: c.id, name: c.name, type: c.type, color: c.color, icon: c.icon ?? "wallet" })} />
-            <DeleteBtn onClick={() => { trashItem("categories", c.id, c.name); toast("warn", "دسته حذف شد — تا ۳۰ روز از سطل زباله قابل بازگردانی است."); }} />
+            <DeleteBtn onClick={() => openDelete(c.id, c.name)} />
           </span>
         </div>
       ))}
@@ -287,6 +492,35 @@ function CategoriesTab() {
           </div>
         </Modal>
       )}
+      <Modal open={!!deleteCategory} onClose={() => setDeleteCategory(null)} title="انتقال موارد وابسته">
+        <div className="grid gap-3.5">
+          {deleteCategory && (
+            <p className="text-[12px] font-bold leading-6" style={{ color: "var(--fp-text2)" }}>
+              دستهٔ «{deleteCategory.label}» این موارد را دارد: {referenceSummary(getReferences(state, "categories", deleteCategory.id))}. همه به دستهٔ مقصد منتقل می‌شوند و سپس دستهٔ قبلی حذف می‌شود.
+            </p>
+          )}
+          {deleteCategoryTargets.length ? (
+            <Field label="دستهٔ مقصد">
+              <TSelect value={targetCategoryId} onChange={(event) => setTargetCategoryId(event.target.value)}>
+                {deleteCategoryTargets.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </TSelect>
+            </Field>
+          ) : (
+            <p role="alert" className="text-[12px] font-bold leading-6" style={{ color: "var(--fp-coral)" }}>
+              دستهٔ دیگری از همین نوع برای انتقال وجود ندارد.
+            </p>
+          )}
+          <p className="text-[11px] font-bold leading-5" style={{ color: "var(--fp-text3)" }}>
+            اگر دستهٔ مقصد بودجه داشته باشد، سقف بودجه‌ها با هم جمع می‌شوند.
+          </p>
+          <div className="flex justify-end gap-2 mt-1">
+            <button className="btn btn-ghost" onClick={() => setDeleteCategory(null)}>لغو</button>
+            <button className="btn btn-gold" disabled={!deleteCategoryTargets.length || !targetCategoryId} onClick={reassignAndDeleteCategory}>
+              انتقال همه و حذف
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -18,14 +18,15 @@ import { hasAIConfig } from "../lib/ai";
 import { parseTransactionText, type TransactionDraft } from "../lib/ai-transaction";
 import { detectRecurringExpenses, forecastMonthEndBalance } from "../lib/smart-insights";
 
-export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTransactionDraft, onOpenSettings }: {
+export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTransactionDraft, onOpenSettings, onReassignOrphans }: {
   onQuickAdd: () => void;
   onOpenSmsReview: (pending: PendingSmsTransaction) => void;
   onOpenTransactionDraft: (draft: TransactionDraft) => void;
   onOpenSettings: () => void;
+  onReassignOrphans: () => void;
   onScanSms?: () => void;
 }) {
-  const { state, mutate } = useStore();
+  const { state, mutate, orphanCount } = useStore();
   const toast = useToast();
   const [transactionText, setTransactionText] = useState("");
   const [parsingTransaction, setParsingTransaction] = useState(false);
@@ -129,6 +130,16 @@ export default function DashboardPage({ onQuickAdd, onOpenSmsReview, onOpenTrans
           <Plus className="w-4 h-4" strokeWidth={3} /> ثبت سریع تراکنش
         </button>
       </div>
+
+      {orphanCount > 0 && (
+        <div role="alert" className="rounded-xl border p-3.5 flex flex-wrap items-center justify-between gap-3"
+          style={{ borderColor: "color-mix(in srgb, var(--fp-coral) 50%, transparent)", background: "color-mix(in srgb, var(--fp-coral) 7%, var(--fp-bg))" }}>
+          <p className="text-[12px] font-bold leading-6">
+            {faNum(orphanCount)} تراکنش یا انتقال به حسابی که حذف شده متصل است.
+          </p>
+          <button className="btn btn-ghost btn-sm" onClick={onReassignOrphans}>انتقال به حساب موجود</button>
+        </div>
+      )}
 
       <section className="card p-5 rise-in" aria-labelledby="natural-transaction-title">
         <h2 id="natural-transaction-title" className="text-[14px] font-black flex items-center gap-2">

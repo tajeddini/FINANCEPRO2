@@ -27,6 +27,7 @@ export interface Tx {
   source?: "app" | "bot";
   reimbursable?: boolean; linkedDebtId?: ID;
 }
+
 export interface Transfer { id: ID; date: string; from: ID; to: ID; amount: number; note?: string; }
 export interface Debt { id: ID; kind: "debt" | "credit" | "custody"; person: string; amount: number; paid: number; due?: string; note?: string; linkedTransactionId?: ID; }
 
@@ -308,14 +309,48 @@ const txContentJson = (t: Tx): string => JSON.stringify({ ...t, updatedAt: 0 });
 
 export function recomputeBalances(s: AppState) {
   const map = new Map(s.accounts.map((a) => [a.id, a.initial]));
+  const accountIds = new Set(map.keys());
+  let orphanCount = 0;
   for (const tr of s.transfers) {
-    map.set(tr.from, (map.get(tr.from) ?? 0) - tr.amount);
-    map.set(tr.to, (map.get(tr.to) ?? 0) + tr.amount);
+    const fromExists = accountIds.has(tr.from);
+    const toExists = accountIds.has(tr.to);
+    if (!fromExists || !toExists) orphanCount++;
+    if (fromExists) map.set(tr.from, map.get(tr.from)! - tr.amount);
+    if (toExists) map.set(tr.to, map.get(tr.to)! + tr.amount);
   }
   for (const t of s.transactions) {
-    map.set(t.accountId, (map.get(t.accountId) ?? 0) + (t.type === "income" ? t.amount : -t.amount));
+    if (!accountIds.has(t.accountId)) {
+      orphanCount++;
+      continue;
+    }
+    map.set(t.accountId, map.get(t.accountId)! + (t.type === "income" ? t.amount : -t.amount));
   }
   for (const a of s.accounts) a.balance = map.get(a.id) ?? a.initial;
+  return orphanCount;
+}
+
+export interface EntityReferences {
+  transactions: number;
+  transfers: number;
+  installments: number;
+  recurring: number;
+  budgets: number;
+}
+
+export function getReferences(state: AppState, table: "accounts" | "categories", id: ID): EntityReferences {
+  return {
+    transactions: state.transactions.filter((item) => table === "accounts" ? item.accountId === id : item.categoryId === id).length,
+    transfers: table === "accounts" ? state.transfers.filter((item) => item.from === id || item.to === id).length : 0,
+    installments: state.installments.filter((item) => table === "accounts" ? item.accountId === id : item.categoryId === id).length,
+    recurring: state.recurring.filter((item) => table === "accounts" ? item.accountId === id : item.categoryId === id).length,
+    budgets: table === "categories" ? state.budgets.filter((item) => item.categoryId === id).length : 0,
+  };
+}
+
+export function getOrphanCount(state: AppState): number {
+  const accountIds = new Set(state.accounts.map((account) => account.id));
+  return state.transactions.filter((transaction) => !accountIds.has(transaction.accountId)).length +
+    state.transfers.filter((transfer) => !accountIds.has(transfer.from) || !accountIds.has(transfer.to)).length;
 }
 
 /* ---------- تشخیص هوشمند مبلغ، دسته و حساب از متن ---------- */
@@ -418,6 +453,18 @@ function recordTombstones(d: AppState, items: { table: TableName; id: ID }[], at
   d.tombstones = [...tombstones.values()];
 }
 
+export function trashInDraft(d: AppState, table: TableName, id: string, label: string) {
+  const arr = d[table] as { id: ID }[];
+  const item = arr.find((x) => x.id === id);
+  if (!item) return;
+  const deletedAt = Date.now();
+  d[table] = arr.filter((x) => x.id !== id) as never;
+  d.trash = [...d.trash.filter((e) => e.table !== table || (e.item as { id: ID }).id !== id), {
+    key: uid(), table, item, deletedAt, until: deletedAt + TRASH_RETENTION_MS, label,
+  }];
+  recordTombstones(d, [{ table, id }]);
+}
+
 interface Store {
   state: AppState;
   recoveryNotice: { at: number; raw: string } | null;
@@ -427,6 +474,7 @@ interface Store {
   getSyncSnapshot: () => { dirty: boolean; generation: number };
   markSyncClean: (generation: number) => void;
   trashItem: (table: TableName, id: string, label: string) => void;
+  orphanCount: number;
   restore: (key: string) => void;
   discardTrash: (key: string) => void;
   purgeTrash: () => void;
@@ -647,15 +695,7 @@ export function DataProvider({ userId, fresh = false, children }: {
 
   const trashItem = (table: TableName, id: string, label: string) => {
     mutate((d) => {
-      const arr = d[table] as { id: ID }[];
-      const item = arr.find((x) => x.id === id);
-      if (!item) return;
-      const deletedAt = Date.now();
-      d[table] = arr.filter((x) => x.id !== id) as never;
-      d.trash = [...d.trash.filter((e) => e.table !== table || (e.item as { id: ID }).id !== id), {
-        key: uid(), table, item, deletedAt, until: deletedAt + TRASH_RETENTION_MS, label,
-      }];
-      recordTombstones(d, [{ table, id }]);
+      trashInDraft(d, table, id, label);
     });
   };
 
@@ -693,6 +733,7 @@ export function DataProvider({ userId, fresh = false, children }: {
   return (
     <Ctx.Provider value={{
       state,
+      orphanCount: getOrphanCount(state),
       recoveryNotice,
       dismissRecoveryNotice: () => setRecoveryNotice(null),
       storageError,

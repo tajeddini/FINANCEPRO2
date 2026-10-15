@@ -317,6 +317,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
   const toast = useToast();
   const now = useNow();
   const [page, setPage] = useState<PageId>("dashboard");
+  const [orphanReassignRequest, setOrphanReassignRequest] = useState(0);
   const [drill, setDrill] = useState<{ cat?: string; query?: string; key: number }>({ key: 0 });
   const [quickAdd, setQuickAdd] = useState(false);
   const [smsReview, setSmsReview] = useState<PendingSmsTransaction | null>(null);
@@ -659,6 +660,10 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
                   onOpenSmsReview={(pending) => setSmsReview(pending)}
                   onOpenTransactionDraft={(draft) => setTransactionDraft(draft)}
                   onOpenSettings={() => go("settings")}
+                  onReassignOrphans={() => {
+                    setPage("manage");
+                    setOrphanReassignRequest((request) => request + 1);
+                  }}
                 />
               )}
               {page === "daily" && <DailyPage />}
@@ -668,7 +673,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
               {page === "appointments" && <AppointmentsPage />}
               {page === "notes" && <NotesPage />}
               {page === "reports" && <ReportsPage onOpenSettings={() => go("settings")} />}
-              {page === "manage" && <ManagePage />}
+              {page === "manage" && <ManagePage orphanReassignRequest={orphanReassignRequest} />}
               {page === "settings" && (
                 <SettingsPage user={user} onLogout={onLogout} onDelete={onDelete} onLock={() => setLocked(true)} />
               )}
