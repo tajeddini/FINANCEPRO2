@@ -231,6 +231,7 @@ function AccountsTab({ orphanReassignRequest }: { orphanReassignRequest: number 
       const target = d.accounts.find((account) => account.id === targetId);
       if (!source || !target) return;
       target.initial += source.initial;
+      source.initial = 0;
       for (const transaction of d.transactions) {
         if (transaction.accountId === id) {
           transaction.accountId = targetId;

@@ -1,7 +1,7 @@
 /* ---------- صفحهٔ بدهی‌ها و اقساط ---------- */
 import { useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpLeft, Banknote, Check, Plus, QrCode, Repeat, Scale } from "lucide-react";
-import { accById, useStore, type ID, type Installment } from "../lib/data";
+import { accById, buildSchedule, useStore, type ID, type Installment } from "../lib/data";
 import { calcEMI, faDate, faMoney, faNum, jalaliShort, todayISO, uid } from "../lib/utils";
 import { AmountInput, Bar, DeleteBtn, EditBtn, Empty, Field, JalaliPicker, Modal, TInput, TSelect, useToast } from "../ui";
 import { Head } from "./shared";
@@ -31,6 +31,10 @@ export default function DebtsPage() {
     const total = Number(instForm.total) || 0;
     const months = Math.max(1, Number(instForm.months) || 1);
     const apm = Math.round(Number(instForm.amountPerMonth) || 0);
+    const existingInstallment = instForm.id
+      ? state.installments.find((installment) => installment.id === instForm.id)
+      : undefined;
+    const reducedPaidCount = !!existingInstallment && existingInstallment.paidCount > months;
     if (!title) return toast("warn", "عنوان قسط را بنویسید.");
     if (total <= 0) return toast("warn", "مبلغ کل باید بزرگ‌تر از صفر باشد.");
     if (apm <= 0) return toast("warn", "مبلغ هر قسط را خودت وارد کن.");
@@ -39,14 +43,22 @@ export default function DebtsPage() {
       mutate((d) => {
         const x = d.installments.find((y) => y.id === instForm.id);
         if (x) {
+          const scheduleChanged =
+            x.start !== base.start ||
+            x.months !== base.months ||
+            x.amountPerMonth !== base.amountPerMonth ||
+            x.total !== base.total;
+          const paidCount = Math.min(x.paidCount, months);
           Object.assign(x, base);
-          x.schedule = (x.schedule && x.schedule.length === months) ? x.schedule : buildScheduleLocal(base, x.paidCount);
+          if (scheduleChanged) x.schedule = buildSchedule(base, paidCount);
+          x.paidCount = paidCount;
         }
       }, `قسط «${title}» ویرایش شد`);
       toast("ok", "قسط ویرایش شد.");
+      if (reducedPaidCount) toast("warn", "تعداد اقساط پرداخت‌شده به تعداد ماه‌های جدید محدود شد.");
     } else {
       mutate((d) => {
-        d.installments.push({ id: uid(), ...base, paidCount: 0, schedule: buildScheduleLocal(base, 0) });
+        d.installments.push({ id: uid(), ...base, paidCount: 0, schedule: buildSchedule(base, 0) });
       }, `قسط «${title}» ثبت شد`);
       toast("ok", "قسط ثبت شد.");
     }
@@ -382,21 +394,6 @@ export default function DebtsPage() {
       </Modal>
     </div>
   );
-}
-
-function buildScheduleLocal(inst: { start: string; months: number; amountPerMonth: number; total: number }, paidCount: number) {
-  const out: { due: string; amount: number; paidAt?: number }[] = [];
-  const n = Math.max(1, inst.months | 0);
-  for (let i = 0; i < n; i++) {
-    const isLast = i === n - 1;
-    const rest = inst.total - inst.amountPerMonth * (n - 1);
-    const amount = isLast && rest > 0 ? rest : inst.amountPerMonth;
-    const d = new Date(inst.start + "T12:00:00");
-    d.setMonth(d.getMonth() + i);
-    const p = (x: number) => String(x).padStart(2, "0");
-    out.push({ due: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, amount, paidAt: i < paidCount ? Date.now() : undefined });
-  }
-  return out;
 }
 
 function toEnDigitsLocal(s: string): string {
