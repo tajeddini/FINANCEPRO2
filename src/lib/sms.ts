@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { toGregorian, toJalaali } from "jalaali-js";
 import { ReadSMS } from "capacitor-sms-reader";
-import { todayISO, uid } from "./utils";
+import { jalaliMonthLen, todayISO, toEnDigits, uid } from "./utils";
 
 export type SmsTransactionType = "income" | "expense";
 
@@ -56,17 +56,32 @@ export const SMS_ACCOUNT_MAP: SmsAccountConfig[] = [
 const BANK_PATTERNS: { pattern: RegExp; label: string; parser: (text: string) => SmsParse | null }[] = [];
 
 const normalizeSmsText = (input: string): string =>
-  input
-    .replace(/\r/g, "")
-    .replace(/[\u200c\u200f\u200e]/g, " ")
+  toEnDigits(input)
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u200b-\u200f\uFEFF]/g, "")
     .replace(/[ك]/g, "ک")
     .replace(/[ي]/g, "ی")
+    .replace(/[٬،]/g, ",")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
     .trim();
 
 const parseAmount = (value: string): number => {
-  const digits = value.replace(/[٬،]/g, "").replace(/[^0-9]/g, "");
+  const digits = toEnDigits(value).replace(/[٬،,]/g, "").replace(/[^0-9]/g, "");
   return Number(digits || "0");
 };
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const identifierPattern = (identifier: string): string =>
+  escapeRegExp(identifier).replace(/\\\./g, "\\s*\\.\\s*");
+
+const accountEntries = (bankLabel: string): SmsAccountConfig[] =>
+  SMS_ACCOUNT_MAP.filter((entry) => entry.bankLabel === bankLabel);
+
+const findIdentifier = (line: string, entries: SmsAccountConfig[]): string | undefined =>
+  entries.find((entry) => new RegExp(identifierPattern(entry.accountMatch)).test(line))?.accountMatch;
 
 const buildDate = (value: string, format: "resalat" | "melli", receivedAt?: number): Date | null => {
   const patterns = format === "resalat"
@@ -81,25 +96,32 @@ const buildDate = (value: string, format: "resalat" | "melli", receivedAt?: numb
   const day = Number(b);
   const hour = Number(c);
   const minute = Number(d);
+  if (month < 1 || month > 12 || hour > 23 || minute > 59) return null;
 
   const hasReceivedAt = Number.isFinite(receivedAt) && (receivedAt ?? 0) > 0;
-  const referenceDate = hasReceivedAt ? new Date(receivedAt!) : new Date();
+  const referenceDate = hasReceivedAt ? new Date(receivedAt!) : new Date(Date.now());
   const currentJalali = toJalaali(referenceDate);
   let jalaliYear = currentJalali.jy;
   if (!hasReceivedAt) {
-    const currentYearDate = toGregorian(jalaliYear, month, day);
+    const currentYearDate = toGregorian(jalaliYear, month, Math.min(day, jalaliMonthLen(jalaliYear, month)));
     const candidateDate = new Date(currentYearDate.gy, currentYearDate.gm - 1, currentYearDate.gd);
     const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
     if (candidateDate > today) jalaliYear -= 1;
   }
-  const gregorian = toGregorian(jalaliYear, month, day);
-  const date = new Date(gregorian.gy, gregorian.gm - 1, gregorian.gd, hour, minute, 0, 0);
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (day < 1 || day > jalaliMonthLen(jalaliYear, month)) return null;
+  try {
+    const gregorian = toGregorian(jalaliYear, month, day);
+    const date = new Date(gregorian.gy, gregorian.gm - 1, gregorian.gd, hour, minute, 0, 0);
+    return Number.isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
 };
 
-const parseResalat = (text: string, receivedAt?: number): SmsParse | null => {
+const parseResalat = (text: string, accountIdentifier: string, receivedAt?: number): SmsParse | null => {
   const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  if (!lines[0] || !lines[0].includes("10.10070145.1")) return null;
+  const resalatAccounts = accountEntries("رسالت");
+  if (!lines[0] || findIdentifier(lines[0], resalatAccounts) !== accountIdentifier) return null;
 
   const amountLine = lines[1];
   const dateLine = lines[2];
@@ -119,7 +141,7 @@ const parseResalat = (text: string, receivedAt?: number): SmsParse | null => {
     id: uid(),
     raw: text,
     bankLabel: "رسالت",
-    accountIdentifier: "10.10070145.1",
+    accountIdentifier,
     type: sign === "+" ? "income" : "expense",
     amount,
       amountToman: Math.round(amount / 10),
@@ -136,32 +158,36 @@ const parseResalat = (text: string, receivedAt?: number): SmsParse | null => {
   };
 };
 
-const parseBankMelli = (text: string, receivedAt?: number): SmsParse | null => {
+const parseBankMelli = (text: string, accountIdentifier: string, receivedAt?: number): SmsParse | null => {
   const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  if (!lines.length || !text.includes("حساب:83008")) return null;
+  const accountLine = new RegExp(`^حساب\\s*:\\s*${identifierPattern(accountIdentifier)}$`);
+  if (!lines.some((line) => accountLine.test(line))) return null;
 
-  let amountLine = lines.find((line) => (/^(?:انتقال|برداشت):[+-]/.test(line) ||
-    /^(?:انتقال|برداشت)[\s:]+[+-]?/.test(line) ||
-    /مبلغ[\s:]*[+-]?/.test(line) ||
-    /[+-]?\d[\d,٬ٔ٠-۹]{3,}/.test(line)));
-  if (!amountLine) return null;
+  const amountPattern = /^(انتقال|برداشت|واریز|مبلغ)\s*:\s*([+-]?\s*[0-9][0-9,]*|[0-9][0-9,]*\s*[+-])\s*$/;
+  const amountEntry = lines
+    .map((line) => ({ line, match: line.match(amountPattern) }))
+    .find((entry) => entry.match);
+  if (!amountEntry?.match) return null;
 
-  const signMatch = amountLine.match(/([+-])/);
-  const sign = signMatch ? signMatch[1] : ("-" === "-" ? "-" : "+");
-  const amount = parseAmount(amountLine.replace(/^(?:انتقال|برداشت|واریز|مبلغ)[:\s]*/, "").replace(/[^\d,٬ٔ٠-۹+\-]/g, ""));
+  const [, label, amountText] = amountEntry.match;
+  const signMatch = amountText.match(/[+-]/);
+  const sign = signMatch?.[0] ?? (label === "برداشت" ? "-" : label === "واریز" ? "+" : "");
+  if (!sign) return null;
+  const amount = parseAmount(amountText);
   if (amount <= 0) return null;
 
   const balanceLine = lines.find((line) => line.startsWith("مانده:") || /مانده[:\s]*[+-]?\d/.test(line));
   const balance = balanceLine ? parseAmount(balanceLine.replace(/^مانده[:\s]*/, "")) : undefined;
   const dateLine = lines.find((line) => /^\d{4}-\d{2}:\d{2}$/.test(line) || /^\d{4}\/\d{2}\s+\d{2}:\d{2}$/.test(line));
-  const date = dateLine ? buildDate(dateLine, "melli", receivedAt) : new Date();
+  const date = (dateLine ? buildDate(dateLine, "melli", receivedAt) : null) ??
+    (Number.isFinite(receivedAt) && (receivedAt ?? 0) > 0 ? new Date(receivedAt!) : null);
   if (!date) return null;
 
   return {
     id: uid(),
     raw: text,
     bankLabel: "بانک ملی",
-    accountIdentifier: "83008",
+    accountIdentifier,
     type: sign === "+" ? "income" : "expense",
     amount,
     amountToman: Math.round(amount / 10),
@@ -183,7 +209,18 @@ export function parseBankSMS(raw: string, receivedAt?: number): SmsParse | null 
   const text = normalizeSmsText(raw);
   if (!text) return null;
 
-  const accountMatch = SMS_ACCOUNT_MAP.find((entry) => text.includes(entry.accountMatch));
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const resalatAccounts = accountEntries("رسالت");
+  const resalatIdentifier = lines[0] ? findIdentifier(lines[0], resalatAccounts) : undefined;
+  if (resalatIdentifier) return parseResalat(text, resalatIdentifier, receivedAt);
+
+  const melliAccounts = accountEntries("بانک ملی");
+  const melliIdentifier = melliAccounts.find((entry) =>
+    lines.some((line) => new RegExp(`^حساب\\s*:\\s*${identifierPattern(entry.accountMatch)}$`).test(line)),
+  )?.accountMatch;
+  if (melliIdentifier) return parseBankMelli(text, melliIdentifier, receivedAt);
+
+  const accountMatch = SMS_ACCOUNT_MAP.find((entry) => findIdentifier(text, [entry]));
   if (!accountMatch) {
     if (/(بانک|BANK|حساب)/i.test(text)) {
       console.warn("[sms] unmatched bank-like message", { text: text.slice(0, 220) });
@@ -191,14 +228,12 @@ export function parseBankSMS(raw: string, receivedAt?: number): SmsParse | null 
     return null;
   }
 
-  if (text.includes("10.10070145.1")) return parseResalat(text, receivedAt);
-  if (text.includes("حساب:83008")) return parseBankMelli(text, receivedAt);
   return null;
 }
 
 export function getBankAccountLabelFromMessage(raw: string): string | undefined {
   const text = normalizeSmsText(raw);
-  return SMS_ACCOUNT_MAP.find((entry) => text.includes(entry.accountMatch))?.bankLabel;
+  return SMS_ACCOUNT_MAP.find((entry) => findIdentifier(text, [entry]))?.bankLabel;
 }
 
 const PENDING_SMS_KEY = "fp_pending_sms_v1";
