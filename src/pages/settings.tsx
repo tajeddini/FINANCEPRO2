@@ -10,7 +10,8 @@ import {
 } from "../lib/cloud";
 import { applyAccent, THEMES } from "../lib/themes";
 import { Field, TInput, TSelect, useToast } from "../ui";
-import { callAI } from "../lib/ai";
+import { callAI, validateAiEndpoint } from "../lib/ai";
+import { sanitizeStateForExport } from "../lib/backup-sanitize";
 import { base64ToUtf8, isNativePlat, pickFileNative } from "../lib/native-files";
 import { requestNotificationPermission, rescheduleReminders } from "../lib/reminders";
 import { checkSmsPermissions, openSmsAppSettings, requestSmsPermissions } from "../lib/sms";
@@ -47,6 +48,23 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const saveAi = () => {
+    if (aiApiUrl.trim()) {
+      try {
+        const endpointError = validateAiEndpoint(new URL(aiApiUrl.trim()));
+        if (endpointError) {
+          setAiTestMessage(endpointError);
+          setAiTestOk(false);
+          toast("err", endpointError);
+          return;
+        }
+      } catch {
+        const message = "آدرس پایهٔ سرویس هوش مصنوعی معتبر نیست.";
+        setAiTestMessage(message);
+        setAiTestOk(false);
+        toast("err", message);
+        return;
+      }
+    }
     mutate((d) => {
       d.prefs.aiProvider = aiProvider;
       d.prefs.aiApiUrl = aiApiUrl.trim();
@@ -70,6 +88,16 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
     setAiTestMessage("");
     setAiTestOk(null);
     try {
+      if (aiApiUrl.trim()) {
+        let endpoint: URL;
+        try {
+          endpoint = new URL(aiApiUrl.trim());
+        } catch {
+          throw new Error("آدرس پایهٔ سرویس هوش مصنوعی معتبر نیست.");
+        }
+        const endpointError = validateAiEndpoint(endpoint);
+        if (endpointError) throw new Error(endpointError);
+      }
       await callAI(
         [{ role: "user", content: "فقط بنویس: اتصال موفق است." }],
         { aiApiUrl, aiApiKey, aiModel },
@@ -155,7 +183,7 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
   };
 
   const exportBackup = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(sanitizeStateForExport(state), null, 2)], { type: "application/json" });
     dl(blob, `financepro-backup-${todayISO()}.json`);
     toast("ok", "پشتیبان JSON دانلود شد.");
   };
@@ -411,6 +439,9 @@ export default function SettingsPage({ user, onLogout, onDelete, onLock }: {
 
       <div className="card p-5 rise-in" style={{ ["--d" as string]: "160ms" }}>
         <h3 className="text-[14px] font-black flex items-center gap-2"><Download className="w-4.5 h-4.5" style={{ color: "var(--fp-accent)" }} /> پشتیبان‌گیری</h3>
+        <p className="text-[11px] font-bold mt-1 leading-5" style={{ color: "var(--fp-text3)" }}>
+          کلیدها، توکن‌ها و پین برای حفظ امنیت در فایل پشتیبان قرار نمی‌گیرند.
+        </p>
         <div className="flex flex-wrap gap-2 mt-4">
           <button className="btn btn-ghost btn-sm" onClick={exportBackup}><Download className="w-4 h-4" /> دانلود پشتیبان JSON</button>
           <button className="btn btn-ghost btn-sm" onClick={() => { if (isNativePlat()) void restoreBackupNative(); else fileRef.current?.click(); }}><Upload className="w-4 h-4" /> بازیابی از پشتیبان</button>

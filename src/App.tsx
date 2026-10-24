@@ -12,6 +12,7 @@ import {
   readSyncStatus, writeSyncStatus, type SyncStatus,
 } from "./lib/cloud";
 import { DataProvider, useStore } from "./lib/data";
+import { sanitizeStateForExport } from "./lib/backup-sanitize";
 import {
   deleteAccount, getSession, guestLogin, login, logout, onAuthStateChange, signup, type User,
 } from "./lib/auth";
@@ -362,7 +363,7 @@ function Shell({ user, onLogout, onDelete }: { user: User; onLogout: () => void;
     setInstallEvt(null);
   };
   const exportBackup = () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(sanitizeStateForExport(state), null, 2)], { type: "application/json" });
     dl(blob, `financepro-backup-${todayISO()}.json`);
   };
   const exportCorruptBackup = () => {
